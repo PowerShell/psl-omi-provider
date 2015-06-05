@@ -1,0 +1,73 @@
+
+class Stream
+{
+    [description("optional - present if stream is associated with command otherwise associated with shell")]
+    string commandId;
+    
+    string streamName;
+    string data;
+    boolean endOfStream;
+};
+
+class CommandState
+{
+    [description("optional")]
+    string commandId;
+    
+    [description(
+        "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Done,
+         http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Pending,
+         http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Running")]
+    string state;
+    
+    [description("process exit code")]
+    uint32 exitCode;
+};
+
+class Shell
+{
+    [key] string Name;
+    string StartDirectory;
+    string Environment;
+    datetime Timeout;
+    datetime IdleTimeout;
+    string InputStreams;
+    string OutputStreams;
+
+    Uint32 Command(
+        string command,
+        string argument,
+        [out] string CommandId
+        );
+
+    Uint32 Send(
+        [embeddedinstance("Stream")] string streamData
+        );
+
+    Uint32 Receive(
+        string commandId,
+        string streamSet,
+        [out, embeddedinstance("Stream")] string Stream ,
+        [out, embeddedinstance("CommandState")] string CommandState
+        );
+
+    Uint32 Signal(
+        string commandId,
+        
+        [description(
+            "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/signal/Terminate,
+            http://schemas.microsoft.com/wbem/wsman/1/windows/shell/signal/Break,
+            http://schemas.microsoft.com/wbem/wsman/1/windows/shell/signal/Pause,
+            http://schemas.microsoft.com/wbem/wsman/1/windows/shell/signal/Resume,
+            http://schemas.microsoft.com/wbem/wsman/1/windows/shell/signal/Exit")] 
+        string code
+        );
+
+    [static]
+    Uint32 Connect(
+        string shellId,
+        string commandId,
+        string inboundConnectionInfo
+        );
+
+};

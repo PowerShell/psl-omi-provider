@@ -307,24 +307,43 @@ error:
     }
 }
 
-#if 0
 struct DecodeBuffer
 {
-	char *buffer;
+	MI_Char *originalBuffer;
+	MI_Uint32 originalBufferLength;
+	MI_Char *newBuffer;
+	MI_Uint32 newBufferLength;
+	char *newBufferCursor;
+	MI_Uint32 newBufferCursorLength;
 };
-static int Shell_Send_Base64DecCallback(const void* data, size_t size,
+static int Shell_Base64Dec_Callback(const void* data, size_t size,
         void* callbackData)
 {
-	struct DecodeBuffer *thisCommand = callbackData;
+	struct DecodeBuffer *thisBuffer = callbackData;
 
-    /* TODO: Do we need to decompress? If so then we will need to read all the data
-     * before decompressing and then pass on to the command
-     */
-	memcpy(thisCommand->buffer, data, size);
-    thisCommand->buffer += size;
+
+	if ((thisBuffer->newBufferCursorLength+size) > thisBuffer->newBufferLength)
+		return -1;
+
+  	memcpy(thisBuffer->newBufferCursor, data, size);
+	thisBuffer->newBufferCursor += size;
+	thisBuffer->newBufferCursorLength += size;
     return 0;
 }
-#endif
+static int Shell_Base64Enc_Callback(const char* data, size_t size,
+        void* callbackData)
+{
+	struct DecodeBuffer *thisBuffer = callbackData;
+
+
+	if (thisBuffer->newBufferCursorLength+size > thisBuffer->newBufferLength)
+		return -1;
+
+  	memcpy(thisBuffer->newBufferCursor, data, size);
+	thisBuffer->newBufferCursor += size;
+	thisBuffer->newBufferCursorLength += size;
+    return 0;
+}
 
 void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
         const MI_Char* nameSpace, const MI_Char* className,
@@ -336,6 +355,9 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
     MI_Context *receiveContext;
 	Shell_Receive receive;
 	CommandState commandState;
+	struct DecodeBuffer decodeBuffer, encodeBuffer;
+	memset(&decodeBuffer, 0, sizeof(decodeBuffer));
+	memset(&encodeBuffer, 0, sizeof(encodeBuffer));
 
     if (!thisShell)
     {
@@ -392,14 +414,50 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
 
     if (in->streamData.value->data.exists)
     {
-#if 0
+
+    	decodeBuffer.originalBuffer = in->streamData.value->data.value;
+    	decodeBuffer.originalBufferLength = Tcslen(in->streamData.value->data.value) * sizeof(MI_Char);
+    	decodeBuffer.newBuffer = malloc(decodeBuffer.originalBufferLength);
+    	decodeBuffer.newBufferCursorLength = 0;
+    	decodeBuffer.newBufferCursor = (char *) decodeBuffer.newBuffer;
+    	decodeBuffer.newBufferLength = decodeBuffer.originalBufferLength;
+
         /* Need to base-64 decode the data. We can decode in-place as decoded length is smaller  */
         /* TODO: Add length to structure so we don't need to strlen it */
-        Base64Dec(in->streamData.value->data.value,
-                Tcslen(in->streamData.value->data.value),
-                Shell_Send_Base64DecCallback, thisShell->command);
-#endif
+        if (Base64Dec(decodeBuffer.originalBuffer,
+        		decodeBuffer.originalBufferLength,
+                Shell_Base64Dec_Callback, &decodeBuffer) == -1)
+        {
+        	printf("FAILED: Base-64 decode failed\n");
+        }
+        decodeBuffer.newBufferCursor[0] = MI_T('\0');
 
+        encodeBuffer = decodeBuffer;
+        encodeBuffer.originalBuffer = decodeBuffer.newBuffer;
+        encodeBuffer.originalBufferLength = decodeBuffer.newBufferCursorLength;
+        encodeBuffer.newBuffer = malloc(decodeBuffer.originalBufferLength);
+        encodeBuffer.newBufferLength = decodeBuffer.originalBufferLength;
+        encodeBuffer.newBufferCursorLength = 0;
+        encodeBuffer.newBufferCursor = (char *) encodeBuffer.newBuffer;
+
+        /* Re-encode it into the same buffer as it will be the correct length still */
+        if (Base64Enc(encodeBuffer.originalBuffer,
+        		encodeBuffer.originalBufferLength,
+                Shell_Base64Enc_Callback, &encodeBuffer) == -1)
+        {
+        	printf("FAILED: Base-64 Encode failed\n");
+        }
+
+        encodeBuffer.newBufferCursor[0] = MI_T('\0');
+
+        if (decodeBuffer.originalBufferLength != encodeBuffer.newBufferCursorLength)
+        {
+        	printf("FAILED: Before/after buffer lengths different\n");
+        }
+        else if (memcmp(decodeBuffer.originalBuffer, encodeBuffer.newBuffer, decodeBuffer.originalBufferLength))
+        {
+        	printf("FAILED: Before/after buffers different\n");
+        }
     }
 	Shell_Receive_SetPtr_Stream(&receive, in->streamData.value);
 
@@ -408,6 +466,8 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
 
 	Shell_Receive_Destruct(&receive);
 	CommandState_Destruct(&commandState);
+	free(decodeBuffer.newBuffer);
+	free(encodeBuffer.newBuffer);
 
 	MI_Context_PostResult(receiveContext, MI_RESULT_OK);
 
@@ -423,23 +483,9 @@ error:
 	MI_Context_PostResult(context, miResult);
 }
 
-#if 0
-static int Shell_Base64EncCallback(const char* data, size_t size,
-        void* callbackData)
-{
-    StreamData *streamData = callbackData;
 
-    if (streamData->bufferUsed + size > streamData->bufferSizeTotal)
-    {
-        return -1;
-    }
 
-    memcpy(streamData->streamBuffer + streamData->bufferUsed, callbackData,
-            size);
-    streamData->bufferUsed += size;
-    return 0;
-}
-#endif
+
 
 void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
         const MI_Char* nameSpace, const MI_Char* className,

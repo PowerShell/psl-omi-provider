@@ -5,7 +5,7 @@ CSHLIBRARY = TestShell
 
 DEFINES = HOOK_BUILD
 
-SOURCES = Shell.c module.c schema.c
+SOURCES = Shell.c module.c schema.c xpress.c
 
 INCLUDES = $(TOP) $(TOP)/common
 

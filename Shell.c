@@ -11,6 +11,7 @@
 #include <pal/lock.h>
 #include <omi_error/omierror.h>
 #include <signal.h>
+#include "xpress.h"
 
 #define GOTO_ERROR(result) { miResult = result; goto error; }
 
@@ -307,44 +308,338 @@ error:
     }
 }
 
-struct DecodeBuffer
+typedef struct _DecodeBuffer
 {
-	MI_Char *originalBuffer;
-	MI_Uint32 originalBufferLength;
-	MI_Char *newBuffer;
-	MI_Uint32 newBufferLength;
-	char *newBufferCursor;
-	MI_Uint32 newBufferCursorLength;
-};
+	MI_Char *buffer;
+	MI_Uint32 bufferLength;
+	MI_Uint32 bufferUsed;
+} DecodeBuffer;
+
 static int Shell_Base64Dec_Callback(const void* data, size_t size,
         void* callbackData)
 {
-	struct DecodeBuffer *thisBuffer = callbackData;
+	DecodeBuffer *thisBuffer = callbackData;
 
-
-	if ((thisBuffer->newBufferCursorLength+size) > thisBuffer->newBufferLength)
+	if ((thisBuffer->bufferUsed+size) > thisBuffer->bufferLength)
 		return -1;
 
-  	memcpy(thisBuffer->newBufferCursor, data, size);
-	thisBuffer->newBufferCursor += size;
-	thisBuffer->newBufferCursorLength += size;
+  	memcpy(thisBuffer->buffer+thisBuffer->bufferUsed, data, size);
+  	thisBuffer->bufferUsed += size;
     return 0;
 }
+MI_Result Base64DecodeBuffer(DecodeBuffer *fromBuffer, DecodeBuffer *toBuffer)
+{
+	toBuffer->bufferLength = fromBuffer->bufferUsed;
+	toBuffer->bufferUsed = 0;
+	toBuffer->buffer = malloc(toBuffer->bufferLength);
+
+	if (toBuffer->buffer == NULL)
+		return MI_RESULT_SERVER_LIMITS_EXCEEDED;
+
+    if (Base64Dec(fromBuffer->buffer,
+    		fromBuffer->bufferLength,
+            Shell_Base64Dec_Callback, toBuffer) == -1)
+    {
+    	return MI_RESULT_FAILED;
+    }
+	return MI_RESULT_OK;
+}
+
 static int Shell_Base64Enc_Callback(const char* data, size_t size,
         void* callbackData)
 {
-	struct DecodeBuffer *thisBuffer = callbackData;
+	DecodeBuffer *thisBuffer = callbackData;
 
-
-	if (thisBuffer->newBufferCursorLength+size > thisBuffer->newBufferLength)
+	if (thisBuffer->bufferUsed+size > thisBuffer->bufferLength)
 		return -1;
 
-  	memcpy(thisBuffer->newBufferCursor, data, size);
-	thisBuffer->newBufferCursor += size;
-	thisBuffer->newBufferCursorLength += size;
+  	memcpy(thisBuffer->buffer+thisBuffer->bufferUsed, data, size);
+	thisBuffer->bufferUsed += size;
     return 0;
 }
 
+MI_Result Base64EncodeBuffer(DecodeBuffer *fromBuffer, DecodeBuffer *toBuffer)
+{
+	toBuffer->bufferLength = ((fromBuffer->bufferUsed * 4) / 3) + sizeof(MI_Char) + (sizeof(MI_T('=')) * 2);
+	toBuffer->bufferUsed = 0;
+	toBuffer->buffer = malloc(toBuffer->bufferLength);
+
+	if (toBuffer->buffer == NULL)
+		return MI_RESULT_SERVER_LIMITS_EXCEEDED;
+
+	if (Base64Enc(fromBuffer->buffer,
+    		fromBuffer->bufferUsed,
+            Shell_Base64Enc_Callback, toBuffer) == -1)
+    {
+		free(toBuffer->buffer);
+		toBuffer->buffer = NULL;
+    	return MI_RESULT_FAILED;
+    }
+	if ((toBuffer->bufferLength - toBuffer->bufferUsed) < sizeof(MI_Char))
+	{
+		/* failed to leave enough space on end */
+		free(toBuffer->buffer);
+		toBuffer->buffer = NULL;
+		return MI_RESULT_FAILED;
+	}
+    return MI_RESULT_OK;
+}
+
+/* Compression of buffers splits the data into chunks. The code compressed 64K at a time and
+ * prepends the CompressionHeader structure to hold the original uncompressed size and the
+ * compressed size.
+ * NOTE: The original protocol has a bug in it such that the two sizes are encoded incorrectly.
+ *       The sizes in the protocol are 1 less than they actually are so the sizes need to be
+ *       adjusted accordingly.
+ */
+typedef struct _CompressionHeader
+{
+	USHORT originalSize;
+	USHORT compressedSize;
+} CompressionHeader;
+
+/* CalculateTotalUncompressedSize
+ * This function enumerates the compressed buffer chunks to calculate the total
+ * uncompressed size. It is used to allocate a buffer big enough for the full
+ * uncompressed buffer.
+ * NOTE: The CompressionHeader sizes are adjusted to accomodate the protocol bug.
+ */
+static ULONG CalculateTotalUncompressedSize( DecodeBuffer *compressedBuffer)
+{
+	CompressionHeader *header;
+	PCUCHAR bufferCursor = (PCUCHAR) compressedBuffer->buffer;
+	PCUCHAR endOfBuffer = bufferCursor + compressedBuffer->bufferLength;
+	ULONG currentSize = 0;
+
+	while (bufferCursor < endOfBuffer)
+	{
+		header = (CompressionHeader*) bufferCursor;
+		currentSize += (header->originalSize + 1); /* On the wire size is off-by-one */
+
+		/* Move to next block */
+		bufferCursor += (header->compressedSize + 1); /* On the wire size is off-by-one */
+		bufferCursor += sizeof(CompressionHeader);
+	}
+
+	return currentSize;
+}
+
+/* DecompressBuffer
+ * Decompress the appended compressed chunks into a single buffer. This function
+ * allocates the destination buffer and the caller needs to free the buffer.
+ * NOTE: This code compensates for the protocol bug where the CompressionHeader values
+ *       are encoded incorrectly.
+ */
+MI_Result DecompressBuffer(DecodeBuffer *fromBuffer, DecodeBuffer *toBuffer)
+{
+	ULONG wsCompressSize, wsDecompressSize;
+	PVOID workspace = NULL;
+	PUCHAR fromBufferCursor, fromBufferEnd;
+	PUCHAR toBufferCursor;
+	NTSTATUS status;
+	MI_Result miResult = MI_RESULT_OK;
+
+	memset(toBuffer, 0, sizeof(*toBuffer));
+
+	if (RtlCompressWorkSpaceSizeXpressHuff(&wsCompressSize, &wsDecompressSize) != STATUS_SUCCESS)
+	{
+		GOTO_ERROR(MI_RESULT_FAILED);
+	}
+
+	workspace = malloc(wsDecompressSize);
+	if (workspace == NULL)
+	{
+		GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+	}
+
+	toBuffer->bufferUsed = 0;
+	toBuffer->bufferLength = CalculateTotalUncompressedSize(fromBuffer);
+	toBuffer->buffer = malloc(toBuffer->bufferLength);
+	if (toBuffer->buffer == NULL)
+	{
+		GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+	}
+
+	toBufferCursor = (PUCHAR) toBuffer->buffer;
+
+	fromBufferCursor = (PUCHAR) fromBuffer->buffer;
+	fromBufferEnd = fromBufferCursor + fromBuffer->bufferUsed;
+
+	while (fromBufferCursor < fromBufferEnd)
+	{
+		ULONG bufferUsed = 0;
+		CompressionHeader *compressionHeader = (CompressionHeader*) fromBufferCursor;
+
+		if ((toBuffer->bufferUsed+compressionHeader->originalSize+1) > toBuffer->bufferLength)
+		{
+			GOTO_ERROR(MI_RESULT_FAILED);
+		}
+
+		fromBufferCursor += sizeof(CompressionHeader);
+
+		if (compressionHeader->originalSize == compressionHeader->compressedSize)
+		{
+			/* When sizes are the same it means that the compression algorithm could not do any compression
+			 * so the original buffer was used
+			 */
+			memcpy(toBufferCursor, fromBufferCursor, compressionHeader->originalSize+1);
+			bufferUsed = compressionHeader->originalSize+1;
+		}
+		else
+		{
+			status = RtlDecompressBufferProgress (
+					toBufferCursor,
+					compressionHeader->originalSize+1,	/* Adjusting for incorrect compression header */
+					fromBufferCursor,
+					compressionHeader->compressedSize+1, /* Adjusting for incorrect compression header */
+					&bufferUsed,
+					workspace,
+					NULL,
+					NULL,
+					0
+				);
+			if(status != STATUS_SUCCESS)
+			{
+				GOTO_ERROR(MI_RESULT_FAILED);
+			}
+		}
+
+		toBuffer->bufferUsed += bufferUsed;
+		toBufferCursor += bufferUsed;
+		fromBufferCursor += (compressionHeader->compressedSize + 1); /* Adjusting for incorrect compression header */
+	}
+
+error:
+	free(workspace);
+
+	if (miResult != MI_RESULT_OK)
+	{
+		free(toBuffer->buffer);
+		toBuffer->buffer = NULL;
+	}
+	return miResult;
+}
+
+/* Maximum concompressed buffer size is 64K */
+#define MAX_COMPRESS_BUFFER_BLOCK (64*1024)
+
+static ULONG min(ULONG a, ULONG b)
+{
+	if (a < b)
+		return a;
+	else
+		return b;
+}
+
+/* CompressBuffer
+ * Compresses the buffer into chunks, compressing each 64K chunk of data with its own
+ * CompressionHeader prepended to each chunk.
+ * NOTE: This code compensates for the protocol bug in CompressionHeader
+ */
+MI_Result CompressBuffer(DecodeBuffer *fromBuffer, DecodeBuffer *toBuffer, ULONG extraSpaceToAllocate)
+{
+	ULONG wsCompressSize, wsDecompressSize;
+	PVOID workspace = NULL;
+	PUCHAR fromBufferCursor, fromBufferEnd;
+	PUCHAR toBufferCursor;
+	ULONG toBufferMaxNumChunks;
+	MI_Result miResult = MI_RESULT_OK;
+
+	memset(toBuffer, 0, sizeof(*toBuffer));
+
+	toBufferMaxNumChunks = fromBuffer->bufferUsed/MAX_COMPRESS_BUFFER_BLOCK;
+	if (fromBuffer->bufferUsed%MAX_COMPRESS_BUFFER_BLOCK)
+		toBufferMaxNumChunks++;
+
+	toBuffer->bufferLength = (sizeof(CompressionHeader) * toBufferMaxNumChunks) + fromBuffer->bufferUsed + extraSpaceToAllocate;
+	toBuffer->bufferUsed = 0;
+	toBuffer->buffer = malloc(toBuffer->bufferLength);
+	if (toBuffer->buffer == NULL)
+	{
+		GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+	}
+
+	if (RtlCompressWorkSpaceSizeXpressHuff(&wsCompressSize, &wsDecompressSize) != STATUS_SUCCESS)
+	{
+		GOTO_ERROR(MI_RESULT_FAILED);
+	}
+	workspace = malloc(wsCompressSize);
+	if (workspace == NULL)
+	{
+		GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+	}
+
+	toBufferCursor = (PUCHAR) toBuffer->buffer;
+
+	fromBufferCursor = (PUCHAR) fromBuffer->buffer;
+	fromBufferEnd = fromBufferCursor + fromBuffer->bufferUsed;
+
+	while (fromBufferCursor < fromBufferEnd)
+	{
+		/* Max compressed chunk size is MAX_COMPRESS_BUFFER_BLOCK or the uncompressed chunk size, whichever is smaller */
+		/* We allocated enough space for the uncompressed chunk so if the buffer is not big enough for some reason we
+		 * will just use the uncompressed buffer itself for this chunk.
+		 */
+        ULONG chunkSize = min((ULONG)(fromBufferEnd - fromBufferCursor), MAX_COMPRESS_BUFFER_BLOCK);
+        ULONG actualToChunkSize = 0;
+        CompressionHeader *compressionHeader = (CompressionHeader*) toBufferCursor;
+        NTSTATUS status;
+
+        if ((toBuffer->bufferUsed + chunkSize + sizeof(CompressionHeader)) > toBuffer->bufferLength)
+        {
+        	GOTO_ERROR(MI_RESULT_FAILED);
+        }
+        toBufferCursor += sizeof(CompressionHeader);
+        toBuffer->bufferUsed += sizeof(CompressionHeader);
+
+        status = RtlCompressBufferProgress(
+				fromBufferCursor,
+				chunkSize,
+				toBufferCursor,
+				chunkSize,
+				&actualToChunkSize,
+				workspace,
+				NULL,
+				0,
+				0
+				) ;
+        if (status == STATUS_BUFFER_TOO_SMALL)
+        {
+        	/* Compressed buffer was going to be bigger than the uncompressed buffer so lets just
+        	 * use the original.
+        	 */
+        	memcpy(toBufferCursor, fromBufferCursor, chunkSize);
+        	actualToChunkSize = chunkSize;
+        }
+        else if (status != STATUS_SUCCESS)
+        {
+        	 GOTO_ERROR(MI_RESULT_FAILED);
+        }
+
+        /* NOTE: Size encodings on the wire were originally implemented incorrectly so we need
+         * to adjust our encodings of the sizes as well.
+         */
+        compressionHeader->originalSize = chunkSize - 1;
+        compressionHeader->compressedSize = actualToChunkSize - 1;
+
+        toBuffer->bufferUsed += actualToChunkSize;
+        toBufferCursor += actualToChunkSize;
+
+        fromBufferCursor += chunkSize;
+	}
+
+error:
+	if (miResult != MI_RESULT_OK)
+	{
+		free(toBuffer->buffer);
+		toBuffer->buffer = NULL;
+		toBuffer->bufferUsed = 0;
+		toBuffer->bufferLength = 0;
+	}
+	free(workspace);
+
+	return miResult;
+}
 void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
         const MI_Char* nameSpace, const MI_Char* className,
         const MI_Char* methodName, const Shell* instanceName,
@@ -354,10 +649,11 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
     ShellData *thisShell = FindShell(self, instanceName->Name.value);
     MI_Context *receiveContext;
 	Shell_Receive receive;
+	Stream receiveStream;
 	CommandState commandState;
-	struct DecodeBuffer decodeBuffer, encodeBuffer;
+	DecodeBuffer decodeBuffer, decodedBuffer;
 	memset(&decodeBuffer, 0, sizeof(decodeBuffer));
-	memset(&encodeBuffer, 0, sizeof(encodeBuffer));
+	memset(&decodedBuffer, 0, sizeof(decodedBuffer));
 
     if (!thisShell)
     {
@@ -407,70 +703,90 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
                 MI_T("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Running"));
     }
 
+    Stream_Construct(&receiveStream, receiveContext);
+    Stream_Set_endOfStream(&receiveStream, in->streamData.value->endOfStream.value);
+    Stream_SetPtr_streamName(&receiveStream, in->streamData.value->streamName.value);
+    if (in->streamData.value->commandId.exists)
+    {
+    	Stream_SetPtr_commandId(&receiveStream, in->streamData.value->commandId.value);
+    }
+
 	Shell_Receive_Construct(&receive, receiveContext);
 	Shell_Receive_Set_MIReturn(&receive, MI_RESULT_OK);
     Shell_Receive_SetPtr_CommandState(&receive, &commandState);
 
-
     if (in->streamData.value->data.exists)
     {
+    	decodeBuffer.buffer = (MI_Char*) in->streamData.value->data.value;
+    	decodeBuffer.bufferLength = Tcslen(in->streamData.value->data.value) * sizeof(MI_Char);
+    	decodeBuffer.bufferUsed = decodeBuffer.bufferLength;
 
-    	decodeBuffer.originalBuffer = in->streamData.value->data.value;
-    	decodeBuffer.originalBufferLength = Tcslen(in->streamData.value->data.value) * sizeof(MI_Char);
-    	decodeBuffer.newBuffer = malloc(decodeBuffer.originalBufferLength);
-    	decodeBuffer.newBufferCursorLength = 0;
-    	decodeBuffer.newBufferCursor = (char *) decodeBuffer.newBuffer;
-    	decodeBuffer.newBufferLength = decodeBuffer.originalBufferLength;
-
-        /* Need to base-64 decode the data. We can decode in-place as decoded length is smaller  */
+        /* Need to base-64 decode the data. */
         /* TODO: Add length to structure so we don't need to strlen it */
-        if (Base64Dec(decodeBuffer.originalBuffer,
-        		decodeBuffer.originalBufferLength,
-                Shell_Base64Dec_Callback, &decodeBuffer) == -1)
+    	/* TODO: This does not support unicode MI_Char strings */
+        miResult = Base64DecodeBuffer(&decodeBuffer, &decodedBuffer);
+        if (miResult != MI_RESULT_OK)
         {
-        	printf("FAILED: Base-64 decode failed\n");
-        }
-        decodeBuffer.newBufferCursor[0] = MI_T('\0');
-
-        encodeBuffer = decodeBuffer;
-        encodeBuffer.originalBuffer = decodeBuffer.newBuffer;
-        encodeBuffer.originalBufferLength = decodeBuffer.newBufferCursorLength;
-        encodeBuffer.newBuffer = malloc(decodeBuffer.originalBufferLength);
-        encodeBuffer.newBufferLength = decodeBuffer.originalBufferLength;
-        encodeBuffer.newBufferCursorLength = 0;
-        encodeBuffer.newBufferCursor = (char *) encodeBuffer.newBuffer;
-
-        /* Re-encode it into the same buffer as it will be the correct length still */
-        if (Base64Enc(encodeBuffer.originalBuffer,
-        		encodeBuffer.originalBufferLength,
-                Shell_Base64Enc_Callback, &encodeBuffer) == -1)
-        {
-        	printf("FAILED: Base-64 Encode failed\n");
+        	/* decodeBuffer.buffer does not need deleting */
+        	GOTO_ERROR(miResult);
         }
 
-        encodeBuffer.newBufferCursor[0] = MI_T('\0');
+        /* decodeBuffer.buffer does not need freeing as it was from in parameter */
+        decodeBuffer = decodedBuffer;
+        memset(&decodedBuffer, 0, sizeof(decodedBuffer));
 
-        if (decodeBuffer.originalBufferLength != encodeBuffer.newBufferCursorLength)
+        /* Decompress it */
+		miResult = DecompressBuffer(&decodeBuffer, &decodedBuffer);
+        if (miResult != MI_RESULT_OK)
         {
-        	printf("FAILED: Before/after buffer lengths different\n");
+        	free(decodeBuffer.buffer);
+        	GOTO_ERROR(miResult);
         }
-        else if (memcmp(decodeBuffer.originalBuffer, encodeBuffer.newBuffer, decodeBuffer.originalBufferLength))
+
+        /* Re-compress it */
+        free(decodeBuffer.buffer);
+        decodeBuffer = decodedBuffer;
+        miResult = CompressBuffer(&decodeBuffer, &decodedBuffer, sizeof(MI_Char));
+        if (miResult != MI_RESULT_OK)
         {
-        	printf("FAILED: Before/after buffers different\n");
+        	free(decodeBuffer.buffer);
+        	GOTO_ERROR(miResult);
         }
+
+        free(decodeBuffer.buffer);
+        decodeBuffer = decodedBuffer;
+
+        /* TODO: This does not support unicode MI_Char strings */
+        /* NOTE: Base64EncodeBuffer allocates enough space for a NULL terminator */
+        miResult = Base64EncodeBuffer(&decodeBuffer, &decodedBuffer);
+        if (miResult != MI_RESULT_OK)
+        {
+        	free(decodeBuffer.buffer);
+        	GOTO_ERROR(miResult);
+        }
+
+        free(decodeBuffer.buffer);
+
+        /* Set the null terminator on the end of the buffer */
+        memset(decodedBuffer.buffer+decodedBuffer.bufferUsed, 0, sizeof(MI_Char));
+
+        Stream_SetPtr_data(&receiveStream, decodedBuffer.buffer);
     }
-	Shell_Receive_SetPtr_Stream(&receive, in->streamData.value);
 
+	Shell_Receive_SetPtr_Stream(&receive, &receiveStream);
 
     Shell_Receive_Post(&receive, receiveContext);
 
 	Shell_Receive_Destruct(&receive);
 	CommandState_Destruct(&commandState);
-	free(decodeBuffer.newBuffer);
-	free(encodeBuffer.newBuffer);
 
-	MI_Context_PostResult(receiveContext, MI_RESULT_OK);
 
+error:
+	free(decodedBuffer.buffer);
+
+	MI_Context_PostResult(receiveContext, miResult);
+
+	if (miResult == MI_RESULT_OK)
     {
         Shell_Send send;
         Shell_Send_Construct(&send, context);
@@ -479,7 +795,6 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
         Shell_Send_Destruct(&send);
     }
 
-error:
 	MI_Context_PostResult(context, miResult);
 }
 

@@ -28,6 +28,7 @@ typedef struct _Stream
     MI_ConstStringField commandId;
     MI_ConstStringField streamName;
     MI_ConstStringField data;
+    MI_ConstUint32Field dataLength;
     MI_ConstBooleanField endOfStream;
 }
 Stream;
@@ -214,6 +215,22 @@ MI_INLINE MI_Result MI_CALL Stream_Clear_data(
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
         2);
+}
+
+MI_INLINE MI_Result MI_CALL Stream_Set_dataLength(
+    Stream* self,
+    MI_Uint32 x)
+{
+    ((MI_Uint32Field*)&self->dataLength)->value = x;
+    ((MI_Uint32Field*)&self->dataLength)->exists = 1;
+    return MI_RESULT_OK;
+}
+
+MI_INLINE MI_Result MI_CALL Stream_Clear_dataLength(
+    Stream* self)
+{
+    memset((void*)&self->dataLength, 0, sizeof(self->dataLength));
+    return MI_RESULT_OK;
 }
 
 MI_INLINE MI_Result MI_CALL Stream_Set_endOfStream(

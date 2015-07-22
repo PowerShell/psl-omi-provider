@@ -35,6 +35,7 @@ typedef struct _Shell
     MI_ConstDatetimeField IdleTimeout;
     MI_ConstStringField InputStreams;
     MI_ConstStringField OutputStreams;
+    MI_ConstBooleanField IsCompressed;
 }
 Shell;
 
@@ -316,6 +317,22 @@ MI_INLINE MI_Result MI_CALL Shell_Clear_OutputStreams(
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
         6);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_IsCompressed(
+    Shell* self,
+    MI_Boolean x)
+{
+    ((MI_BooleanField*)&self->IsCompressed)->value = x;
+    ((MI_BooleanField*)&self->IsCompressed)->exists = 1;
+    return MI_RESULT_OK;
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_IsCompressed(
+    Shell* self)
+{
+    memset((void*)&self->IsCompressed, 0, sizeof(self->IsCompressed));
+    return MI_RESULT_OK;
 }
 
 /*

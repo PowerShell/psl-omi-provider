@@ -6,6 +6,7 @@ class Stream
     
     string streamName;
     string data;
+    uint32 dataLength;
     boolean endOfStream;
 };
 
@@ -33,6 +34,7 @@ class Shell
     datetime IdleTimeout;
     string InputStreams;
     string OutputStreams;
+    boolean IsCompressed;
 
     Uint32 Command(
         string command,

@@ -89,6 +89,23 @@ static MI_CONST MI_PropertyDecl Stream_data_prop =
     NULL,
 };
 
+/* property Stream.dataLength */
+static MI_CONST MI_PropertyDecl Stream_dataLength_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x0064680A, /* code */
+    MI_T("dataLength"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_UINT32, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Stream, dataLength), /* offset */
+    MI_T("Stream"), /* origin */
+    MI_T("Stream"), /* propagator */
+    NULL,
+};
+
 /* property Stream.endOfStream */
 static MI_CONST MI_PropertyDecl Stream_endOfStream_prop =
 {
@@ -111,6 +128,7 @@ static MI_PropertyDecl MI_CONST* MI_CONST Stream_props[] =
     &Stream_commandId_prop,
     &Stream_streamName_prop,
     &Stream_data_prop,
+    &Stream_dataLength_prop,
     &Stream_endOfStream_prop,
 };
 
@@ -347,6 +365,23 @@ static MI_CONST MI_PropertyDecl Shell_OutputStreams_prop =
     NULL,
 };
 
+/* property Shell.IsCompressed */
+static MI_CONST MI_PropertyDecl Shell_IsCompressed_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x0069640C, /* code */
+    MI_T("IsCompressed"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_BOOLEAN, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, IsCompressed), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
 static MI_PropertyDecl MI_CONST* MI_CONST Shell_props[] =
 {
     &Shell_Name_prop,
@@ -356,6 +391,7 @@ static MI_PropertyDecl MI_CONST* MI_CONST Shell_props[] =
     &Shell_IdleTimeout_prop,
     &Shell_InputStreams_prop,
     &Shell_OutputStreams_prop,
+    &Shell_IsCompressed_prop,
 };
 
 /* parameter Shell.Command(): command */

@@ -1,76 +1,66 @@
 #ifndef _xpress_h_
 #define _xpress_h_
 
-typedef unsigned char * PUCHAR;
-typedef const unsigned char * PCUCHAR;
+
+#include <MI.h>
 typedef unsigned short USHORT;
-typedef unsigned char UCHAR;
-typedef unsigned int ULONG ;
 typedef short SHORT;
-typedef ULONG* PULONG;
 typedef ptrdiff_t ULONG_PTR;
 typedef ptrdiff_t LONG_PTR;
-typedef void* PVOID;
-typedef ULONG NTSTATUS;
-typedef void VOID;
 typedef int INT;
-typedef ULONG LOGICAL;
-typedef ULONG *PLOGICAL;
+typedef MI_Uint32 LOGICAL;
+typedef MI_Uint32 *PLOGICAL;
+typedef MI_Sint32 BOOL;
 
 #define UNALIGNED
-#define IN
-#define OUT
-#define NTAPI
 #define __assume(x)
-//__declspec(noinline)
-#define NOINLINE
 
 
 
-#define STATUS_SUCCESS  ((NTSTATUS)0x00000000L)
-#define STATUS_BUFFER_TOO_SMALL          ((NTSTATUS)0xC0000023L)
-#define STATUS_INVALID_USER_BUFFER       ((NTSTATUS)0xC00000E8L)
-#define STATUS_BAD_COMPRESSION_BUFFER    ((NTSTATUS)0xC0000242L)
+#define STATUS_SUCCESS  ((MI_Uint32)0x00000000L)
+#define STATUS_BUFFER_TOO_SMALL          ((MI_Uint32)0xC0000023L)
+#define STATUS_INVALID_USER_BUFFER       ((MI_Uint32)0xC00000E8L)
+#define STATUS_BAD_COMPRESSION_BUFFER    ((MI_Uint32)0xC0000242L)
 
 
 typedef
-VOID
-NTAPI
-RTL_XPRESS_CALLBACK_FUNCTION (
-    IN PVOID Context
+void
+MI_CALL
+XPRESS_CALLBACK_FUNCTION (
+    _In_ void * Context
     );
-typedef RTL_XPRESS_CALLBACK_FUNCTION *PRTL_XPRESS_CALLBACK_FUNCTION;
+typedef XPRESS_CALLBACK_FUNCTION *PXPRESS_CALLBACK_FUNCTION;
 
-NTSTATUS
-RtlCompressBufferProgress (
-    IN PUCHAR UncompressedBuffer,
-    IN ULONG UncompressedBufferSize,
-    OUT PUCHAR CompressedBuffer,
-    IN ULONG CompressedBufferSize,
-    OUT PULONG FinalCompressedSize,
-    IN PVOID WorkSpace,
-    IN PRTL_XPRESS_CALLBACK_FUNCTION Callback,
-    IN PVOID CallbackContext,
-    IN ULONG ProgressBytes
-    );
-
-NTSTATUS
-RtlDecompressBufferProgress (
-    OUT PUCHAR UncompressedBuffer,
-    IN ULONG UncompressedBufferSize,
-    IN PUCHAR CompressedBuffer,
-    IN ULONG CompressedBufferSize,
-    OUT PULONG FinalUncompressedSize,
-    IN PVOID Workspace,
-    IN PRTL_XPRESS_CALLBACK_FUNCTION Callback,
-    IN PVOID CallbackContext,
-    IN ULONG ProgressBytes
+MI_Uint32
+CompressBufferProgress (
+    _In_ MI_Uint8 * UncompressedBuffer,
+    _In_ MI_Uint32 UncompressedBufferSize,
+    _Out_ MI_Uint8 * CompressedBuffer,
+    _In_ MI_Uint32 CompressedBufferSize,
+    _Out_ MI_Uint32* FinalCompressedSize,
+    _In_ void * WorkSpace,
+    _In_ PXPRESS_CALLBACK_FUNCTION Callback,
+    _In_ void * CallbackContext,
+    _In_ MI_Uint32 ProgressBytes
     );
 
-NTSTATUS
-RtlCompressWorkSpaceSizeXpressHuff (
-    OUT PULONG CompressBufferWorkSpaceSize,
-    OUT PULONG DecompressBufferWorkSpaceSize
+MI_Uint32
+DecompressBufferProgress (
+    _Out_ MI_Uint8 * UncompressedBuffer,
+    _In_ MI_Uint32 UncompressedBufferSize,
+    _In_ MI_Uint8 * CompressedBuffer,
+    _In_ MI_Uint32 CompressedBufferSize,
+    _Out_ MI_Uint32* FinalUncompressedSize,
+    _In_ void * Workspace,
+    _In_ PXPRESS_CALLBACK_FUNCTION Callback,
+    _In_ void * CallbackContext,
+    _In_ MI_Uint32 ProgressBytes
+    );
+
+MI_Uint32
+CompressWorkSpaceSizeXpressHuff (
+    _Out_ MI_Uint32* CompressBufferWorkSpaceSize,
+    _Out_ MI_Uint32* DecompressBufferWorkSpaceSize
     );
 
 #endif

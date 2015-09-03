@@ -1,18 +1,11 @@
-/* @migen@ */
-
-#include <stdio.h>
-#include <errno.h>
+#include <MI.h>
 #include "Shell.h"
-#include "Stream.h"
-#include "CommandState.h"
-#include <base/base64.h>
-#include <pal/strings.h>
-#include <pal/thread.h>
-#include <pal/lock.h>
-#include <pal/format.h>
-#include <omi_error/omierror.h>
-#include "xpress.h"
 #include "ShellAPI.h"
+#include "BufferManipulation.h"
+#include <pal/strings.h>
+#include <pal/format.h>
+#include <pal/lock.h>
+
 
 /* Number of characters reserved for command ID and shell ID -- max number of digits for hex 64-bit number with null terminator */
 #define ID_LENGTH 17
@@ -40,17 +33,18 @@ typedef struct _CommonData
     WSMAN_PLUGIN_REQUEST pluginRequest[4];
 
     /* MI_TRUE is shell, MI_FALSE is command */
-    MI_Boolean isShell;
+    enum { Type_Shell, Type_Command } dataType;
 
 } CommonData;
 
 
 typedef struct _ShellData ShellData;
+typedef struct _CommandData CommandData;
 
 /* Command remembers the receive context so it can deliver
  * results to it when they are available.
  */
-typedef struct _CommandData
+struct _CommandData
 {
 	CommonData common;
 
@@ -71,8 +65,8 @@ typedef struct _CommandData
     MI_Context *commandContext;
     MI_Context *receiveContext;
 
-    PVOID pluginCommandContext;
-} CommandData;
+    void * pluginCommandContext;
+};
 
 /* List of active shells. Only one command per shell is supported. */
 struct _ShellData
@@ -102,7 +96,7 @@ struct _ShellData
 
     Shell_Self *shell;
 
-    PVOID pluginShellContext;
+    void * pluginShellContext;
 
 };
 
@@ -476,353 +470,7 @@ error:
     }
 }
 
-typedef struct _DecodeBuffer
-{
-	MI_Char *buffer;
-	MI_Uint32 bufferLength;
-	MI_Uint32 bufferUsed;
-} DecodeBuffer;
 
-static int Shell_Base64Dec_Callback(const void* data, size_t size,
-        void* callbackData)
-{
-	DecodeBuffer *thisBuffer = callbackData;
-
-	if ((thisBuffer->bufferUsed+size) > thisBuffer->bufferLength)
-		return -1;
-
-  	memcpy(thisBuffer->buffer+thisBuffer->bufferUsed, data, size);
-  	thisBuffer->bufferUsed += size;
-    return 0;
-}
-MI_Result Base64DecodeBuffer(DecodeBuffer *fromBuffer, DecodeBuffer *toBuffer)
-{
-	toBuffer->bufferLength = fromBuffer->bufferUsed;
-	toBuffer->bufferUsed = 0;
-	toBuffer->buffer = malloc(toBuffer->bufferLength);
-
-	if (toBuffer->buffer == NULL)
-		return MI_RESULT_SERVER_LIMITS_EXCEEDED;
-
-    if (Base64Dec(fromBuffer->buffer,
-    		fromBuffer->bufferLength,
-            Shell_Base64Dec_Callback, toBuffer) == -1)
-    {
-    	free(toBuffer->buffer);
-    	toBuffer->buffer = NULL;
-    	return MI_RESULT_FAILED;
-    }
-	return MI_RESULT_OK;
-}
-
-static int Shell_Base64Enc_Callback(const char* data, size_t size,
-        void* callbackData)
-{
-	DecodeBuffer *thisBuffer = callbackData;
-
-	if (thisBuffer->bufferUsed+size > thisBuffer->bufferLength)
-		return -1;
-
-  	memcpy(thisBuffer->buffer+thisBuffer->bufferUsed, data, size);
-	thisBuffer->bufferUsed += size;
-    return 0;
-}
-
-MI_Result Base64EncodeBuffer(DecodeBuffer *fromBuffer, DecodeBuffer *toBuffer)
-{
-	toBuffer->bufferLength = ((fromBuffer->bufferUsed * 4) / 3) + sizeof(MI_Char) + (sizeof(MI_T('=')) * 2);
-	toBuffer->bufferUsed = 0;
-	toBuffer->buffer = malloc(toBuffer->bufferLength);
-
-	if (toBuffer->buffer == NULL)
-		return MI_RESULT_SERVER_LIMITS_EXCEEDED;
-
-	if (Base64Enc(fromBuffer->buffer,
-    		fromBuffer->bufferUsed,
-            Shell_Base64Enc_Callback, toBuffer) == -1)
-    {
-		free(toBuffer->buffer);
-		toBuffer->buffer = NULL;
-    	return MI_RESULT_FAILED;
-    }
-	if ((toBuffer->bufferLength - toBuffer->bufferUsed) < sizeof(MI_Char))
-	{
-		/* failed to leave enough space on end */
-		free(toBuffer->buffer);
-		toBuffer->buffer = NULL;
-		return MI_RESULT_FAILED;
-	}
-    return MI_RESULT_OK;
-}
-
-/* Compression of buffers splits the data into chunks. The code compressed 64K at a time and
- * prepends the CompressionHeader structure to hold the original uncompressed size and the
- * compressed size.
- * NOTE: The original protocol has a bug in it such that the two sizes are encoded incorrectly.
- *       The sizes in the protocol are 1 less than they actually are so the sizes need to be
- *       adjusted accordingly.
- */
-typedef struct _CompressionHeader
-{
-	USHORT originalSize;
-	USHORT compressedSize;
-} CompressionHeader;
-
-/* CalculateTotalUncompressedSize
- * This function enumerates the compressed buffer chunks to calculate the total
- * uncompressed size. It is used to allocate a buffer big enough for the full
- * uncompressed buffer.
- * NOTE: The CompressionHeader sizes are adjusted to accomodate the protocol bug.
- */
-static ULONG CalculateTotalUncompressedSize( DecodeBuffer *compressedBuffer)
-{
-	CompressionHeader *header;
-	PCUCHAR bufferCursor = (PCUCHAR) compressedBuffer->buffer;
-	PCUCHAR endOfBuffer = bufferCursor + compressedBuffer->bufferLength;
-	ULONG currentSize = 0;
-
-	while (bufferCursor < endOfBuffer)
-	{
-		header = (CompressionHeader*) bufferCursor;
-		currentSize += (header->originalSize + 1); /* On the wire size is off-by-one */
-
-		/* Move to next block */
-		bufferCursor += (header->compressedSize + 1); /* On the wire size is off-by-one */
-		bufferCursor += sizeof(CompressionHeader);
-	}
-
-	return currentSize;
-}
-
-/* DecompressBuffer
- * Decompress the appended compressed chunks into a single buffer. This function
- * allocates the destination buffer and the caller needs to free the buffer.
- * NOTE: This code compensates for the protocol bug where the CompressionHeader values
- *       are encoded incorrectly.
- */
-MI_Result DecompressBuffer(DecodeBuffer *fromBuffer, DecodeBuffer *toBuffer)
-{
-	ULONG wsCompressSize, wsDecompressSize;
-	PVOID workspace = NULL;
-	PUCHAR fromBufferCursor, fromBufferEnd;
-	PUCHAR toBufferCursor;
-	NTSTATUS status;
-	MI_Result miResult = MI_RESULT_OK;
-
-	memset(toBuffer, 0, sizeof(*toBuffer));
-
-
-	/* Decompression code needs a working buffer. We really need to cache this buffer
-	 * so we don't need to keep reallocating and freeing it. We only need one for each
-	 * of Send/Receive */
-	if (RtlCompressWorkSpaceSizeXpressHuff(&wsCompressSize, &wsDecompressSize) != STATUS_SUCCESS)
-	{
-		GOTO_ERROR(MI_RESULT_FAILED);
-	}
-
-	workspace = malloc(wsDecompressSize);
-	if (workspace == NULL)
-	{
-		GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
-	}
-
-	/* Allocate the result buffer for decompression */
-	toBuffer->bufferUsed = 0;
-	toBuffer->bufferLength = CalculateTotalUncompressedSize(fromBuffer);
-	toBuffer->buffer = malloc(toBuffer->bufferLength);
-	if (toBuffer->buffer == NULL)
-	{
-		GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
-	}
-
-	toBufferCursor = (PUCHAR) toBuffer->buffer;
-
-	fromBufferCursor = (PUCHAR) fromBuffer->buffer;
-	fromBufferEnd = fromBufferCursor + fromBuffer->bufferUsed;
-
-	/* We decompress one chunk of data at a time */
-	while (fromBufferCursor < fromBufferEnd)
-	{
-		ULONG bufferUsed = 0;
-		CompressionHeader *compressionHeader = (CompressionHeader*) fromBufferCursor;
-
-		/* Shouldn't fail but to be same make sure we have enough buffer */
-		if ((toBuffer->bufferUsed+compressionHeader->originalSize+1) > toBuffer->bufferLength)
-		{
-			GOTO_ERROR(MI_RESULT_FAILED);
-		}
-
-		fromBufferCursor += sizeof(CompressionHeader);
-
-		if (compressionHeader->originalSize == compressionHeader->compressedSize)
-		{
-			/* When sizes are the same it means that the compression algorithm could not do any compression
-			 * so the original buffer was used
-			 */
-			memcpy(toBufferCursor, fromBufferCursor, compressionHeader->originalSize+1);
-			bufferUsed = compressionHeader->originalSize+1;
-		}
-		else
-		{
-			/* Need to actually decompress now */
-			status = RtlDecompressBufferProgress (
-					toBufferCursor,
-					compressionHeader->originalSize+1,	/* Adjusting for incorrect compression header */
-					fromBufferCursor,
-					compressionHeader->compressedSize+1, /* Adjusting for incorrect compression header */
-					&bufferUsed,
-					workspace,
-					NULL,
-					NULL,
-					0
-				);
-			if(status != STATUS_SUCCESS)
-			{
-				GOTO_ERROR(MI_RESULT_FAILED);
-			}
-		}
-
-		/* Update lengths and cursors ready for next iteration */
-		toBuffer->bufferUsed += bufferUsed;
-		toBufferCursor += bufferUsed;
-		fromBufferCursor += (compressionHeader->compressedSize + 1); /* Adjusting for incorrect compression header */
-	}
-
-error:
-	free(workspace);
-
-	if (miResult != MI_RESULT_OK)
-	{
-		free(toBuffer->buffer);
-		toBuffer->buffer = NULL;
-	}
-	return miResult;
-}
-
-/* Maximum concompressed buffer size is 64K */
-#define MAX_COMPRESS_BUFFER_BLOCK (64*1024)
-
-static ULONG min(ULONG a, ULONG b)
-{
-	if (a < b)
-		return a;
-	else
-		return b;
-}
-
-/* CompressBuffer
- * Compresses the buffer into chunks, compressing each 64K chunk of data with its own
- * CompressionHeader prepended to each chunk.
- * NOTE: This code compensates for the protocol bug in CompressionHeader
- */
-MI_Result CompressBuffer(DecodeBuffer *fromBuffer, DecodeBuffer *toBuffer, ULONG extraSpaceToAllocate)
-{
-	ULONG wsCompressSize, wsDecompressSize;
-	PVOID workspace = NULL;
-	PUCHAR fromBufferCursor, fromBufferEnd;
-	PUCHAR toBufferCursor;
-	ULONG toBufferMaxNumChunks;
-	MI_Result miResult = MI_RESULT_OK;
-
-	memset(toBuffer, 0, sizeof(*toBuffer));
-
-	toBufferMaxNumChunks = fromBuffer->bufferUsed/MAX_COMPRESS_BUFFER_BLOCK;
-	if (fromBuffer->bufferUsed%MAX_COMPRESS_BUFFER_BLOCK)
-		toBufferMaxNumChunks++;
-
-	/* We don't know how small it will be but it may end up being the same size, but chunked, so we need to work out how
-	 * many chunks there are so we can account for the size of each chunks header.
-	 */
-	toBuffer->bufferLength = (sizeof(CompressionHeader) * toBufferMaxNumChunks) + fromBuffer->bufferUsed + extraSpaceToAllocate;
-	toBuffer->bufferUsed = 0;
-	toBuffer->buffer = malloc(toBuffer->bufferLength);
-	if (toBuffer->buffer == NULL)
-	{
-		GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
-	}
-
-	/* Get the compression workspace size and allocate it. We really need to cache this */
-	if (RtlCompressWorkSpaceSizeXpressHuff(&wsCompressSize, &wsDecompressSize) != STATUS_SUCCESS)
-	{
-		GOTO_ERROR(MI_RESULT_FAILED);
-	}
-	workspace = malloc(wsCompressSize);
-	if (workspace == NULL)
-	{
-		GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
-	}
-
-	toBufferCursor = (PUCHAR) toBuffer->buffer;
-
-	fromBufferCursor = (PUCHAR) fromBuffer->buffer;
-	fromBufferEnd = fromBufferCursor + fromBuffer->bufferUsed;
-
-	while (fromBufferCursor < fromBufferEnd)
-	{
-		/* Max compressed chunk size is MAX_COMPRESS_BUFFER_BLOCK or the uncompressed chunk size, whichever is smaller */
-		/* We allocated enough space for the uncompressed chunk so if the buffer is not big enough for some reason we
-		 * will just use the uncompressed buffer itself for this chunk.
-		 */
-        ULONG chunkSize = min((ULONG)(fromBufferEnd - fromBufferCursor), MAX_COMPRESS_BUFFER_BLOCK);
-        ULONG actualToChunkSize = 0;
-        CompressionHeader *compressionHeader = (CompressionHeader*) toBufferCursor;
-        NTSTATUS status;
-
-        if ((toBuffer->bufferUsed + chunkSize + sizeof(CompressionHeader)) > toBuffer->bufferLength)
-        {
-        	GOTO_ERROR(MI_RESULT_FAILED);
-        }
-        toBufferCursor += sizeof(CompressionHeader);
-        toBuffer->bufferUsed += sizeof(CompressionHeader);
-
-        status = RtlCompressBufferProgress(
-				fromBufferCursor,
-				chunkSize,
-				toBufferCursor,
-				chunkSize,
-				&actualToChunkSize,
-				workspace,
-				NULL,
-				0,
-				0
-				) ;
-        if (status == STATUS_BUFFER_TOO_SMALL)
-        {
-        	/* Compressed buffer was going to be bigger than the uncompressed buffer so lets just
-        	 * use the original.
-        	 */
-        	memcpy(toBufferCursor, fromBufferCursor, chunkSize);
-        	actualToChunkSize = chunkSize;
-        }
-        else if (status != STATUS_SUCCESS)
-        {
-        	 GOTO_ERROR(MI_RESULT_FAILED);
-        }
-
-        /* NOTE: Size encodings on the wire were originally implemented incorrectly so we need
-         * to adjust our encodings of the sizes as well.
-         */
-        compressionHeader->originalSize = chunkSize - 1;
-        compressionHeader->compressedSize = actualToChunkSize - 1;
-
-        toBuffer->bufferUsed += actualToChunkSize;
-        toBufferCursor += actualToChunkSize;
-
-        fromBufferCursor += chunkSize;
-	}
-
-error:
-	if (miResult != MI_RESULT_OK)
-	{
-		free(toBuffer->buffer);
-		toBuffer->buffer = NULL;
-		toBuffer->bufferUsed = 0;
-		toBuffer->bufferLength = 0;
-	}
-	free(workspace);
-
-	return miResult;
-}
 
 /* Shell_Invoke_Send
  *
@@ -838,11 +486,8 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
         const Shell_Send* in)
 {
     MI_Result miResult = MI_RESULT_OK;
+    MI_Uint32 pluginFlags = 0;
     ShellData *thisShell = FindShell(self, instanceName->Name.value);
-    MI_Context *receiveContext = NULL;
-	Shell_Receive receive;
-	Stream receiveStream;
-	CommandState commandState;
 	DecodeBuffer decodeBuffer, decodedBuffer;
 	memset(&decodeBuffer, 0, sizeof(decodeBuffer));
 	memset(&decodedBuffer, 0, sizeof(decodedBuffer));
@@ -853,90 +498,34 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
         GOTO_ERROR(MI_RESULT_NOT_FOUND);
     }
 
-    /* For now, this test only deals with inbound streams to a command */
-    if (!in->streamData.value->commandId.exists)
-    {
-        GOTO_ERROR(MI_RESULT_NOT_SUPPORTED);
-    }
-
     /* Check to make sure the command ID is correct */
-    if (Tcscmp(in->streamData.value->commandId.value,
-            thisShell->command->commandId) != 0)
-    {
-        GOTO_ERROR(MI_RESULT_NOT_FOUND);
-    }
-
-    /* Copy off the receive context. Another Receive should not happen at the same time but this makes
-     * sure we are the only one processing it. This will also help to protect us if a Signal comes in
-     * to shut things down as we are now responsible for delivering its results.
-     */
-    receiveContext = thisShell->command->receiveContext;
-    thisShell->command->receiveContext = NULL;
-
-    /* CommandState tells the client if we are done or not.
-     * We are just replicating what the client is sending in in this
-     * test provider.
-     */
-	CommandState_Construct(&commandState, receiveContext);
-    CommandState_SetPtr_commandId(&commandState, in->streamData.value->commandId.value);
-
-    if (in->streamData.value->endOfStream.value)
-    {
-    	MI_Uint32 i;
-		CommandState_SetPtr_state(&commandState,
-				MI_T("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Done"));
-
-		/* find and mark the stream as done in our records for when command is terminated and we need to terminate streams */
-		for (i = 0; i != thisShell->outboundStreamNamesCount; i++)
-		{
-			if (Tcscmp(in->streamData.value->streamName.value, thisShell->command->outboundStreams[i].streamName))
-			{
-				thisShell->command->outboundStreams[i].done = MI_TRUE;
-				break;
-			}
-		}
-    }
-    else
-    {
-        CommandState_SetPtr_state(&commandState,
-                MI_T("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Running"));
-    }
-
-    /* Stream holds the results of the inbound/outbound stream. A result can have more
-     * than one stream, either for the same stream or different ones.
-     */
-    Stream_Construct(&receiveStream, receiveContext);
-    Stream_Set_endOfStream(&receiveStream, in->streamData.value->endOfStream.value);
-    Stream_SetPtr_streamName(&receiveStream, in->streamData.value->streamName.value);
     if (in->streamData.value->commandId.exists)
     {
-    	Stream_SetPtr_commandId(&receiveStream, in->streamData.value->commandId.value);
+        if (!in->streamData.value->commandId.value || !thisShell->command ||
+            (Tcscmp(in->streamData.value->commandId.value, thisShell->command->commandId) != 0))
+        {
+            GOTO_ERROR(MI_RESULT_NOT_FOUND);
+        }
     }
 
-    /* The result of the Receive contains the command results and a set of streams.
-     * We only support one stream at a time for now.
-     */
-	Shell_Receive_Construct(&receive, receiveContext);
-	Shell_Receive_Set_MIReturn(&receive, MI_RESULT_OK);
-    Shell_Receive_SetPtr_CommandState(&receive, &commandState);
 
     /* We may not actually have any data but we may be completing the data. Make sure
      * we are only processing the inbound stream if we have some data to process.
      */
     if (in->streamData.value->data.exists)
     {
-    	decodeBuffer.buffer = (MI_Char*) in->streamData.value->data.value;
-    	decodeBuffer.bufferLength = in->streamData.value->dataLength.value * sizeof(MI_Char);
-    	decodeBuffer.bufferUsed = decodeBuffer.bufferLength;
+        decodeBuffer.buffer = (MI_Char*)in->streamData.value->data.value;
+        decodeBuffer.bufferLength = in->streamData.value->dataLength.value * sizeof(MI_Char);
+        decodeBuffer.bufferUsed = decodeBuffer.bufferLength;
 
         /* Base-64 decode the data from decodeBuffer to decodedBuffer. The result buffer
          * gets allocated in this function and we need to free it.*/
-    	/* TODO: This does not support unicode MI_Char strings */
+         /* TODO: This does not support unicode MI_Char strings */
         miResult = Base64DecodeBuffer(&decodeBuffer, &decodedBuffer);
         if (miResult != MI_RESULT_OK)
         {
-        	/* decodeBuffer.buffer does not need deleting */
-        	GOTO_ERROR(miResult);
+            /* decodeBuffer.buffer does not need deleting */
+            GOTO_ERROR(miResult);
         }
 
         /* decodeBuffer.buffer does not need freeing as it was from method in parameters. */
@@ -946,52 +535,60 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
 
         if (thisShell->isCompressed)
         {
-			/* Decompress it from decodeBuffer to decodedBuffer. The result buffer
-			 * gets allocated in this function and we need to free it.
-			 */
-			miResult = DecompressBuffer(&decodeBuffer, &decodedBuffer);
-			if (miResult != MI_RESULT_OK)
-			{
-				free(decodeBuffer.buffer);
-				decodeBuffer.buffer = NULL;
-				GOTO_ERROR(miResult);
-			}
+            /* Decompress it from decodeBuffer to decodedBuffer. The result buffer
+             * gets allocated in this function and we need to free it.
+             */
+            miResult = DecompressBuffer(&decodeBuffer, &decodedBuffer);
+            if (miResult != MI_RESULT_OK)
+            {
+                free(decodeBuffer.buffer);
+                decodeBuffer.buffer = NULL;
+                GOTO_ERROR(miResult);
+            }
 
-			/* Free the previously allocated buffer and switch the
-			 * decodedBuffer back to decodeBuffer for further processing.
-			 */
-			free(decodeBuffer.buffer);
-			decodeBuffer = decodedBuffer;
+            /* Free the previously allocated buffer and switch the
+             * decodedBuffer back to decodeBuffer for further processing.
+             */
+            free(decodeBuffer.buffer);
+            decodeBuffer = decodedBuffer;
         }
-        WSMAN_PLUGIN_SEND(
-        		&thisShell->pluginRequest[WSMAN_PLUGIN_REQUEST_SEND],
-				0,
-				thisShell->pluginShellContext,
-				thisShell->command->pluginCommandContext,
-				streamName,
-				inboundData);
+    }
+    else
+    {
+        pluginFlags = WSMAN_FLAG_SEND_NO_MORE_DATA;
+    }
+    {
+        WSMAN_DATA inboundData;
+        memset(&inboundData, 0, sizeof(inboundData));
+        inboundData.type = WSMAN_DATA_TYPE_BINARY;
+        inboundData.binaryData.data = (MI_Uint8*) decodeBuffer.buffer;
+        inboundData.binaryData.dataLength = decodeBuffer.bufferUsed;
 
-
+        if (in->streamData.value->commandId.exists)
+        {
+            WSMAN_PLUGIN_SEND(
+                &thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND],
+                pluginFlags,
+                thisShell->pluginShellContext,
+                thisShell->command->pluginCommandContext,
+                in->streamData.value->streamName.value,
+                &inboundData);
+        }
+        else
+        {
+            WSMAN_PLUGIN_SEND(
+                &thisShell->pluginRequest[WSMAN_PLUGIN_REQUEST_SEND],
+                pluginFlags,
+                thisShell->pluginShellContext,
+                NULL,
+                in->streamData.value->streamName.value,
+                &inboundData);
+        }
     }
 
-    /* Add the stream embedded instance to the receive result.  */
-	Shell_Receive_SetPtr_Stream(&receive, &receiveStream);
-
-	/* Post the result back to the client. We can delete the base-64 encoded buffer after
-	 * posting it.
-	 */
-    Shell_Receive_Post(&receive, receiveContext);
-
-    /* Clean up the various result objects */
-	Shell_Receive_Destruct(&receive);
-	CommandState_Destruct(&commandState);
-	Stream_Destruct(&receiveStream);
 
 error:
 	free(decodedBuffer.buffer);
-
-	if (receiveContext)
-		MI_Context_PostResult(receiveContext, miResult);
 
 	if (miResult == MI_RESULT_OK)
     {
@@ -1041,7 +638,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     thisShell->command->receiveContext = context;
 
     WSMAN_PLUGIN_RECEIVE(
-    		&thisShell->command->pluginCommandContext[WSMAN_PLUGIN_REQUEST_RECEIVE],
+    		&thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE],
 			0,
 			thisShell->pluginShellContext,
 			thisShell->command->pluginCommandContext,
@@ -1158,19 +755,19 @@ void MI_CALL Shell_Invoke_Connect(Shell_Self* self, MI_Context* context,
 }
 
 
-DWORD WINAPI WSManPluginReportContext(
+MI_Uint32 MI_CALL WSManPluginReportContext(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-    _In_ DWORD flags,
-    _In_ PVOID context
+    _In_ MI_Uint32 flags,
+    _In_ void * context
     )
 {
 	/* For shell or command the plug-in request is first member and
 	 * element 0 in array.
 	 */
 	CommonData *commonData = (CommonData *) requestDetails;
-	DWORD returnCode = 0;
+	MI_Uint32 returnCode = 0;
 
-	if (commonData->isShell)
+	if (commonData->dataType == Type_Shell)
 	{
 		ShellData *thisShell = (ShellData*) commonData;
 		MI_Result miResult;
@@ -1188,7 +785,7 @@ DWORD WINAPI WSManPluginReportContext(
 	    	Shell_Delete(thisShell->shellInstance);
 	    	free(thisShell);
 
-	        returnCode = (DWORD) miResult;
+	        returnCode = (MI_Uint32) miResult;
 	    }
 
 	    /* Post result back to client */
@@ -1210,7 +807,7 @@ DWORD WINAPI WSManPluginReportContext(
 	        thisCommand->shellData->command = NULL;
 	        miResult = MI_RESULT_SERVER_LIMITS_EXCEEDED;
 
-	        returnCode = (DWORD) miResult;
+	        returnCode = (MI_Uint32) miResult;
 	    }
 	    MI_Context_PostResult(requestContext, miResult);
 
@@ -1222,24 +819,54 @@ DWORD WINAPI WSManPluginReportContext(
 /*
  * The WSMAN plug-in gets called once and it keeps sending data back to us.
  * At our level, however, we need to potentially wait for the next request
- * before we can send more
+ * before we can send more.
  */
-DWORD WINAPI WSManPluginReceiveResult(
+MI_Uint32 MI_CALL WSManPluginReceiveResult(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-    _In_ DWORD flags,
-    _In_opt_ PCWSTR stream,
+    _In_ MI_Uint32 flags,
+    _In_opt_ const MI_Char * stream,
     _In_opt_ WSMAN_DATA *streamResult,
-    _In_opt_ PCWSTR commandState,
-    _In_ DWORD exitCode
+    _In_opt_ const MI_Char * commandState,
+    _In_ MI_Uint32 exitCode
     )
 {
+    MI_Result miResult;
+    CommonData *commonData = (CommonData *)requestDetails;
+    CommandData *commandData = (CommandData*)commonData;
+    MI_Context *receiveContext = NULL;
+    CommandState commandStateInst;
+    Shell_Receive receive;
+    Stream receiveStream;
+    DecodeBuffer decodeBuffer, decodedBuffer;
+    memset(&decodeBuffer, 0, sizeof(decodeBuffer));
+    memset(&decodedBuffer, 0, sizeof(decodedBuffer));
+
+    /* TODO: Which stream if stream is NULL? */
+
+    if (commonData->dataType == Type_Shell)
+    {
+        /* Should not happen as we currently don't support Receive on Shell */
+        return (MI_Uint32) MI_RESULT_FAILED;
+    }
     /* Wait for a Receive request to come in before we post the result back */
     do
     {
 
-    } while (CondLock_Wait((ptrdiff_t)&thisShell->command->receiveContext, (ptrdiff_t*)&thisShell->command->receiveContext, 0, CONDLOCK_DEFAULT_SPINCOUNT) == 0);
+    } while (CondLock_Wait((ptrdiff_t)&commandData->receiveContext, (ptrdiff_t*)&commandData->receiveContext, 0, CONDLOCK_DEFAULT_SPINCOUNT) == 0);
 
-    if (thisShell->isCompressed)
+    /* Copy off the receive context. Another Receive should not happen at the same time but this makes
+    * sure we are the only one processing it. This will also help to protect us if a Signal comes in
+    * to shut things down as we are now responsible for delivering its results.
+    */
+    receiveContext = commandData->receiveContext;
+    commandData->receiveContext = NULL;
+    
+    /* TODO: Does powershell use binary data rather than string? */
+    decodeBuffer.buffer = (MI_Char*) streamResult->binaryData.data;
+    decodeBuffer.bufferLength = streamResult->binaryData.dataLength;
+    decodeBuffer.bufferUsed = decodeBuffer.bufferLength;
+
+    if (commandData->shellData->isCompressed)
     {
 		/* Re-compress it from decodeBuffer to decodedBuffer. The result buffer
 		 * gets allocated in this function and we need to free it.
@@ -1247,34 +874,85 @@ DWORD WINAPI WSManPluginReceiveResult(
 		miResult = CompressBuffer(&decodeBuffer, &decodedBuffer, sizeof(MI_Char));
 		if (miResult != MI_RESULT_OK)
 		{
-			free(decodeBuffer.buffer);
 			decodeBuffer.buffer = NULL;
 			GOTO_ERROR(miResult);
 		}
 
-		/* Free the previously allocated buffer and switch the
-		 * decodedBuffer back to decodeBuffer for further processing.
+		/* switch the decodedBuffer back to decodeBuffer for further processing.
 		 */
-		free(decodeBuffer.buffer);
 		decodeBuffer = decodedBuffer;
 	}
 
     /* TODO: This does not support unicode MI_Char strings */
     /* NOTE: Base64EncodeBuffer allocates enough space for a NULL terminator */
     miResult = Base64EncodeBuffer(&decodeBuffer, &decodedBuffer);
+
+    /* Free previously allocated buffer if it was compressed. */
+    if (commandData->shellData->isCompressed)
+    {
+        free(decodeBuffer.buffer);
+    }
+    decodeBuffer.buffer = NULL;
+
     if (miResult != MI_RESULT_OK)
     {
-    	free(decodeBuffer.buffer);
-    	decodeBuffer.buffer = NULL;
     	GOTO_ERROR(miResult);
     }
 
-    /* Free previously allocated buffer. No need to switch this time around */
-    free(decodeBuffer.buffer);
-    decodeBuffer.buffer = NULL;
 
     /* Set the null terminator on the end of the buffer as this is supposed to be a string*/
     memset(decodedBuffer.buffer+decodedBuffer.bufferUsed, 0, sizeof(MI_Char));
+
+    /* CommandState tells the client if we are done or not with this stream.
+    */
+    CommandState_Construct(&commandStateInst, receiveContext);
+    CommandState_SetPtr_commandId(&commandStateInst, commandData->commandId);
+
+    if (commandState &&
+        (Tcscmp(commandState, MI_T("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Done")) == 0))
+    {
+        MI_Uint32 i;
+        CommandState_SetPtr_state(&commandStateInst,
+            MI_T("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Done"));
+
+        /* find and mark the stream as done in our records for when command is terminated and we need to terminate streams */
+        for (i = 0; i != commandData->shellData->outboundStreamNamesCount; i++)
+        {
+            if (Tcscmp(stream, commandData->outboundStreams[i].streamName))
+            {
+                commandData->outboundStreams[i].done = MI_TRUE;
+                break;
+            }
+        }
+    }
+    else if (commandState)
+    {
+        CommandState_SetPtr_state(&commandStateInst, commandState);
+    }
+    else
+    {
+        CommandState_SetPtr_state(&commandStateInst,
+            MI_T("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Running"));
+    }
+
+    /* Stream holds the results of the inbound/outbound stream. A result can have more
+    * than one stream, either for the same stream or different ones.
+    */
+    Stream_Construct(&receiveStream, receiveContext);
+    Stream_Set_endOfStream(&receiveStream, streamResult->.value->endOfStream.value);
+    Stream_SetPtr_streamName(&receiveStream, in->streamData.value->streamName.value);
+    if (in->streamData.value->commandId.exists)
+    {
+        Stream_SetPtr_commandId(&receiveStream, in->streamData.value->commandId.value);
+    }
+
+    /* The result of the Receive contains the command results and a set of streams.
+    * We only support one stream at a time for now.
+    */
+    Shell_Receive_Construct(&receive, receiveContext);
+    Shell_Receive_Set_MIReturn(&receive, MI_RESULT_OK);
+    Shell_Receive_SetPtr_CommandState(&receive, &commandStateInst);
+
 
     /* Add the final string to the stream. This is just a pointer to it and
      * is not getting copied so we need to delete the buffer after we have posted the instance
@@ -1282,47 +960,75 @@ DWORD WINAPI WSManPluginReceiveResult(
      */
     Stream_SetPtr_data(&receiveStream, decodedBuffer.buffer);
 
-	return 0;
+    /* Add the stream embedded instance to the receive result.  */
+    Shell_Receive_SetPtr_Stream(&receive, &receiveStream);
+
+    /* Post the result back to the client. We can delete the base-64 encoded buffer after
+    * posting it.
+    */
+    Shell_Receive_Post(&receive, receiveContext);
+
+    /* Clean up the various result objects */
+    Shell_Receive_Destruct(&receive);
+    CommandState_Destruct(&commandStateInst);
+    Stream_Destruct(&receiveStream);
+
+error:
+
+    MI_Context_PostResult(receiveContext, miResult);
+    
+    return (MI_Uint32) miResult;
+
 }
 
-DWORD WINAPI WSManPluginGetOperationParameters (
+/* PowerShell only uses WSMAN_PLUGIN_PARAMS_GET_REQUESTED_LOCALE and WSMAN_PLUGIN_PARAMS_GET_REQUESTED_DATA_LOCALE 
+ * which are optional wsman packet headers.
+ * Other things that could be retrieved are things like operation timeout. 
+ * This data should be retrieved from the operation context through the operation options method.
+ */
+MI_Uint32 MI_CALL WSManPluginGetOperationParameters (
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-    _In_ DWORD flags,
+    _In_ MI_Uint32 flags,
     _Out_ WSMAN_DATA *data
     )
 {
-	return 0;
+	return (MI_Uint32) MI_RESULT_FAILED;
 }
 
-DWORD WINAPI WSManPluginGetConfiguration (
-  _In_   PVOID pluginContext,
-  _In_   DWORD flags,
+/* Gets information about the host the provider is hosted in */
+MI_Uint32 MI_CALL WSManPluginGetConfiguration (
+  _In_   void * pluginContext,
+  _In_   MI_Uint32 flags,
   _Out_  WSMAN_DATA *data
 )
 {
-	return 0;
+    return (MI_Uint32)MI_RESULT_FAILED;
 }
 
-DWORD WINAPI WSManPluginOperationComplete(
+/*
+* Reports the completion of an operation by all operation entry points except for the WSMAN_PLUGIN_STARTUP and WSMAN_PLUGIN_SHUTDOWN methods.
+*/
+MI_Uint32 MI_CALL WSManPluginOperationComplete(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-    _In_ DWORD flags,
-    _In_ DWORD errorCode,
-    _In_opt_ PCWSTR extendedInformation
+    _In_ MI_Uint32 flags,
+    _In_ MI_Uint32 errorCode,
+    _In_opt_ const MI_Char * extendedInformation
     )
 {
-	return 0;
+    return (MI_Uint32)MI_RESULT_FAILED;
 }
 
-DWORD WINAPI WSManPluginReportCompletion(
-  _In_      PVOID pluginContext,
-  _In_      DWORD flags
+/* Seems to be called to say the plug-in is actually done */
+MI_Uint32 MI_CALL WSManPluginReportCompletion(
+  _In_      void * pluginContext,
+  _In_      MI_Uint32 flags
   )
 {
-	return 0;
+    return (MI_Uint32)MI_RESULT_FAILED;
 }
 
-DWORD WINAPI WSManPluginFreeRequestDetails(_In_ WSMAN_PLUGIN_REQUEST *requestDetails)
+/* Free up information inside requestDetails if possible */
+MI_Uint32 MI_CALL WSManPluginFreeRequestDetails(_In_ WSMAN_PLUGIN_REQUEST *requestDetails)
 {
-	/* Free up information inside requestDetails if possible */
-	return 0;
+	return MI_RESULT_OK;
 }

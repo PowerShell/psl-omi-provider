@@ -27,11 +27,11 @@ struct _PluginDetails
 	PluginShell *shell;
 };
 
-DWORD WINAPI WSMAN_PLUGIN_STARTUP(
-    _In_ DWORD flags,
-    _In_ PCWSTR applicationIdentification,
-    _In_opt_ PCWSTR extraInfo,
-    _Out_ PVOID *pluginContext
+MI_Uint32 MI_CALL WSMAN_PLUGIN_STARTUP(
+    _In_ MI_Uint32 flags,
+    _In_ const MI_Char * applicationIdentification,
+    _In_opt_ const MI_Char * extraInfo,
+    _Out_ void * *pluginContext
     )
 {
 	PluginDetails *pluginDetails = calloc(1, sizeof(PluginDetails));
@@ -45,10 +45,10 @@ DWORD WINAPI WSMAN_PLUGIN_STARTUP(
 }
 
 /* Test plug-in API */
-DWORD WINAPI WSMAN_PLUGIN_SHUTDOWN(
-    _In_opt_ PVOID pluginContext,
-    _In_ DWORD flags,
-    _In_ DWORD reason
+MI_Uint32 MI_CALL WSMAN_PLUGIN_SHUTDOWN(
+    _In_opt_ void * pluginContext,
+    _In_ MI_Uint32 flags,
+    _In_ MI_Uint32 reason
     )
 {
 	PluginDetails *pluginDetails = pluginContext;
@@ -57,10 +57,10 @@ DWORD WINAPI WSMAN_PLUGIN_SHUTDOWN(
 }
 
 /* Test plug-in API */
-VOID WINAPI WSMAN_PLUGIN_SHELL(
-    _In_ PVOID pluginContext,   //Relates to context returned from WSMAN_PLUGIN_STARTUP
+void MI_CALL WSMAN_PLUGIN_SHELL(
+    _In_ void * pluginContext,   //Relates to context returned from WSMAN_PLUGIN_STARTUP
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-    _In_ DWORD flags,
+    _In_ MI_Uint32 flags,
     _In_opt_ WSMAN_SHELL_STARTUP_INFO *startupInfo,
     _In_opt_ WSMAN_DATA *inboundShellInformation
     )
@@ -85,8 +85,8 @@ VOID WINAPI WSMAN_PLUGIN_SHELL(
 
 }
 
-VOID WINAPI WSMAN_PLUGIN_RELEASE_SHELL_CONTEXT(
-    _In_ PVOID shellContext
+void MI_CALL WSMAN_PLUGIN_RELEASE_SHELL_CONTEXT(
+    _In_ void * shellContext
     )
 {
 	PluginShell *shell = (PluginShell*) shellContext;
@@ -97,11 +97,11 @@ VOID WINAPI WSMAN_PLUGIN_RELEASE_SHELL_CONTEXT(
 }
 
 /* Test plug-in API */
-VOID WINAPI WSMAN_PLUGIN_COMMAND(
+void MI_CALL WSMAN_PLUGIN_COMMAND(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-    _In_ DWORD flags,
-    _In_ PVOID shellContext,
-    _In_ PCWSTR commandLine,
+    _In_ MI_Uint32 flags,
+    _In_ void * shellContext,
+    _In_ const MI_Char * commandLine,
     _In_opt_ WSMAN_COMMAND_ARG_SET *arguments
     )
 {
@@ -126,9 +126,9 @@ VOID WINAPI WSMAN_PLUGIN_COMMAND(
 	}
 }
 
-VOID WINAPI WSMAN_PLUGIN_RELEASE_COMMAND_CONTEXT(
-    _In_ PVOID shellContext,
-    _In_ PVOID commandContext
+void MI_CALL WSMAN_PLUGIN_RELEASE_COMMAND_CONTEXT(
+    _In_ void * shellContext,
+    _In_ void * commandContext
     )
 {
 	PluginShell *shell = (PluginShell*) shellContext;
@@ -138,18 +138,18 @@ VOID WINAPI WSMAN_PLUGIN_RELEASE_COMMAND_CONTEXT(
 	shell->command = NULL;
 }
 
-VOID WINAPI WSMAN_PLUGIN_SEND(
+void MI_CALL WSMAN_PLUGIN_SEND(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-    _In_ DWORD flags,
-    _In_ PVOID shellContext,
-    _In_opt_ PVOID commandContext,
-    _In_ PCWSTR stream,
+    _In_ MI_Uint32 flags,
+    _In_ void * shellContext,
+    _In_opt_ void * commandContext,
+    _In_ const MI_Char * stream,
     _In_ WSMAN_DATA *inboundData
     )
 {
 	PluginShell *shell = (PluginShell*) shellContext;
 	PluginCommand *command = (PluginCommand*) commandContext;
-	PCWSTR commandState;
+	const MI_Char * commandState;
 	if (flags == WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA)
 	{
 		commandState = WSMAN_COMMAND_STATE_DONE;
@@ -178,11 +178,11 @@ VOID WINAPI WSMAN_PLUGIN_SEND(
 	WSManPluginOperationComplete(requestDetails, 0, MI_RESULT_OK, NULL);
 }
 
-VOID WINAPI WSMAN_PLUGIN_RECEIVE(
+void MI_CALL WSMAN_PLUGIN_RECEIVE(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-    _In_ DWORD flags,
-    _In_ PVOID shellContext,
-    _In_opt_ PVOID commandContext,
+    _In_ MI_Uint32 flags,
+    _In_ void * shellContext,
+    _In_opt_ void * commandContext,
     _In_opt_ WSMAN_STREAM_ID_SET *streamSet
     )
 {
@@ -203,12 +203,12 @@ VOID WINAPI WSMAN_PLUGIN_RECEIVE(
 
 }
 
-VOID WINAPI WSMAN_PLUGIN_SIGNAL(
+void MI_CALL WSMAN_PLUGIN_SIGNAL(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-    _In_ DWORD flags,
-    _In_ PVOID shellContext,
-    _In_opt_ PVOID commandContext,
-    _In_ PCWSTR code
+    _In_ MI_Uint32 flags,
+    _In_ void * shellContext,
+    _In_opt_ void * commandContext,
+    _In_ const MI_Char * code
     )
 {
 	/* If the operation has finished we need to finish receives and close all commands and shells as
@@ -217,11 +217,11 @@ VOID WINAPI WSMAN_PLUGIN_SIGNAL(
 	WSManPluginOperationComplete(requestDetails, 0, 0, NULL);
 }
 
-VOID WINAPI WSMAN_PLUGIN_CONNECT(
+void MI_CALL WSMAN_PLUGIN_CONNECT(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-    _In_ DWORD flags,
-    _In_ PVOID shellContext,
-    _In_opt_ PVOID commandContext,
+    _In_ MI_Uint32 flags,
+    _In_ void * shellContext,
+    _In_opt_ void * commandContext,
     _In_opt_ WSMAN_DATA *inboundConnectInformation
      )
 {

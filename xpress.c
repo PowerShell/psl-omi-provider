@@ -12,20 +12,11 @@ Abstract:
 
 Author:
 
-    Ben Mickle     [benmick]    July 2010
 
 Revision History:
 
 --*/
-
-
-//#include "ntrtlp.h"
-
-//
-// Optimize for speed, not size.
-//
-
-//#pragma optimize("t", on)
+#include <MI.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <memory.h>
@@ -46,7 +37,7 @@ _rotr8(unsigned char _Value, unsigned char _Shift) {
 }
 
 #define ALIGN_DOWN_POINTER_BY(address, alignment) \
-    ((PVOID)((ULONG_PTR)(address) & ~((ULONG_PTR)alignment - 1)))
+    ((void*)((ULONG_PTR)(address) & ~((ULONG_PTR)alignment - 1)))
 
 #define ALIGN_UP_POINTER_BY(address, alignment) \
     (ALIGN_DOWN_POINTER_BY(((ULONG_PTR)(address) + alignment - 1), alignment))
@@ -54,7 +45,7 @@ _rotr8(unsigned char _Value, unsigned char _Shift) {
 #define ALIGN_UP_POINTER(address, type) \
     ALIGN_UP_POINTER_BY(address, sizeof(type))
 
-static PUCHAR min(PUCHAR a, PUCHAR b)
+MI_Uint8 * min(MI_Uint8 * a, MI_Uint8 * b)
 {
 	if (a < b)
 		return a;
@@ -62,23 +53,23 @@ static PUCHAR min(PUCHAR a, PUCHAR b)
 		return b;
 }
 
-#define TRUE 1
-#define FALSE 0
+#define MI_TRUE 1
+#define MI_FALSE 0
 
 typedef
-VOID
-NTAPI
-RTL_XPRESS_CALLBACK_FUNCTION (
-    IN PVOID Context
+void
+MI_CALL
+XPRESS_CALLBACK_FUNCTION (
+    _In_ void* Context
     );
-typedef RTL_XPRESS_CALLBACK_FUNCTION *PRTL_XPRESS_CALLBACK_FUNCTION;
+typedef XPRESS_CALLBACK_FUNCTION *PXPRESS_CALLBACK_FUNCTION;
 
 const USHORT XpressHashFunction[3][256] = {
     {5732,  14471,  24297,  25128,  11502,  22712,  22856,  21969,  16029,  23951,  1785,  13794,  3705,  1145,  16537,  7129,  26156,  31870,  23418,  20567,  29626,  218,  7372,  1940,  17184,  18323,  10119,  8604,  23621,  13384,  29712,  9146,  20553,  27100,  5850,  23503,  23176,  28142,  4676,  27280,  31756,  8706,  15559,  27626,  18819,  3281,  10692,  4048,  20259,  10493,  27969,  7260,  24815,  17549,  18994,  16693,  31156,  16887,  8459,  31718,  32718,  12366,  7181,  15493,  24345,  26476,  7355,  14175,  13292,  4822,  22793,  215,  24723,  706,  21435,  19075,  25807,  32292,  7815,  29338,  10789,  9301,  21695,  25084,  25689,  31272,  17247,  14211,  9189,  26756,  18524,  14732,  6188,  8560,  13667,  26189,  32660,  4089,  3976,  23040,  29476,  20495,  7315,  5110,  28586,  17798,  29904,  344,  22387,  27111,  9782,  6030,  18509,  7423,  9197,  31788,  25654,  20364,  18354,  5971,  10938,  366,  15563,  18371,  10683,  3657,  18511,  15438,  5520,  422,  13442,  29830,  27837,  15463,  14806,  12921,  3883,  22276,  16387,  31729,  21655,  19236,  20470,  20492,  11751,  24686,  25844,  2840,  9189,  9869,  19238,  24848,  15480,  25809,  20681,  11470,  25986,  9409,  24755,  16524,  24107,  21258,  13853,  28403,  6006,  21415,  23280,  2570,  12055,  20113,  5235,  3562,  7055,  733,  30365,  9470,  24356,  9178,  21362,  28496,  11136,  3731,  3047,  16021,  11840,  22838,  907,  18609,  4721,  18943,  14439,  26839,  2422,  15312,  11641,  25979,  199,  31769,  5234,  23588,  23401,  15374,  1558,  14750,  24149,  31127,  13862,  26020,  31010,  1888,  11434,  1688,  5562,  9959,  2280,  8742,  1443,  25709,  10904,  24657,  23884,  6380,  4008,  20069,  28033,  6303,  19272,  30233,  17279,  17817,  24129,  28759,  935,  6698,  16287,  32578,  14420,  17587,  18645,  17233,  8481,  15766,  3346,  4080,  25415,  11667,  15445,  3149,  17290,  14358,  28128,  29424,  17465,  20225,  8897,  19481},
     {89,  24313,  14591,  8306,  22828,  18884,  7990,  26457,  24877,  30705,  24165,  7973,  16319,  9286,  22677,  30021,  7901,  7880,  18035,  4008,  2401,  29585,  21569,  12793,  23315,  9286,  10852,  26539,  13186,  26156,  26964,  21604,  8305,  15916,  17767,  15170,  26565,  26259,  11693,  31316,  28980,  22665,  496,  16463,  12261,  5111,  1943,  1660,  23930,  13257,  4757,  31563,  15469,  18763,  17906,  21517,  29723,  18324,  20062,  23554,  9039,  24669,  31775,  16771,  17119,  31060,  2587,  8261,  22033,  17027,  5593,  1729,  214,  2914,  21849,  18432,  7429,  21490,  26117,  29863,  22371,  18408,  792,  19364,  21668,  1809,  21594,  4948,  20456,  2019,  29290,  22887,  29078,  22335,  9187,  5096,  17146,  1432,  19366,  22510,  7422,  25502,  13009,  11542,  7875,  2647,  7784,  12205,  12243,  19397,  15740,  5364,  4113,  26061,  25497,  7856,  1925,  32327,  12210,  6254,  27122,  27016,  20121,  12018,  4980,  9272,  5017,  10708,  31072,  25162,  25851,  13203,  15909,  30345,  26602,  19838,  12429,  4695,  2383,  17491,  524,  31579,  1318,  12371,  19282,  19629,  1772,  22021,  12775,  25516,  2257,  26301,  10519,  27741,  5552,  27266,  13548,  28363,  18524,  31245,  5982,  17294,  21585,  13591,  31302,  31804,  12702,  15533,  29640,  23889,  24312,  16503,  15054,  22097,  17733,  4557,  22693,  3477,  16700,  18113,  11692,  10926,  2215,  9617,  24248,  3956,  22701,  24952,  938,  13889,  4191,  24275,  9101,  15744,  19304,  12082,  6459,  17626,  32298,  2736,  8529,  28611,  15671,  3892,  26773,  25900,  6541,  24135,  20603,  24870,  27926,  4019,  28502,  28252,  10220,  5251,  25639,  26053,  25351,  9722,  3020,  4086,  29133,  25585,  23781,  19564,  29020,  23744,  1752,  30531,  24484,  30451,  25913,  10908,  15852,  19700,  14122,  26590,  17988,  5299,  23511,  22145,  26960,  9847,  5119,  18466,  6431,  3592,  6992,  7398,  9792,  24368,  19780,  27824,  16766,  770},
     {29141,  2944,  21483,  667,  28990,  23448,  12644,  7839,  21929,  19747,  16616,  17046,  19188,  32762,  25138,  25039,  19337,  724,  29934,  4914,  22687,  841,  14193,  22961,  1775,  6902,  23188,  19240,  7069,  25600,  15642,  4994,  21651,  3594,  27731,  19933,  11672,  20837,  21867,  2547,  30691,  5021,  4084,  3381,  20986,  2656,  7110,  13821,  7795,  758,  20780,  20822,  32649,  9811,  2267,  25889,  11350,  27423,  2944,  7104,  22471,  31485,  31150,  9359,  30674,  13639,  31985,  20817,  11744,  16516,  11270,  24524,  3193,  18291,  5290,  7973,  25154,  32008,  17754,  3315,  27005,  21741,  15695,  20415,  8565,  4083,  23560,  24858,  24228,  13255,  14780,  14373,  22361,  20804,  2970,  16847,  8003,  25347,  6633,  29140,  25152,  16751,  10005,  8413,  31873,  12712,  28180,  23299,  16433,  3658,  7784,  28886,  19894,  18771,  675,  588,  901,  24092,  1755,  30519,  11912,  15045,  15684,  9183,  10056,  16848,  16248,  32429,  2555,  11360,  11926,  32162,  19499,  10997,  20341,  5905,  16620,  32124,  27807,  19460,  24198,  905,  4976,  14495,  17752,  15076,  31994,  11620,  27478,  16025,  31463,  25965,  28887,  18086,  3806,  11346,  6701,  27480,  30042,  61,  1846,  16527,  9096,  5811,  3284,  1002,  21170,  16860,  21152,  4570,  10196,  32752,  9201,  22647,  16755,  32259,  29729,  23205,  19906,  20825,  31181,  3237,  931,  25156,  20188,  16427,  14394,  18993,  7857,  25179,  26064,  1679,  23786,  32761,  10299,  1891,  14039,  1035,  19354,  6436,  15366,  14679,  26868,  19947,  4862,  19105,  7407,  13039,  4013,  22970,  16180,  14412,  3405,  4984,  26696,  7035,  5361,  11923,  20784,  23477,  9498,  8836,  25922,  32629,  27125,  30994,  18141,  21981,  27383,  23834,  24366,  10855,  6149,  22048,  11990,  13549,  4315,  3591,  1901,  21868,  23189,  25251,  28174,  6620,  11566,  31561,  5909,  10506,  5137,  8212,  20000,  14345,  17393,  7349,  17202,  15562}};
 
-const UCHAR XpressHighBitIndexTable[256] = {0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7};
+const MI_Uint8 XpressHighBitIndexTable[256] = {0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7};
 
 #define FIRST_HASH_COEFF    4
 #define FIRST_HASH_COEFF2   1
@@ -91,8 +82,8 @@ const UCHAR XpressHighBitIndexTable[256] = {0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 
 #define HASH_TABLE_EX_SIZE  ((255 + 255) * HASH_COEFF_HIGH + 255 * HASH_COEFF_LOW + 255 + 1)
 
 typedef struct _XPRESS_LZ_WORKSPACE {
-    PUCHAR HashTable[HASH_TABLE_SIZE];
-    PUCHAR HashTableEx[HASH_TABLE_EX_SIZE];
+    MI_Uint8 * HashTable[HASH_TABLE_SIZE];
+    MI_Uint8 * HashTableEx[HASH_TABLE_EX_SIZE];
 } XPRESS_LZ_WORKSPACE, *PXPRESS_LZ_WORKSPACE;
 
 //
@@ -121,7 +112,7 @@ typedef struct _HUFFMAN_NODE {
             ULONG_PTR NullPtr;
             ULONG_PTR Symbol;
         };
-        PVOID Children[2];
+        void* Children[2];
     };
 } HUFFMAN_NODE, *PHUFFMAN_NODE;
 
@@ -149,11 +140,11 @@ typedef struct _HUFFMAN_WORKSPACE {
         HUFFMAN_STACK_ENTRY Stack[HUFFMAN_BLOCK_SIZE_LOG + 3];
     };
 
-    UCHAR SymbolToBitLength[HUFFMAN_ALPHABET_SIZE];
+    MI_Uint8 SymbolToBitLength[HUFFMAN_ALPHABET_SIZE];
 
-    ULONG Frequencies[HUFFMAN_ALPHABET_SIZE];
+    MI_Uint32 Frequencies[HUFFMAN_ALPHABET_SIZE];
 
-    UCHAR CompactBitLengths[HUFFMAN_ALPHABET_SIZE / 2];
+    MI_Uint8 CompactBitLengths[HUFFMAN_ALPHABET_SIZE / 2];
 } HUFFMAN_WORKSPACE, *PHUFFMAN_WORKSPACE;
 
 typedef struct _XPRESS_HUFF_WORKSPACE {
@@ -172,7 +163,7 @@ typedef struct _XPRESS_HUFF_WORKSPACE {
     //    HUFFMAN_BLOCK_SIZE * 9 / 8 + 10 + 4
     //
 
-    UCHAR LzPass[HUFFMAN_BLOCK_SIZE * 9 / 8 + 20];
+    MI_Uint8 LzPass[HUFFMAN_BLOCK_SIZE * 9 / 8 + 20];
 } XPRESS_HUFF_WORKSPACE, *PXPRESS_HUFF_WORKSPACE;
 
 
@@ -184,38 +175,38 @@ typedef struct _XPRESS_HUFF_DECODE_WORKSPACE {
 } XPRESS_HUFF_DECODE_WORKSPACE, *PXPRESS_HUFF_DECODE_WORKSPACE;
 
 typedef struct _XPRESS_CALLBACK_PARAMS {
-    PRTL_XPRESS_CALLBACK_FUNCTION Callback;
-    PVOID CallbackContext;
-    ULONG ProgressBytes;
+    PXPRESS_CALLBACK_FUNCTION Callback;
+    void* CallbackContext;
+    MI_Uint32 ProgressBytes;
 } XPRESS_CALLBACK_PARAMS, *PXPRESS_CALLBACK_PARAMS;
 
 
 
-NTSTATUS
-RtlCompressBufferXpressHuffStandard (
-    IN PUCHAR UncompressedBuffer,
-    IN ULONG UncompressedBufferSize,
-    OUT PUCHAR CompressedBuffer,
-    IN ULONG CompressedBufferSize,
-    OUT PULONG FinalCompressedSize,
-    IN PXPRESS_HUFF_WORKSPACE Workspace,
-    IN PRTL_XPRESS_CALLBACK_FUNCTION Callback,
-    IN PVOID CallbackContext,
-    IN ULONG ProgressBytes
+MI_Uint32
+CompressBufferXpressHuffStandard (
+    _In_ MI_Uint8 * UncompressedBuffer,
+    _In_ MI_Uint32 UncompressedBufferSize,
+    _Out_ MI_Uint8 * CompressedBuffer,
+    _In_ MI_Uint32 CompressedBufferSize,
+    _Out_ MI_Uint32* FinalCompressedSize,
+    _In_ PXPRESS_HUFF_WORKSPACE Workspace,
+    _In_ PXPRESS_CALLBACK_FUNCTION Callback,
+    _In_ void* CallbackContext,
+    _In_ MI_Uint32 ProgressBytes
     );
 
 
-NTSTATUS
-RtlCompressBufferProgress (
-    IN PUCHAR UncompressedBuffer,
-    IN ULONG UncompressedBufferSize,
-    OUT PUCHAR CompressedBuffer,
-    IN ULONG CompressedBufferSize,
-    OUT PULONG FinalCompressedSize,
-    IN PVOID WorkSpace,
-    IN PRTL_XPRESS_CALLBACK_FUNCTION Callback,
-    IN PVOID CallbackContext,
-    IN ULONG ProgressBytes
+MI_Uint32
+CompressBufferProgress (
+    _In_ MI_Uint8 * UncompressedBuffer,
+    _In_ MI_Uint32 UncompressedBufferSize,
+    _Out_ MI_Uint8 * CompressedBuffer,
+    _In_ MI_Uint32 CompressedBufferSize,
+    _Out_ MI_Uint32* FinalCompressedSize,
+    _In_ void* WorkSpace,
+    _In_ PXPRESS_CALLBACK_FUNCTION Callback,
+    _In_ void* CallbackContext,
+    _In_ MI_Uint32 ProgressBytes
     )
 
 /*++
@@ -249,7 +240,7 @@ Arguments:
 
     Callback - The function to call back periodically.
 
-    CallbackContext - A PVOID that will be passed to the Callback function.
+    CallbackContext - A void* that will be passed to the Callback function.
 
     ProgressBytes - The callback will be invoked each time this many bytes are
         compressed.  (Note that this is the uncompressed size, not the
@@ -268,13 +259,13 @@ Return Value:
 
 {
     PXPRESS_HUFF_WORKSPACE HuffStandardWorkspace;
-    PVOID AlignedWorkspace;
+    void* AlignedWorkspace;
 
     AlignedWorkspace = ALIGN_UP_POINTER(WorkSpace, ULONG_PTR);
 
 	HuffStandardWorkspace = (PXPRESS_HUFF_WORKSPACE)AlignedWorkspace;
 
-	return RtlCompressBufferXpressHuffStandard(UncompressedBuffer,
+	return CompressBufferXpressHuffStandard(UncompressedBuffer,
 											   UncompressedBufferSize,
 											   CompressedBuffer,
 											   CompressedBufferSize,
@@ -285,12 +276,11 @@ Return Value:
 											   ProgressBytes);
 }
 
-NOINLINE
-PUCHAR
-RtlpMakeXpressCallback (
-    IN PXPRESS_CALLBACK_PARAMS Params,
-    IN PUCHAR SafeEnd,
-    IN PUCHAR Pos
+MI_Uint8 *
+pMakeXpressCallback (
+    _In_ PXPRESS_CALLBACK_PARAMS Params,
+    _In_ MI_Uint8 * SafeEnd,
+    _In_ MI_Uint8 * Pos
     )
 
 /*++
@@ -339,7 +329,7 @@ Routine Description:
         // Avoid referencing ProgressBytes, etc. so that the compiler doesn't
         // waste a register on it.
 
-        ProgressMark = RtlpMakeXpressCallback(&Params, SafeEnd, Pos);
+        ProgressMark = pMakeXpressCallback(&Params, SafeEnd, Pos);
     }
 
 Arguments:
@@ -363,10 +353,10 @@ Return Value:
 
 
 
-NTSTATUS
-RtlCompressWorkSpaceSizeXpressHuff (
-    OUT PULONG CompressBufferWorkSpaceSize,
-    OUT PULONG DecompressBufferWorkSpaceSize
+MI_Uint32
+CompressWorkSpaceSizeXpressHuff (
+    _Out_ MI_Uint32* CompressBufferWorkSpaceSize,
+    _Out_ MI_Uint32* DecompressBufferWorkSpaceSize
     )
 
 /*++
@@ -409,7 +399,7 @@ Return Value:
 
 ULONG_PTR
 XpressBuildHuffmanEncodings (
-    IN PHUFFMAN_WORKSPACE Workspace
+    _In_ PHUFFMAN_WORKSPACE Workspace
     )
 
 /*++
@@ -447,7 +437,7 @@ Return Value:
     ULONG_PTR CurrentMask;
     ULONG_PTR TotalBitCount;
     ULONG_PTR TotalFrequency;
-    UCHAR* CurrentCompactBitLen;
+    MI_Uint8* CurrentCompactBitLen;
     HUFFMAN_ENCODING* Code;
 
     //
@@ -734,7 +724,7 @@ Return Value:
                 //
 
                 Node->BitLength = BitLen;
-                Workspace->SymbolToBitLength[Node->Symbol] = (UCHAR)BitLen;
+                Workspace->SymbolToBitLength[Node->Symbol] = (MI_Uint8)BitLen;
 
                 //
                 // Continue the traversal by popping a node from the stack.  If
@@ -865,13 +855,13 @@ Return Value:
     return TotalBitCount;
 }
 
-PUCHAR
+MI_Uint8 *
 XpressDoHuffmanPass (
-    IN PHUFFMAN_WORKSPACE Workspace,
-    IN PUCHAR LzInputPos,
-    IN PUCHAR LzEnd,
-    IN PUCHAR HuffOutputPos,
-    IN LOGICAL WriteEof
+    _In_ PHUFFMAN_WORKSPACE Workspace,
+    _In_ MI_Uint8 * LzInputPos,
+    _In_ MI_Uint8 * LzEnd,
+    _In_ MI_Uint8 * HuffOutputPos,
+    _In_ LOGICAL WriteEof
     )
 
 /*++
@@ -902,11 +892,11 @@ Return Value:
 {
     ULONG_PTR CurrentShift;
     USHORT NextShort;
-    PUCHAR HuffOutputPos1;
-    PUCHAR HuffOutputPos2;
+    MI_Uint8 * HuffOutputPos1;
+    MI_Uint8 * HuffOutputPos2;
     INT Tags;
     HUFFMAN_ENCODING* HuffCode;
-    UCHAR HuffValue;
+    MI_Uint8 HuffValue;
     ULONG_PTR MatchLen;
 
     //
@@ -1063,7 +1053,7 @@ Return Value:
             MatchLen = LzInputPos[0];
             ++LzInputPos;
 
-            HuffOutputPos[0] = (UCHAR)MatchLen;
+            HuffOutputPos[0] = (MI_Uint8)MatchLen;
             ++HuffOutputPos;
 
             if (MatchLen == 255) {
@@ -1157,17 +1147,17 @@ Return Value:
     return HuffOutputPos;
 }
 
-NTSTATUS
-RtlCompressBufferXpressHuffStandard (
-    IN PUCHAR UncompressedBuffer,
-    IN ULONG UncompressedBufferSize,
-    OUT PUCHAR CompressedBuffer,
-    IN ULONG CompressedBufferSize,
-    OUT PULONG FinalCompressedSize,
-    IN PXPRESS_HUFF_WORKSPACE Workspace,
-    IN PRTL_XPRESS_CALLBACK_FUNCTION Callback,
-    IN PVOID CallbackContext,
-    IN ULONG ProgressBytes
+MI_Uint32
+CompressBufferXpressHuffStandard (
+    _In_ MI_Uint8 * UncompressedBuffer,
+    _In_ MI_Uint32 UncompressedBufferSize,
+    _Out_ MI_Uint8 * CompressedBuffer,
+    _In_ MI_Uint32 CompressedBufferSize,
+    _Out_ MI_Uint32* FinalCompressedSize,
+    _In_ PXPRESS_HUFF_WORKSPACE Workspace,
+    _In_ PXPRESS_CALLBACK_FUNCTION Callback,
+    _In_ void* CallbackContext,
+    _In_ MI_Uint32 ProgressBytes
     )
 
 /*++
@@ -1203,7 +1193,7 @@ Arguments:
 
     Callback - The function to call back periodically.
 
-    CallbackContext - A PVOID that will be passed to the Callback function.
+    CallbackContext - A void* that will be passed to the Callback function.
 
     ProgressBytes - The callback will be invoked each time this many bytes are
         compressed.  (Note that this is the uncompressed size, not the
@@ -1221,23 +1211,23 @@ Return Value:
 --*/
 
 {
-    PUCHAR SafeBufferEnd;
-    PUCHAR InputBufferEnd;
-    PUCHAR OutputBufferEnd;
-    PUCHAR InputPos;
-    PUCHAR OutputPos;
-    PUCHAR HuffOutputPos;
-    PUCHAR Match;
-    PUCHAR MatchEx;
-    PUCHAR SavedInputPos;
-    PUCHAR HuffBlockEnd;
-    PUCHAR SafeHuffBlockEnd;
-    PUCHAR ProgressMark;
-    ULONG RunningTags;
-    ULONG UNALIGNED * TagsOut;
-    ULONG UNALIGNED * InputPosLong;
-    ULONG UNALIGNED * MatchLong;
-    PUCHAR* HashTableTemp;
+    MI_Uint8 * SafeBufferEnd;
+    MI_Uint8 * InputBufferEnd;
+    MI_Uint8 * OutputBufferEnd;
+    MI_Uint8 * InputPos;
+    MI_Uint8 * OutputPos;
+    MI_Uint8 * HuffOutputPos;
+    MI_Uint8 * Match;
+    MI_Uint8 * MatchEx;
+    MI_Uint8 * SavedInputPos;
+    MI_Uint8 * HuffBlockEnd;
+    MI_Uint8 * SafeHuffBlockEnd;
+    MI_Uint8 * ProgressMark;
+    MI_Uint32 RunningTags;
+    MI_Uint32 UNALIGNED * TagsOut;
+    MI_Uint32 UNALIGNED * InputPosLong;
+    MI_Uint32 UNALIGNED * MatchLong;
+    MI_Uint8 ** HashTableTemp;
     ULONG_PTR i;
     ULONG_PTR HashValue;
     ULONG_PTR ExHashValue;
@@ -1248,7 +1238,7 @@ Return Value:
     ULONG_PTR NonHuffmanBytes;
     ULONG_PTR BlockBitSize;
     ULONG_PTR BlockByteSize;
-    UCHAR HuffValue;
+    MI_Uint8 HuffValue;
     LOGICAL ReachedEnd;
     XPRESS_CALLBACK_PARAMS CallbackParams;
 
@@ -1375,8 +1365,8 @@ Return Value:
         ProgressMark = min(SafeHuffBlockEnd, InputPos + ProgressBytes);
 
         RunningTags = 1;
-        TagsOut = (ULONG UNALIGNED *)OutputPos;
-        OutputPos += sizeof(ULONG);
+        TagsOut = (MI_Uint32 UNALIGNED *)OutputPos;
+        OutputPos += sizeof(MI_Uint32);
 
         if (InputPos == UncompressedBuffer) {
 
@@ -1444,8 +1434,8 @@ Return Value:
                 RunningTags *= 2;
                 *TagsOut = RunningTags;
                 RunningTags = 1;
-                TagsOut = (ULONG UNALIGNED *)OutputPos;
-                OutputPos += sizeof(ULONG);
+                TagsOut = (MI_Uint32 UNALIGNED *)OutputPos;
+                OutputPos += sizeof(MI_Uint32);
 
                 //
                 // Make sure we can process one tag-chunk worth of literals
@@ -1458,7 +1448,7 @@ Return Value:
                         goto SafeDone;
                     }
 
-                    ProgressMark = RtlpMakeXpressCallback(&CallbackParams,
+                    ProgressMark = pMakeXpressCallback(&CallbackParams,
                                                           SafeHuffBlockEnd,
                                                           InputPos);
                 }
@@ -1479,7 +1469,7 @@ Return Value:
                 Workspace->Lz.HashTableEx[ExHashValue + Match[3]] = Match;
 
                 if (InputPos - MatchEx < HUFF_WINDOW_SIZE &&
-                    *((ULONG UNALIGNED *)InputPos) == *((ULONG UNALIGNED *)MatchEx))
+                    *((MI_Uint32 UNALIGNED *)InputPos) == *((MI_Uint32 UNALIGNED *)MatchEx))
                 {
                     Workspace->Lz.HashTableEx[ExHashValue + InputPos[3]] = InputPos;
                     Match = MatchEx;
@@ -1502,7 +1492,7 @@ Return Value:
                 Workspace->Lz.HashTableEx[ExHashValue + Match[4]] = Match;
 
                 if (InputPos - MatchEx < HUFF_WINDOW_SIZE &&
-                    *((ULONG UNALIGNED *)InputPos) == *((ULONG UNALIGNED *)MatchEx) &&
+                    *((MI_Uint32 UNALIGNED *)InputPos) == *((MI_Uint32 UNALIGNED *)MatchEx) &&
                     InputPos[4] == MatchEx[4] &&
                     InputPos != MatchEx)
                 {
@@ -1527,7 +1517,7 @@ Return Value:
                 Workspace->Lz.HashTableEx[ExHashValue + Match[5]] = Match;
 
                 if (InputPos - MatchEx < HUFF_WINDOW_SIZE &&
-                    *((ULONG UNALIGNED *)InputPos) == *((ULONG UNALIGNED *)MatchEx) &&
+                    *((MI_Uint32 UNALIGNED *)InputPos) == *((MI_Uint32 UNALIGNED *)MatchEx) &&
                     InputPos[4] == MatchEx[4] &&
                     InputPos[5] == MatchEx[5] &&
                     InputPos != MatchEx)
@@ -1544,8 +1534,8 @@ Return Value:
             InputPos += 6;
             Match += 6;
 
-            InputPosLong = (ULONG UNALIGNED *)InputPos;
-            MatchLong = (ULONG UNALIGNED *)Match;
+            InputPosLong = (MI_Uint32 UNALIGNED *)InputPos;
+            MatchLong = (MI_Uint32 UNALIGNED *)Match;
 
             while (InputPos < SafeBufferEnd) {
                 if (InputPosLong[0] != MatchLong[0])
@@ -1566,8 +1556,8 @@ Return Value:
                 { InputPos += 28; Match += 28; goto FinishMatch; }
                 InputPos += 32;
                 Match += 32;
-                InputPosLong = (ULONG UNALIGNED *)InputPos;
-                MatchLong = (ULONG UNALIGNED *)Match;
+                InputPosLong = (MI_Uint32 UNALIGNED *)InputPos;
+                MatchLong = (MI_Uint32 UNALIGNED *)Match;
             }
 
             while (InputPos < InputBufferEnd && InputPos[0] == Match[0]) {
@@ -1630,7 +1620,7 @@ Return Value:
             // Compute the alphabet value that we'll encode.
             //
 
-            HuffValue = (UCHAR)(OffsetBitSize * LEN_MULT);
+            HuffValue = (MI_Uint8)(OffsetBitSize * LEN_MULT);
 
             MatchLen -= 3;
 
@@ -1649,7 +1639,7 @@ Return Value:
 
                 if (MatchLen < 255) {
 
-                    OutputPos[0] = (UCHAR)MatchLen;
+                    OutputPos[0] = (MI_Uint8)MatchLen;
                     ++OutputPos;
                     ++NonHuffmanBytes;
 
@@ -1673,7 +1663,7 @@ Return Value:
 
                         //
                         // Use four more bytes.  Since the data type of
-                        // UncompressedBufferSize is ULONG, we don't need to
+                        // UncompressedBufferSize is MI_Uint32, we don't need to
                         // worry about lengths that don't fit in four bytes.
                         //
 
@@ -1681,7 +1671,7 @@ Return Value:
                         OutputPos += 3;
                         NonHuffmanBytes += 3;
 
-                        *((ULONG UNALIGNED *)OutputPos) = (ULONG)MatchLen;
+                        *((MI_Uint32 UNALIGNED *)OutputPos) = (MI_Uint32)MatchLen;
                         OutputPos += 4;
                         NonHuffmanBytes += 4;
                     }
@@ -1693,7 +1683,7 @@ Return Value:
                 // Write the symbol value to the first-pass buffer.
                 //
 
-                HuffValue += (UCHAR)MatchLen;
+                HuffValue += (MI_Uint8)MatchLen;
                 OutputPos[0] = HuffValue;
                 ++OutputPos;
             }
@@ -1720,8 +1710,8 @@ Return Value:
                 RunningTags = RunningTags * 2 + 1;
                 *TagsOut = RunningTags;
                 RunningTags = 1;
-                TagsOut = (ULONG UNALIGNED *)OutputPos;
-                OutputPos += sizeof(ULONG);
+                TagsOut = (MI_Uint32 UNALIGNED *)OutputPos;
+                OutputPos += sizeof(MI_Uint32);
             }
 
             if (InputPos >= ProgressMark) {
@@ -1730,7 +1720,7 @@ Return Value:
                     break;
                 }
 
-                ProgressMark = RtlpMakeXpressCallback(&CallbackParams,
+                ProgressMark = pMakeXpressCallback(&CallbackParams,
                                                       SafeHuffBlockEnd,
                                                       InputPos);
             }
@@ -1758,8 +1748,8 @@ Return Value:
                 RunningTags *= 2;
                 *TagsOut = RunningTags;
                 RunningTags = 1;
-                TagsOut = (ULONG UNALIGNED *)OutputPos;
-                OutputPos += sizeof(ULONG);
+                TagsOut = (MI_Uint32 UNALIGNED *)OutputPos;
+                OutputPos += sizeof(MI_Uint32);
             }
         }
 
@@ -1773,7 +1763,7 @@ Return Value:
 
         if (InputPos >= InputBufferEnd) {
 
-            ReachedEnd = TRUE;
+            ReachedEnd = MI_TRUE;
 
             //
             // If we reached the end of the input buffer, increment the
@@ -1785,7 +1775,7 @@ Return Value:
 
         } else {
 
-            ReachedEnd = FALSE;
+            ReachedEnd = MI_FALSE;
         }
 
         //
@@ -1826,15 +1816,15 @@ Return Value:
 
     assert(HuffOutputPos <= OutputBufferEnd);
 
-    *FinalCompressedSize = (ULONG)(HuffOutputPos - CompressedBuffer);
+    *FinalCompressedSize = (MI_Uint32)(HuffOutputPos - CompressedBuffer);
 
     return STATUS_SUCCESS;
 }
 
-NTSTATUS
+MI_Uint32
 XpressBuildHuffmanDecodingTable (
-    OUT PXPRESS_HUFF_DECODE_WORKSPACE Workspace,
-    IN PUCHAR BitLengths
+    _Out_ PXPRESS_HUFF_DECODE_WORKSPACE Workspace,
+    _In_ MI_Uint8 * BitLengths
     )
 
 /*++
@@ -1965,7 +1955,7 @@ Return Value:
             //
 
             assert(NextTreeNode > 0);
-            assert(NextTreeNode < (ULONG)-PrevLevelPointer);
+            assert(NextTreeNode < (MI_Uint32)-PrevLevelPointer);
             Workspace->DecodeTree[NextTreeNode] = PrevLevelPointer;
             --NextTreeNode;
             PrevLevelPointer += 2;
@@ -2038,7 +2028,7 @@ Return Value:
     // to HUFFMAN_DECODE_LENGTH.
     //
 
-    FilledTable = FALSE;
+    FilledTable = MI_FALSE;
     assert(Code > 0);
 
     for (i = HUFFMAN_DECODE_LENGTH; i > 0; --i) {
@@ -2164,7 +2154,7 @@ Return Value:
             //
 
             if (Code == 0) {
-                FilledTable = TRUE;
+                FilledTable = MI_TRUE;
             }
 
             --Code;
@@ -2178,7 +2168,7 @@ Return Value:
         Code /= 2;
     }
 
-    if (FilledTable == FALSE) {
+    if (FilledTable == MI_FALSE) {
 
         //
         // If we didn't fill the decoding table, the Huffman table was invalid.
@@ -2228,17 +2218,17 @@ Return Value:
 
 
 
-NTSTATUS
-RtlDecompressBufferProgress (
-    OUT PUCHAR UncompressedBuffer,
-    IN ULONG UncompressedBufferSize,
-    IN PUCHAR CompressedBuffer,
-    IN ULONG CompressedBufferSize,
-    OUT PULONG FinalUncompressedSize,
-    IN PVOID WorkspacePvoid,
-    IN PRTL_XPRESS_CALLBACK_FUNCTION Callback,
-    IN PVOID CallbackContext,
-    IN ULONG ProgressBytes
+MI_Uint32
+DecompressBufferProgress (
+    _Out_ MI_Uint8 * UncompressedBuffer,
+    _In_ MI_Uint32 UncompressedBufferSize,
+    _In_ MI_Uint8 * CompressedBuffer,
+    _In_ MI_Uint32 CompressedBufferSize,
+    _Out_ MI_Uint32* FinalUncompressedSize,
+    _In_ void* WorkspacePvoid,
+    _In_ PXPRESS_CALLBACK_FUNCTION Callback,
+    _In_ void* CallbackContext,
+    _In_ MI_Uint32 ProgressBytes
     )
 
 /*++
@@ -2259,7 +2249,7 @@ Arguments:
 
     UncompressedBufferSize - Supplies the size, in bytes, of the uncompressed
         buffer.  This must be the size of the uncompressed data (the same number
-        as the UncompressedBufferSize passed to RtlCompressBuffer for this
+        as the UncompressedBufferSize passed to CompressBuffer for this
         buffer).
 
     CompressedBuffer - Supplies a pointer to the compressed data.
@@ -2267,7 +2257,7 @@ Arguments:
     CompressedBufferSize - Supplies the size, in bytes, of the compressed
         buffer.  This must be the size of the compressed data (as opposed to the
         size of some large buffer that contains some compressed data at the
-        beginning): the exact number returned by RtlCompressBuffer in the
+        beginning): the exact number returned by CompressBuffer in the
         FinalCompressedSize field.
 
     FinalUncompressedSize - Receives the number of bytes needed in the
@@ -2275,11 +2265,11 @@ Arguments:
 
     WorkspacePvoid - A buffer of the size specified by the
         CompressFragmentWorkSpaceSize parameter of
-        RtlCompressWorkSpaceSizeXpressHuff.
+        CompressWorkSpaceSizeXpressHuff.
 
     Callback - The function to call back periodically.
 
-    CallbackContext - A PVOID that will be passed to the Callback function.
+    CallbackContext - A void* that will be passed to the Callback function.
 
     ProgressBytes - The callback will be invoked each time this many bytes are
         decompressed.  (Note that this is the uncompressed size, not the
@@ -2296,25 +2286,25 @@ Return Value:
 --*/
 
 {
-    NTSTATUS Status;
+    MI_Uint32 Status;
     PXPRESS_HUFF_DECODE_WORKSPACE Workspace;
     LONG_PTR CurrentShift;
-    ULONG NextBits;
-    PUCHAR InputPos;
-    PUCHAR OutputPos;
-    PUCHAR InputEnd;
-    PUCHAR OutputEnd;
-    PUCHAR MatchSrc;
-    PUCHAR HuffBlockEnd;
-    PUCHAR SafeHuffBlockEnd;
-    PUCHAR ProgressOutputMark;
+    MI_Uint32 NextBits;
+    MI_Uint8 * InputPos;
+    MI_Uint8 * OutputPos;
+    MI_Uint8 * InputEnd;
+    MI_Uint8 * OutputEnd;
+    MI_Uint8 * MatchSrc;
+    MI_Uint8 * HuffBlockEnd;
+    MI_Uint8 * SafeHuffBlockEnd;
+    MI_Uint8 * ProgressOutputMark;
     ULONG_PTR TableIndex;
     SHORT DecodeValue;
     ULONG_PTR OffsetBitLength;
     ULONG_PTR MatchLen;
     ULONG_PTR MatchOffset;
     LONG_PTR DecodedBitCount;
-    PVOID AlignedWorkspace;
+    void* AlignedWorkspace;
     XPRESS_CALLBACK_PARAMS CallbackParams;
 
     //
@@ -2325,7 +2315,7 @@ Return Value:
 
         //
         // We can't check if the workspace is actually valid memory, but if the
-        // caller used RtlDecompressBuffer instead of RtlDecompressBufferEx,
+        // caller used DecompressBuffer instead of DecompressBufferEx,
         // we'll return an error instead of having an AV.
         //
 
@@ -2488,7 +2478,7 @@ Return Value:
                 //
                 // If this is a match, we'll want to subtract 256.  If it's not
                 // a match, subtracting 256 doesn't change the value of
-                // (UCHAR)DecodeValue.
+                // (MI_Uint8)DecodeValue.
                 //
 
                 DecodeValue -= 256;
@@ -2505,7 +2495,7 @@ Return Value:
                             goto SafeDecodeEntry1;
                         }
 
-                        ProgressOutputMark = RtlpMakeXpressCallback(&CallbackParams,
+                        ProgressOutputMark = pMakeXpressCallback(&CallbackParams,
                                                                     SafeHuffBlockEnd,
                                                                     OutputPos);
                     }
@@ -2518,7 +2508,7 @@ Return Value:
                     __prefetch(InputPos + 12);
 #endif
 
-                    NextBits += ((ULONG)(*((USHORT UNALIGNED *)InputPos)))
+                    NextBits += ((MI_Uint32)(*((USHORT UNALIGNED *)InputPos)))
                                 << (-CurrentShift);
                     InputPos += sizeof(USHORT);
                     CurrentShift += 16;
@@ -2550,7 +2540,7 @@ Return Value:
                 // next symbol.
                 //
 
-                OutputPos[0] = (UCHAR)DecodeValue;
+                OutputPos[0] = (MI_Uint8)DecodeValue;
                 ++OutputPos;
             }
 
@@ -2590,8 +2580,8 @@ Return Value:
                             return STATUS_BAD_COMPRESSION_BUFFER;
                         }
 
-                        MatchLen = *((ULONG UNALIGNED *)InputPos);
-                        InputPos += sizeof(ULONG);
+                        MatchLen = *((MI_Uint32 UNALIGNED *)InputPos);
+                        InputPos += sizeof(MI_Uint32);
                     }
 
                     if (MatchLen < LEN_MULT - 1 ||
@@ -2632,7 +2622,7 @@ Return Value:
                 __prefetch(InputPos + 12);
 #endif
 
-                NextBits += ((ULONG)(*((USHORT UNALIGNED *)InputPos)))
+                NextBits += ((MI_Uint32)(*((USHORT UNALIGNED *)InputPos)))
                             << (-CurrentShift);
                 InputPos += sizeof(USHORT);
                 CurrentShift += 16;
@@ -2691,8 +2681,8 @@ Return Value:
                 // for the end of the output buffer.
                 //
 
-                *((ULONG UNALIGNED *)OutputPos) = *((ULONG UNALIGNED *)MatchSrc);
-                *((ULONG UNALIGNED *)(OutputPos+4)) = *((ULONG UNALIGNED *)(MatchSrc+4));
+                *((MI_Uint32 UNALIGNED *)OutputPos) = *((MI_Uint32 UNALIGNED *)MatchSrc);
+                *((MI_Uint32 UNALIGNED *)(OutputPos+4)) = *((MI_Uint32 UNALIGNED *)(MatchSrc+4));
 
                 if (MatchLen < 9) {
                     OutputPos += MatchLen;
@@ -2723,7 +2713,7 @@ Return Value:
                             goto SafeDecode;
                         }
 
-                        ProgressOutputMark = RtlpMakeXpressCallback(&CallbackParams,
+                        ProgressOutputMark = pMakeXpressCallback(&CallbackParams,
                                                                     SafeHuffBlockEnd,
                                                                     OutputPos);
                     }
@@ -2738,10 +2728,10 @@ Return Value:
                     // quickly.
                     //
 
-                    *((ULONG UNALIGNED *)OutputPos) = *((ULONG UNALIGNED *)MatchSrc);
-                    *((ULONG UNALIGNED *)(OutputPos+4)) = *((ULONG UNALIGNED *)(MatchSrc+4));
-                    *((ULONG UNALIGNED *)(OutputPos+8)) = *((ULONG UNALIGNED *)(MatchSrc+8));
-                    *((ULONG UNALIGNED *)(OutputPos+12)) = *((ULONG UNALIGNED *)(MatchSrc+12));
+                    *((MI_Uint32 UNALIGNED *)OutputPos) = *((MI_Uint32 UNALIGNED *)MatchSrc);
+                    *((MI_Uint32 UNALIGNED *)(OutputPos+4)) = *((MI_Uint32 UNALIGNED *)(MatchSrc+4));
+                    *((MI_Uint32 UNALIGNED *)(OutputPos+8)) = *((MI_Uint32 UNALIGNED *)(MatchSrc+8));
+                    *((MI_Uint32 UNALIGNED *)(OutputPos+12)) = *((MI_Uint32 UNALIGNED *)(MatchSrc+12));
 
                     if (MatchLen < 17) {
                         OutputPos += MatchLen;
@@ -2809,7 +2799,7 @@ Return Value:
                     if (InputPos + 1 >= InputEnd) {
                         return STATUS_BAD_COMPRESSION_BUFFER;
                     }
-                    NextBits += ((ULONG)(*((USHORT UNALIGNED *)InputPos)))
+                    NextBits += ((MI_Uint32)(*((USHORT UNALIGNED *)InputPos)))
                                 << (-CurrentShift);
                     InputPos += sizeof(USHORT);
                     CurrentShift += 16;
@@ -2826,7 +2816,7 @@ Return Value:
 
                 assert(OutputPos < OutputEnd);
 
-                OutputPos[0] = (UCHAR)DecodeValue;
+                OutputPos[0] = (MI_Uint8)DecodeValue;
                 ++OutputPos;
             }
 
@@ -2857,8 +2847,8 @@ Return Value:
                             return STATUS_BAD_COMPRESSION_BUFFER;
                         }
 
-                        MatchLen = *((ULONG UNALIGNED *)InputPos);
-                        InputPos += sizeof(ULONG);
+                        MatchLen = *((MI_Uint32 UNALIGNED *)InputPos);
+                        InputPos += sizeof(MI_Uint32);
                     }
 
                     if (MatchLen < LEN_MULT - 1 ||
@@ -2886,7 +2876,7 @@ Return Value:
                 if (InputPos + 1 >= InputEnd) {
                     return STATUS_BAD_COMPRESSION_BUFFER;
                 }
-                NextBits += ((ULONG)(*((USHORT UNALIGNED *)InputPos)))
+                NextBits += ((MI_Uint32)(*((USHORT UNALIGNED *)InputPos)))
                             << (-CurrentShift);
                 InputPos += sizeof(USHORT);
                 CurrentShift += 16;
@@ -2914,7 +2904,7 @@ Return Value:
 
 DecodeDone:
 
-    *FinalUncompressedSize = (ULONG)(OutputPos - UncompressedBuffer);
+    *FinalUncompressedSize = (MI_Uint32)(OutputPos - UncompressedBuffer);
 
     return STATUS_SUCCESS;
 }

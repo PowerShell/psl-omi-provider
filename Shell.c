@@ -6,18 +6,19 @@
 #include <pal/format.h>
 #include <pal/lock.h>
 
+/* TODO:
+    * No provider (de-)initialization through WSManPluginStartup and WSManPluginShutdown
+    * No re-connect
+*/
+
 
 /* Number of characters reserved for command ID and shell ID -- max number of digits for hex 64-bit number with null terminator */
 #define ID_LENGTH 17
 
 #define GOTO_ERROR(result) { miResult = result; goto error; }
+#define GOTO_ERROR_EX(result, label) { miResult = result; goto label; }
 
 /* Indexes into the WSMAN_PLUGIN_REQUEST arrays in CommandData and ShellData */
-#define WSMAN_PLUGIN_REQUEST_SHELL 0
-#define WSMAN_PLUGIN_REQUEST_COMMAND 0
-#define WSMAN_PLUGIN_REQUEST_SEND 1
-#define WSMAN_PLUGIN_REQUEST_RECEIVE 2
-#define WSMAN_PLUGIN_REQUEST_SIGNAL 3
 
 /* Commands and shells can have multiple streams associated with them. */
 typedef struct _StreamData
@@ -26,17 +27,48 @@ typedef struct _StreamData
 	MI_Boolean done;
 } StreamData;
 
-typedef struct _CommonData
+/* Index for PluginRequest arrays as well as the type of the PluginRequest */
+typedef enum
 {
-	/* pluginRequest is at start so we can cast to the CommandData structure */
-    /* 0 = command/shell, 1 = send, 2 = receive, 3 = signal */
-    WSMAN_PLUGIN_REQUEST pluginRequest[4];
+    WSMAN_PLUGIN_REQUEST_OPERATION = 0,
+    WSMAN_PLUGIN_REQUEST_SEND = 1,
+    WSMAN_PLUGIN_REQUEST_RECEIVE = 2,
+    WSMAN_PLUGIN_REQUEST_SIGNAL = 3
+} PluginRequest_Type;
 
-    /* MI_TRUE is shell, MI_FALSE is command */
-    enum { Type_Shell, Type_Command } dataType;
+typedef struct _CommonData CommonData;
 
-} CommonData;
+typedef struct _PluginRequest
+{
+    /* Request data passed into all plugin operations */
+    WSMAN_PLUGIN_REQUEST pluginRequest;
 
+    /* Pointer to the owning operation data, either command or shell */
+    CommonData *commonData;
+
+    PluginRequest_Type requestType;
+
+    /* Associated MI_Context for the WSMAN plugin request */
+    MI_Context *miRequestContext;
+
+    /* MI_Instance that was passed in for creating instance, or the parameter object passed in to the operation method */
+    MI_Instance *miOperationInstance;
+} PluginRequest;
+
+struct _CommonData
+{
+	/* indexes into pluginRequest array and context array... operation is either for shell or operation depending on the owning data object type */
+    PluginRequest pluginRequest[4];
+
+    /* common data can be part of either a shell or command data object */
+    enum { 
+        CommonData_Type_Shell, 
+        CommonData_Type_Command 
+    } dataType;
+
+    /* WSMAN shell Plug-in context is the context reported from either the shell or command depending on which type it is */
+    void * pluginOperationContext;
+} ;
 
 typedef struct _ShellData ShellData;
 typedef struct _CommandData CommandData;
@@ -58,45 +90,35 @@ struct _CommandData
     MI_Uint32 numberOutboundStreams;
     StreamData *outboundStreams;
 
-    Shell_Command *commandInstance;
-
+    /* The shell that owns this command */
     ShellData *shellData;
 
-    MI_Context *commandContext;
-    MI_Context *receiveContext;
-
-    void * pluginCommandContext;
 };
 
 /* List of active shells. Only one command per shell is supported. */
 struct _ShellData
 {
-	/* pluginRequest is at start so we can cast to the ShellData structure */
-    /* 0 = shell, 1 = send, 2 = receive, 3 = signal */
-    WSMAN_PLUGIN_REQUEST pluginRequest[4];
-
+    CommonData common;
+    
     /* This is part of a linked list of shells */
     ShellData *nextShell;
 
     /* This shells ID */
     MI_Char *shellId;
 
-    /* Only support a single command, so pointer to the command */
+    /* Only support a single command, so pointer to the command if one is currenty running */
     CommandData *command;
 
     MI_Uint32 outboundStreamNamesCount;
     MI_Char **outboundStreamNames;
 
+    /* Is the inbound/outbound streams compressed? */
     MI_Boolean isCompressed;
 
-    /* Instance that we can use to send back when shells are enumerated */
-    Shell *shellInstance;
-
-    MI_Context *requestContext;
-
+    /* MI provider self pointer that is returned from MI provider load which holds all shell state. When our shell
+     * goes away we will need to remove outself from the list 
+    */
     Shell_Self *shell;
-
-    void * pluginShellContext;
 
 };
 
@@ -106,6 +128,8 @@ struct _ShellData
 struct _Shell_Self
 {
     ShellData *shellList;
+
+    void *pluginContext;
 } ;
 
 /* Based on the shell ID, find the existing ShellData object */
@@ -136,7 +160,9 @@ void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
     }
     else
     {
-        MI_Context_PostResult(context, MI_RESULT_OK);
+        MI_Uint32 result = WSManPluginStartup(0, NULL, NULL, &(*self)->pluginContext);
+
+        MI_Context_PostResult(context, result);
     }
 }
 
@@ -148,6 +174,9 @@ void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
 void MI_CALL Shell_Unload(Shell_Self* self, MI_Context* context)
 {
     /* TODO: Do we have any shells still active? */
+    
+    WSManPluginShutdown(self->pluginContext, 0, 0);
+    /* NOTE: Expectation is that WSManPluginReportCompletion should be called, but it is not looking like that is always happening */
 
     free(self);
     MI_Context_PostResult(context, MI_RESULT_OK);
@@ -167,7 +196,7 @@ void MI_CALL Shell_EnumerateInstances(Shell_Self* self, MI_Context* context,
 
 	while (shellData)
 	{
-		miResult = Shell_Post(shellData->shellInstance, context);
+		miResult = MI_Context_PostInstance(context, shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miOperationInstance);
 		if (miResult != MI_RESULT_OK)
 		{
 			break;
@@ -185,17 +214,14 @@ void MI_CALL Shell_GetInstance(Shell_Self* self, MI_Context* context,
         const MI_Char* nameSpace, const MI_Char* className,
         const Shell* instanceName, const MI_PropertySet* propertySet)
 {
+    MI_Result miResult = MI_RESULT_NOT_FOUND;
     ShellData *thisShell = FindShell(self, instanceName->Name.value);
 
     if (thisShell)
     {
-    	Shell_Post(thisShell->shellInstance, context);
-    	MI_Context_PostResult(context, MI_RESULT_OK);
+        miResult = MI_Context_PostInstance(context, thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miOperationInstance);
     }
-    else
-    {
-    	MI_Context_PostResult(context, MI_RESULT_NOT_FOUND);
-    }
+    MI_Context_PostResult(context, miResult);
 }
 
 /* ExtractOutboundStreams takes a list of streams that are space delimited and
@@ -264,6 +290,8 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
         const Shell* newInstance)
 {
     ShellData *thisShell = 0;
+    MI_Result miResult;
+    MI_Instance *miOperationInstance;
 
     /* Shell instance should have the list of output stream names. */
     if (!newInstance->OutputStreams.exists)
@@ -325,14 +353,31 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
     }
 
     /* Create an instance of the shell and send it back */
-    Shell_Clone(newInstance, &thisShell->shellInstance);
-    Shell_SetPtr_Name(thisShell->shellInstance, thisShell->shellId);
+    if ((miResult = MI_Instance_Clone(&newInstance->__instance, &miOperationInstance)) != MI_RESULT_OK)
+    {
+        free(thisShell);
+        MI_Context_PostResult(context, MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        return;
+    }
+    if ((miResult = Shell_SetPtr_Name((Shell*)miOperationInstance, thisShell->shellId)) != MI_RESULT_OK)
+    {
+        MI_Instance_Delete(miOperationInstance);
+        free(thisShell);
+        MI_Context_PostResult(context, MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        return;
+    }
+
+    /* TODO: Fill in thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].pluginRequest */
+    thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].commonData = &thisShell->common;
+    thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].requestType = WSMAN_PLUGIN_REQUEST_OPERATION;
+    thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miRequestContext = context;
+    thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miOperationInstance = miOperationInstance;
 
     /* Call out to external plug-in API to continue shell creation.
      * Acceptance of shell is reported through WSManPluginReportContext.
-     * If something fails then we will get a failure through WSManPluginOperationComplete
+     * If the shell succeeds or fails we will get a call through WSManPluginOperationComplete
      */
-    WSMAN_PLUGIN_SHELL(NULL, &thisShell->pluginRequest[WSMAN_PLUGIN_REQUEST_SHELL], 0, NULL, NULL);
+    WSManPluginShell(self->pluginContext, &thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].pluginRequest, 0, NULL, NULL);
 }
 
 
@@ -366,12 +411,15 @@ void MI_CALL Shell_DeleteInstance(Shell_Self* self, MI_Context* context,
     {
         *previous = thisShell->nextShell;
         /* TODO: Is there an active command? */
+        /* TODO: Is shell active? */
 
         /* Delete the stream list buffer -- they are all allocated out of a single buffer */
         free(thisShell->outboundStreamNames);
 
         /* Delete the instance representing the shell */
-        Shell_Delete(thisShell->shellInstance);
+        MI_Instance_Delete(thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miOperationInstance);
+
+        /* TODO: Decouple shell from list of active shells */
 
         /* Delete the shell object which also contains the shell ID string */
         free(thisShell);
@@ -392,10 +440,10 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
         const MI_Char* methodName, const Shell* instanceName,
         const Shell_Command* in)
 {
-    Shell_Command command;
     MI_Result miResult = MI_RESULT_OK;
     ShellData *thisShell;
     MI_Uint32 i;
+    MI_Instance *miOperationInstance = NULL;
 
     thisShell = FindShell(self, instanceName->Name.value);
 
@@ -435,39 +483,41 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
 
     /* Set up rest of reference data for command */
     thisShell->command->shellData = thisShell;
-    thisShell->command->receiveContext = context;
 
     /* Create command instance to send back to client */
-    miResult = Shell_Command_Clone(&command, &thisShell->command->commandInstance);
+    miResult = MI_Instance_Clone(&in->__instance, &miOperationInstance);
     if (miResult != MI_RESULT_OK)
     {
     	GOTO_ERROR(miResult);
     }
 
-    Shell_Command_SetPtr_CommandId(thisShell->command->commandInstance, thisShell->command->commandId);
-    Shell_Command_Set_MIReturn(&command, MI_RESULT_OK);
+    Shell_Command_SetPtr_CommandId((Shell_Command*) miOperationInstance, thisShell->command->commandId);
 
-    WSMAN_PLUGIN_COMMAND(
-    		&thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_COMMAND],
+    /* TODO: Fill in thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].pluginRequest */
+    thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].commonData = &thisShell->command->common;
+    thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miRequestContext = context;
+    thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].requestType = WSMAN_PLUGIN_REQUEST_OPERATION;
+    thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miOperationInstance = miOperationInstance;
+
+    WSManPluginCommand(
+    		&thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].pluginRequest,
 			0,
-			thisShell->pluginShellContext,
+			thisShell->common.pluginOperationContext,
 			NULL, NULL);
 
+    /* Success path will send the response back from the callback from this API*/
+    return;
 
 error:
-    if (miResult != MI_RESULT_OK)
+    /* Cleanup all the memory and post the error back*/
+    if (miOperationInstance)
     {
-        /* Cleanup all the memory */
-        Shell_Command_Delete(thisShell->command->commandInstance);
-        free(thisShell->command);
-        thisShell->command = NULL;
+        MI_Instance_Delete(miOperationInstance);
+    }
+    free(thisShell->command);
+    thisShell->command = NULL;
+    MI_Context_PostResult(context, miResult);
 
-        MI_Context_PostResult(context, miResult);
-    }
-    else
-    {
-    	/* We succeeded so we rely on the callback to post the result */
-    }
 }
 
 
@@ -498,7 +548,7 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
         GOTO_ERROR(MI_RESULT_NOT_FOUND);
     }
 
-    /* Check to make sure the command ID is correct */
+    /* Check to make sure the command ID is correct if this send is aimed at the command */
     if (in->streamData.value->commandId.exists)
     {
         if (!in->streamData.value->commandId.value || !thisShell->command ||
@@ -507,7 +557,6 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
             GOTO_ERROR(MI_RESULT_NOT_FOUND);
         }
     }
-
 
     /* We may not actually have any data but we may be completing the data. Make sure
      * we are only processing the inbound stream if we have some data to process.
@@ -566,26 +615,46 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
 
         if (in->streamData.value->commandId.exists)
         {
-            WSMAN_PLUGIN_SEND(
-                &thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND],
+            if (thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miRequestContext)
+            {
+                GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
+            }
+            /* TODO: Fill in thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].pluginRequest */
+            thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].commonData = &thisShell->command->common;
+            thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].requestType = WSMAN_PLUGIN_REQUEST_SEND;
+            thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miRequestContext = context;
+
+            WSManPluginSend(
+                &thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].pluginRequest,
                 pluginFlags,
-                thisShell->pluginShellContext,
-                thisShell->command->pluginCommandContext,
+                thisShell->common.pluginOperationContext,
+                thisShell->command->common.pluginOperationContext,
                 in->streamData.value->streamName.value,
                 &inboundData);
         }
         else
         {
-            WSMAN_PLUGIN_SEND(
-                &thisShell->pluginRequest[WSMAN_PLUGIN_REQUEST_SEND],
+            if (thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miRequestContext)
+            {
+                GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
+            }
+            /* TODO: Fill in thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].pluginRequest */
+            thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].commonData = &thisShell->command->common;
+            thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].requestType = WSMAN_PLUGIN_REQUEST_SEND;
+            thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miRequestContext = context;
+
+            WSManPluginSend(
+                &thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].pluginRequest,
                 pluginFlags,
-                thisShell->pluginShellContext,
+                thisShell->common.pluginOperationContext,
                 NULL,
                 in->streamData.value->streamName.value,
                 &inboundData);
         }
     }
-
+    /* Now the plugin has been called the result is sent from the WSManPluginOperationComplete callback */
+    free(decodedBuffer.buffer);
+    return;
 
 error:
 	free(decodedBuffer.buffer);
@@ -625,26 +694,51 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     {
         GOTO_ERROR(MI_RESULT_NOT_SUPPORTED);
     }
-    if (Tcscmp(in->commandId.value, thisShell->command->commandId) != 0)
+    /* If we have a command ID make sure it is the correct one */
+    if (in->commandId.exists && (Tcscmp(in->commandId.value, thisShell->command->commandId) != 0))
     {
         GOTO_ERROR(MI_RESULT_NOT_FOUND);
     }
-
-    if (thisShell->command->receiveContext)
+ 
+    if (in->commandId.exists)
     {
-        GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
+        if (thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext)
+        {
+            GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
+        }
+        /* TODO: Fill in thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].pluginRequest */
+        thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].commonData = &thisShell->command->common;
+        thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].requestType = WSMAN_PLUGIN_REQUEST_RECEIVE;
+        thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext = context;
+
+        WSManPluginReceive(
+            &thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].pluginRequest,
+            0,
+            thisShell->common.pluginOperationContext,
+            thisShell->command->common.pluginOperationContext,
+            NULL);
+    }
+    else
+    {
+        if (thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext)
+        {
+            GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
+        }
+
+        /* TODO: Fill in thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].pluginRequest */
+        thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].commonData = &thisShell->command->common;
+        thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].requestType = WSMAN_PLUGIN_REQUEST_RECEIVE;
+        thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext = context;
+
+        WSManPluginReceive(
+            &thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].pluginRequest,
+            0,
+            thisShell->common.pluginOperationContext,
+            NULL,
+            NULL);
     }
 
-    thisShell->command->receiveContext = context;
-
-    WSMAN_PLUGIN_RECEIVE(
-    		&thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE],
-			0,
-			thisShell->pluginShellContext,
-			thisShell->command->pluginCommandContext,
-			NULL);
-
-    /* Posting on receive context happens when we receive some data on a _Send() */
+    /* Posting on receive context happens when we get WSManPluginOperationComplete callback to terminate the request or WSManPluginReceiveResult with some data */
     return;
 
 error:
@@ -667,85 +761,67 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
     MI_Result miResult = MI_RESULT_OK;
     ShellData *thisShell = FindShell(self, instanceName->Name.value);
 
-
     if (!thisShell)
     {
         GOTO_ERROR(MI_RESULT_NOT_FOUND);
     }
+    if (!in->code.exists)
+    {
+        GOTO_ERROR(MI_RESULT_NOT_SUPPORTED);
+    }
+    /* If we have a command ID make sure it is the correct one */
+    if (in->commandId.exists && (Tcscmp(in->commandId.value, thisShell->command->commandId) != 0))
+    {
+        GOTO_ERROR(MI_RESULT_NOT_FOUND);
+    }
+
     if (in->commandId.exists)
     {
-		if (Tcscmp(in->commandId.value, thisShell->command->commandId) != 0)
-		{
-			GOTO_ERROR(MI_RESULT_NOT_FOUND);
-		}
+        if (thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miRequestContext)
+        {
+            GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
+        }
+        /* TODO: Fill in thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].pluginRequest */
+        thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].commonData = &thisShell->command->common;
+        thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].requestType = WSMAN_PLUGIN_REQUEST_SIGNAL;
+        thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miRequestContext = context;
+        miResult = MI_Instance_Clone(&in->__instance, &thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miOperationInstance);
+
+        WSManPluginSignal(
+            &thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].pluginRequest,
+            0,
+            thisShell->common.pluginOperationContext,
+            thisShell->command->common.pluginOperationContext,
+            in->code.value);
     }
     else
     {
-    	/* For now we will assume this is something like ctrl_c which is not command specific, but targets all commands for which we have one */
-    }
-
-    if (thisShell->command->receiveContext)
-    {
-        Shell_Receive receive;
-        Stream stream;
-        CommandState commandState;
-        MI_Context *receiveContext = thisShell->command->receiveContext;
-
-        thisShell->command->receiveContext = 0;	/* Null out receive. */
-
-        Shell_Receive_Construct(&receive, receiveContext);
-        Shell_Receive_Set_MIReturn(&receive, MI_RESULT_OK);
-
-        /* TODO: only work with stream[0] for now */
-        if (!thisShell->command->outboundStreams[0].done)
+        if (thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miRequestContext)
         {
-			Stream_Construct(&stream, receiveContext);
-			Stream_SetPtr_commandId(&stream, in->commandId.value);
-			Stream_SetPtr_streamName(&stream, thisShell->command->outboundStreams[0].streamName);
-
-			Shell_Receive_SetPtr_Stream(&receive, &stream);
+            GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
         }
+        /* TODO: Fill in thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].pluginRequest */
+        thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].commonData = &thisShell->command->common;
+        thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].requestType = WSMAN_PLUGIN_REQUEST_SIGNAL;
+        thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miRequestContext = context;
 
-        CommandState_Construct(&commandState, receiveContext);
-        CommandState_SetPtr_commandId(&commandState, in->commandId.value);
-
-        CommandState_SetPtr_state(&commandState,
-                MI_T("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Done"));
-
-        Shell_Receive_SetPtr_CommandState(&receive, &commandState);
-
-        miResult = Shell_Receive_Post(&receive, receiveContext);
-
-        Shell_Receive_Destruct(&receive);
-        CommandState_Destruct(&commandState);
-
-        /* TODO: only work with stream[0] for now */
-        if (!thisShell->command->outboundStreams[0].done)
-        {
-        	Stream_Destruct(&stream);
-        }
-
-
-        MI_Context_PostResult(receiveContext, miResult);
+        WSManPluginSignal(
+            &thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].pluginRequest,
+            0,
+            thisShell->common.pluginOperationContext,
+            NULL,
+            in->code.value);
     }
-    {
-        Shell_Signal signal;
 
-        Shell_Signal_Construct(&signal, context);
-        Shell_Signal_Set_MIReturn(&signal, MI_RESULT_OK);
-        miResult = Shell_Signal_Post(&signal, context);
-        Shell_Signal_Destruct(&signal);
-    }
+    /* Posting on signal context happens when we get a WSManPluginOperationComplete callback */
+    return;
 
 error:
+    MI_Context_PostResult(context, miResult);
 
-	/* Delete the command object and all associated memory -- it was chunked into a single malloc */
-	free(thisShell->command);
-	thisShell->command = NULL;
-
-	MI_Context_PostResult(context, miResult);
 }
 
+/* Connect allows the client to re-connect to a shell that was started from a different remote machine and continue getting output delivered to a new client */
 void MI_CALL Shell_Invoke_Connect(Shell_Self* self, MI_Context* context,
         const MI_Char* nameSpace, const MI_Char* className,
         const MI_Char* methodName, const Shell* instanceName,
@@ -755,67 +831,45 @@ void MI_CALL Shell_Invoke_Connect(Shell_Self* self, MI_Context* context,
 }
 
 
+/* report a shell or command context from teh winrm plugin. We use this for future calls into the plugin.
+ This also means the shell or command has been started successfully so we can post the operation instance
+ back to the client to indicate to them that they can now post data to the operation or receive data back from it.
+ */
 MI_Uint32 MI_CALL WSManPluginReportContext(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
     _In_ MI_Uint32 flags,
     _In_ void * context
     )
 {
-	/* For shell or command the plug-in request is first member and
-	 * element 0 in array.
-	 */
-	CommonData *commonData = (CommonData *) requestDetails;
-	MI_Uint32 returnCode = 0;
+    PluginRequest *pluginRequest = (PluginRequest*) requestDetails;
+	CommonData *commonData = pluginRequest->commonData;
+    MI_Result miResult;
 
-	if (commonData->dataType == Type_Shell)
-	{
-		ShellData *thisShell = (ShellData*) commonData;
-		MI_Result miResult;
-		MI_Context *requestContext = thisShell->requestContext;
+    /* Grab the providers context, which may be shell or command, and store it in our object */
+    commonData->pluginOperationContext = context;
 
-		thisShell->pluginShellContext = context;
-
-	    /* Post instance to client */
-	    miResult = Shell_Post(thisShell->shellInstance, requestContext);
-
-	    /* If we failed to post it then the entire shell needs to be cleaned up */
-	    if (miResult != MI_RESULT_OK)
-	    {
-	    	thisShell->shell->shellList = thisShell->nextShell;
-	    	Shell_Delete(thisShell->shellInstance);
-	    	free(thisShell);
-
-	        returnCode = (MI_Uint32) miResult;
-	    }
-
-	    /* Post result back to client */
-	    MI_Context_PostResult(requestContext, miResult);
-	}
-	else /* command */
-	{
-		CommandData *thisCommand = (CommandData*) commonData;
-		MI_Result miResult;
-		MI_Context *requestContext = thisCommand->commandContext;
-
-		thisCommand->pluginCommandContext = context;
-
-	    miResult = Shell_Command_Post(thisCommand->commandInstance, requestContext);
-	    if (miResult != MI_RESULT_OK)
-	    {
-	    	Shell_Command_Delete(thisCommand->commandInstance);
-	        free(thisCommand);
-	        thisCommand->shellData->command = NULL;
-	        miResult = MI_RESULT_SERVER_LIMITS_EXCEEDED;
-
-	        returnCode = (MI_Uint32) miResult;
-	    }
-	    MI_Context_PostResult(requestContext, miResult);
-
-	}
-	/* Store either the shell or command context for future calls into the plug-in */
-	return returnCode;
+    /* Post our shell or command object back to the client */
+    if (((miResult = MI_Context_PostInstance(commonData->pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miRequestContext, commonData->pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miOperationInstance)) != MI_RESULT_OK) ||
+        ((miResult = MI_Context_PostResult(commonData->pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miRequestContext, miResult)) != MI_RESULT_OK))
+    {
+        /* Something failed. They will call WSManPluginOperationComplete to report it is done/failed though so we will clean up in there */
+    }
+	return miResult;
 }
 
+MI_Boolean IsStreamCompressed(CommonData *commonData)
+{
+    if (commonData->dataType == CommonData_Type_Shell)
+    {
+        ShellData *shellData = (ShellData*)commonData;
+        return shellData->isCompressed;
+    }
+    else
+    {
+        CommandData *commandData = (CommandData*)commonData;
+        return commandData->shellData->isCompressed;
+    }
+}
 /*
  * The WSMAN plug-in gets called once and it keeps sending data back to us.
  * At our level, however, we need to potentially wait for the next request
@@ -832,10 +886,9 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
 {
     MI_Result miResult;
     CommonData *commonData = (CommonData *)requestDetails;
-    CommandData *commandData = (CommandData*)commonData;
     MI_Context *receiveContext = NULL;
     CommandState commandStateInst;
-    Shell_Receive receive;
+    Shell_Receive *receive = NULL;
     Stream receiveStream;
     DecodeBuffer decodeBuffer, decodedBuffer;
     memset(&decodeBuffer, 0, sizeof(decodeBuffer));
@@ -843,30 +896,55 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
 
     /* TODO: Which stream if stream is NULL? */
 
-    if (commonData->dataType == Type_Shell)
-    {
-        /* Should not happen as we currently don't support Receive on Shell */
-        return (MI_Uint32) MI_RESULT_FAILED;
-    }
     /* Wait for a Receive request to come in before we post the result back */
     do
     {
 
-    } while (CondLock_Wait((ptrdiff_t)&commandData->receiveContext, (ptrdiff_t*)&commandData->receiveContext, 0, CONDLOCK_DEFAULT_SPINCOUNT) == 0);
+    } while (CondLock_Wait((ptrdiff_t)&commonData->pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext, 
+                           (ptrdiff_t*)&commonData->pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext, 
+                           0, 
+                           CONDLOCK_DEFAULT_SPINCOUNT) == 0);
+    
+    /* Construct our instance result objects */
+    receive = (Shell_Receive*) commonData->pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miOperationInstance;
+    commonData->pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miOperationInstance = NULL;
+
+    miResult =  CommandState_Construct(&commandStateInst, receiveContext);
+    if (miResult != MI_RESULT_OK)
+    {
+        Shell_Receive_Delete(receive);
+        GOTO_ERROR_EX(miResult, errorSkipInstanceDeletes);
+    }
+    miResult = Stream_Construct(&receiveStream, receiveContext);
+    if (miResult != MI_RESULT_OK)
+    {
+        Stream_Destruct(&receiveStream);
+        Shell_Receive_Delete(receive);
+        GOTO_ERROR_EX(miResult, errorSkipInstanceDeletes);
+    }
+
+    /* Set the command ID for the instances that need it */
+    if (commonData->dataType == CommonData_Type_Command)
+    {
+        CommandData *commandData = (CommandData*)commonData;
+        CommandState_SetPtr_commandId(&commandStateInst, commandData->commandId);
+        Stream_SetPtr_commandId(&receiveStream, commandData->commandId);
+    }
+
 
     /* Copy off the receive context. Another Receive should not happen at the same time but this makes
     * sure we are the only one processing it. This will also help to protect us if a Signal comes in
     * to shut things down as we are now responsible for delivering its results.
     */
-    receiveContext = commandData->receiveContext;
-    commandData->receiveContext = NULL;
+    receiveContext = commonData->pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext;
+    commonData->pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext = NULL;
     
     /* TODO: Does powershell use binary data rather than string? */
     decodeBuffer.buffer = (MI_Char*) streamResult->binaryData.data;
     decodeBuffer.bufferLength = streamResult->binaryData.dataLength;
     decodeBuffer.bufferUsed = decodeBuffer.bufferLength;
 
-    if (commandData->shellData->isCompressed)
+    if (IsStreamCompressed(commonData))
     {
 		/* Re-compress it from decodeBuffer to decodedBuffer. The result buffer
 		 * gets allocated in this function and we need to free it.
@@ -888,7 +966,7 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
     miResult = Base64EncodeBuffer(&decodeBuffer, &decodedBuffer);
 
     /* Free previously allocated buffer if it was compressed. */
-    if (commandData->shellData->isCompressed)
+    if (IsStreamCompressed(commonData))
     {
         free(decodeBuffer.buffer);
     }
@@ -899,18 +977,17 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
     	GOTO_ERROR(miResult);
     }
 
-
     /* Set the null terminator on the end of the buffer as this is supposed to be a string*/
     memset(decodedBuffer.buffer+decodedBuffer.bufferUsed, 0, sizeof(MI_Char));
 
     /* CommandState tells the client if we are done or not with this stream.
     */
-    CommandState_Construct(&commandStateInst, receiveContext);
-    CommandState_SetPtr_commandId(&commandStateInst, commandData->commandId);
 
     if (commandState &&
         (Tcscmp(commandState, MI_T("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Done")) == 0))
     {
+        /* TODO: Mark stream as complete for either shell or command */
+#if 0
         MI_Uint32 i;
         CommandState_SetPtr_state(&commandStateInst,
             MI_T("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Done"));
@@ -924,6 +1001,7 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
                 break;
             }
         }
+#endif
     }
     else if (commandState)
     {
@@ -938,21 +1016,18 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
     /* Stream holds the results of the inbound/outbound stream. A result can have more
     * than one stream, either for the same stream or different ones.
     */
-    Stream_Construct(&receiveStream, receiveContext);
-    Stream_Set_endOfStream(&receiveStream, streamResult->.value->endOfStream.value);
-    Stream_SetPtr_streamName(&receiveStream, in->streamData.value->streamName.value);
-    if (in->streamData.value->commandId.exists)
-    {
-        Stream_SetPtr_commandId(&receiveStream, in->streamData.value->commandId.value);
-    }
+    if (flags & WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA)
+        Stream_Set_endOfStream(&receiveStream, MI_TRUE);
+    else
+        Stream_Set_endOfStream(&receiveStream, MI_FALSE);
+
+    Stream_SetPtr_streamName(&receiveStream, stream);
 
     /* The result of the Receive contains the command results and a set of streams.
     * We only support one stream at a time for now.
     */
-    Shell_Receive_Construct(&receive, receiveContext);
-    Shell_Receive_Set_MIReturn(&receive, MI_RESULT_OK);
-    Shell_Receive_SetPtr_CommandState(&receive, &commandStateInst);
-
+    Shell_Receive_Set_MIReturn(receive, MI_RESULT_OK);
+    Shell_Receive_SetPtr_CommandState(receive, &commandStateInst);
 
     /* Add the final string to the stream. This is just a pointer to it and
      * is not getting copied so we need to delete the buffer after we have posted the instance
@@ -961,20 +1036,20 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
     Stream_SetPtr_data(&receiveStream, decodedBuffer.buffer);
 
     /* Add the stream embedded instance to the receive result.  */
-    Shell_Receive_SetPtr_Stream(&receive, &receiveStream);
+    Shell_Receive_SetPtr_Stream(receive, &receiveStream);
 
     /* Post the result back to the client. We can delete the base-64 encoded buffer after
     * posting it.
     */
-    Shell_Receive_Post(&receive, receiveContext);
-
-    /* Clean up the various result objects */
-    Shell_Receive_Destruct(&receive);
-    CommandState_Destruct(&commandStateInst);
-    Stream_Destruct(&receiveStream);
+    Shell_Receive_Post(receive, receiveContext);
 
 error:
+    /* Clean up the various result objects */
+    CommandState_Destruct(&commandStateInst);
+    Stream_Destruct(&receiveStream);
+    Shell_Receive_Delete(receive);
 
+errorSkipInstanceDeletes:
     MI_Context_PostResult(receiveContext, miResult);
     
     return (MI_Uint32) miResult;
@@ -997,7 +1072,7 @@ MI_Uint32 MI_CALL WSManPluginGetOperationParameters (
 
 /* Gets information about the host the provider is hosted in */
 MI_Uint32 MI_CALL WSManPluginGetConfiguration (
-  _In_   void * pluginContext,
+  _In_   void * pluginOperationContext,
   _In_   MI_Uint32 flags,
   _Out_  WSMAN_DATA *data
 )
@@ -1015,16 +1090,80 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
     _In_opt_ const MI_Char * extendedInformation
     )
 {
-    return (MI_Uint32)MI_RESULT_FAILED;
+    PluginRequest *pluginRequest = (PluginRequest*) requestDetails;
+    CommonData *commonData = pluginRequest->commonData;
+    MI_Result miResult;
+
+    /* Question is: which request is this? */
+    switch (pluginRequest->requestType)
+    {
+    case WSMAN_PLUGIN_REQUEST_OPERATION:
+        /* This is more of a clean-up notification for either command or shell... unless they did not post the contexts to us in which case we will need to post the result */
+
+        if (commonData->dataType == CommonData_Type_Shell)
+        {
+            /* TODO: Shell has completed. We should get no more calls after this */
+            /* Remove the shell data object from the shell list */
+            /* Delete the shell instance embedded in the shell data */
+            /* Delete the shell data */
+        }
+        else
+        {
+            /* TODO: This command is complete. No more calls for this command should happen */
+            /* Remove the command data pointer from the owning shell */
+            /* Delete the command instance embedded in the command data */
+            /* Delete the command data */
+        }
+        break;
+    case WSMAN_PLUGIN_REQUEST_RECEIVE:
+        /* TODO: This is the termination of the receive. No more will happen for either the command or shell, depending on which is is aimed at */
+        /* We may or may not have a pending Receive protocol packet for this depending on if we have already send a command completion message or not */
+        if (commonData->pluginRequest[pluginRequest->requestType].miRequestContext)
+        {
+            /* We have a pending request that needs to be terminated */
+            WSManPluginReceiveResult(requestDetails, WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA, NULL, NULL, MI_T("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Done"), errorCode);
+        }
+        break;
+
+   
+        /* Send/Receive only need to post back the operation instance with the MIReturn code set */
+    case WSMAN_PLUGIN_REQUEST_SEND:
+    case WSMAN_PLUGIN_REQUEST_SIGNAL:
+    {
+        MI_Value miValue;
+        MI_Context *miRequestContext = commonData->pluginRequest[pluginRequest->requestType].miRequestContext;
+        MI_Instance *miOperationInstance = commonData->pluginRequest[pluginRequest->requestType].miOperationInstance;
+
+        commonData->pluginRequest[pluginRequest->requestType].miRequestContext = NULL;
+        commonData->pluginRequest[pluginRequest->requestType].miOperationInstance = NULL;
+
+        /* Methods only have the return code set in the instance so set that and post back. */
+        miValue.uint32 = errorCode;
+        MI_Instance_SetElement(
+            miOperationInstance,
+            MI_T("MIReturn"),
+            &miValue,
+            MI_UINT32,
+            0);
+        
+        miResult = MI_Context_PostInstance(miRequestContext, miOperationInstance);
+        MI_Context_PostResult(miRequestContext, miResult);
+
+        MI_Instance_Delete(miOperationInstance);
+        break;
+    }
+    }
+
+    return MI_RESULT_OK;
 }
 
 /* Seems to be called to say the plug-in is actually done */
 MI_Uint32 MI_CALL WSManPluginReportCompletion(
-  _In_      void * pluginContext,
+  _In_      void * pluginOperationContext,
   _In_      MI_Uint32 flags
   )
 {
-    return (MI_Uint32)MI_RESULT_FAILED;
+    return (MI_Uint32)MI_RESULT_OK;
 }
 
 /* Free up information inside requestDetails if possible */

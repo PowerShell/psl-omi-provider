@@ -53,8 +53,6 @@ MI_Uint8 * min(MI_Uint8 * a, MI_Uint8 * b)
 		return b;
 }
 
-#define MI_TRUE 1
-#define MI_FALSE 0
 
 typedef
 void

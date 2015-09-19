@@ -3,6 +3,7 @@
  */
 
 #include "ShellAPI.h"
+#include <pal/lock.h>
 
 typedef struct _PluginCommand PluginCommand;
 typedef struct _PluginDetails PluginDetails;
@@ -12,6 +13,7 @@ typedef struct _PluginShell
 	PluginDetails *pluginDetails;
 
 	WSMAN_PLUGIN_REQUEST *shellRequestDetails;
+	WSMAN_PLUGIN_REQUEST *receiveRequestDetails;
 	PluginCommand *command;
 } PluginShell;
 
@@ -27,7 +29,7 @@ struct _PluginDetails
 	PluginShell *shell;
 };
 
-MI_Uint32 MI_CALL WSMAN_PLUGIN_STARTUP(
+MI_Uint32 MI_CALL WSManPluginStartup(
     _In_ MI_Uint32 flags,
     _In_ const MI_Char * applicationIdentification,
     _In_opt_ const MI_Char * extraInfo,
@@ -45,7 +47,7 @@ MI_Uint32 MI_CALL WSMAN_PLUGIN_STARTUP(
 }
 
 /* Test plug-in API */
-MI_Uint32 MI_CALL WSMAN_PLUGIN_SHUTDOWN(
+MI_Uint32 MI_CALL WSManPluginShutdown(
     _In_opt_ void * pluginContext,
     _In_ MI_Uint32 flags,
     _In_ MI_Uint32 reason
@@ -57,7 +59,7 @@ MI_Uint32 MI_CALL WSMAN_PLUGIN_SHUTDOWN(
 }
 
 /* Test plug-in API */
-void MI_CALL WSMAN_PLUGIN_SHELL(
+void MI_CALL WSManPluginShell(
     _In_ void * pluginContext,   //Relates to context returned from WSMAN_PLUGIN_STARTUP
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
     _In_ MI_Uint32 flags,
@@ -85,7 +87,7 @@ void MI_CALL WSMAN_PLUGIN_SHELL(
 
 }
 
-void MI_CALL WSMAN_PLUGIN_RELEASE_SHELL_CONTEXT(
+void MI_CALL WSManPluginReleaseShellContext(
     _In_ void * shellContext
     )
 {
@@ -97,7 +99,7 @@ void MI_CALL WSMAN_PLUGIN_RELEASE_SHELL_CONTEXT(
 }
 
 /* Test plug-in API */
-void MI_CALL WSMAN_PLUGIN_COMMAND(
+void MI_CALL WSManPluginCommand(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
     _In_ MI_Uint32 flags,
     _In_ void * shellContext,
@@ -126,7 +128,7 @@ void MI_CALL WSMAN_PLUGIN_COMMAND(
 	}
 }
 
-void MI_CALL WSMAN_PLUGIN_RELEASE_COMMAND_CONTEXT(
+void MI_CALL WSManPluginReleaseCommandContext(
     _In_ void * shellContext,
     _In_ void * commandContext
     )
@@ -138,7 +140,7 @@ void MI_CALL WSMAN_PLUGIN_RELEASE_COMMAND_CONTEXT(
 	shell->command = NULL;
 }
 
-void MI_CALL WSMAN_PLUGIN_SEND(
+void MI_CALL WSManPluginSend(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
     _In_ MI_Uint32 flags,
     _In_ void * shellContext,
@@ -166,7 +168,14 @@ void MI_CALL WSMAN_PLUGIN_SEND(
     } while (CondLock_Wait((ptrdiff_t)&command->receiveRequestDetails, (ptrdiff_t*)&command->receiveRequestDetails, 0, CONDLOCK_DEFAULT_SPINCOUNT) == 0);
 
 	/* Send the data back to the client for the pending Receive call */
-	WSManPluginReceiveResult(command->receiveRequestDetails, 0, stream, inboundData, commandState, 0);
+    if (command)
+    {
+        WSManPluginReceiveResult(command->receiveRequestDetails, 0, stream, inboundData, commandState, 0);
+    }
+    else
+    {
+        WSManPluginReceiveResult(shell->receiveRequestDetails, 0, stream, inboundData, commandState, 0);
+    }
 
 	if (flags == WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA)
 	{
@@ -178,7 +187,7 @@ void MI_CALL WSMAN_PLUGIN_SEND(
 	WSManPluginOperationComplete(requestDetails, 0, MI_RESULT_OK, NULL);
 }
 
-void MI_CALL WSMAN_PLUGIN_RECEIVE(
+void MI_CALL WSManPluginReceive(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
     _In_ MI_Uint32 flags,
     _In_ void * shellContext,
@@ -189,9 +198,18 @@ void MI_CALL WSMAN_PLUGIN_RECEIVE(
 	PluginShell *shell = (PluginShell*) shellContext;
 	PluginCommand *command = (PluginCommand*) commandContext;
 
-	command->receiveRequestDetails = requestDetails;
+    if (commandContext)
+    {
+        command->receiveRequestDetails = requestDetails;
 
-    CondLock_Broadcast((ptrdiff_t) &command->receiveRequestDetails);
+        CondLock_Broadcast((ptrdiff_t)&command->receiveRequestDetails);
+    }
+    else
+    {
+        shell->receiveRequestDetails = requestDetails;
+
+        CondLock_Broadcast((ptrdiff_t)&shell->receiveRequestDetails);
+    }
 
 
 	/* Call the ReceiveResults call in the Send function to send back what we received
@@ -203,7 +221,7 @@ void MI_CALL WSMAN_PLUGIN_RECEIVE(
 
 }
 
-void MI_CALL WSMAN_PLUGIN_SIGNAL(
+void MI_CALL WSManPluginSignal(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
     _In_ MI_Uint32 flags,
     _In_ void * shellContext,
@@ -217,7 +235,7 @@ void MI_CALL WSMAN_PLUGIN_SIGNAL(
 	WSManPluginOperationComplete(requestDetails, 0, 0, NULL);
 }
 
-void MI_CALL WSMAN_PLUGIN_CONNECT(
+void MI_CALL WSManPluginConnect(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
     _In_ MI_Uint32 flags,
     _In_ void * shellContext,

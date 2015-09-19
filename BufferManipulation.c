@@ -1,9 +1,9 @@
-
 #include <MI.h>
 #include "xpress.h"
 #include <base/base64.h>
 #include "BufferManipulation.h"
 
+#define GOTO_ERROR(result) { miResult = result; goto error; }
 
 
 static int Shell_Base64Dec_Callback(const void* data, size_t size,

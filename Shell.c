@@ -367,6 +367,7 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
         return;
     }
 
+    thisShell->common.dataType = CommonData_Type_Shell;
     /* TODO: Fill in thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].pluginRequest */
     thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].commonData = &thisShell->common;
     thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].requestType = WSMAN_PLUGIN_REQUEST_OPERATION;
@@ -483,6 +484,7 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
 
     /* Set up rest of reference data for command */
     thisShell->command->shellData = thisShell;
+    thisShell->command->common.dataType = CommonData_Type_Command;
 
     /* Create command instance to send back to client */
     miResult = MI_Instance_Clone(&in->__instance, &miOperationInstance);
@@ -539,7 +541,9 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
     MI_Uint32 pluginFlags = 0;
     ShellData *thisShell = FindShell(self, instanceName->Name.value);
 	DecodeBuffer decodeBuffer, decodedBuffer;
-	memset(&decodeBuffer, 0, sizeof(decodeBuffer));
+    MI_Instance *clonedIn = NULL;
+    
+    memset(&decodeBuffer, 0, sizeof(decodeBuffer));
 	memset(&decodedBuffer, 0, sizeof(decodedBuffer));
 
 	/* Was the shell ID the one we already know about? */
@@ -556,6 +560,12 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
         {
             GOTO_ERROR(MI_RESULT_NOT_FOUND);
         }
+    }
+
+    miResult = MI_Instance_Clone(&in->__instance, &clonedIn);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR(miResult);
     }
 
     /* We may not actually have any data but we may be completing the data. Make sure
@@ -623,6 +633,7 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
             thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].commonData = &thisShell->command->common;
             thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].requestType = WSMAN_PLUGIN_REQUEST_SEND;
             thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miRequestContext = context;
+            thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miOperationInstance = clonedIn;
 
             WSManPluginSend(
                 &thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].pluginRequest,
@@ -639,9 +650,10 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
                 GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
             }
             /* TODO: Fill in thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].pluginRequest */
-            thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].commonData = &thisShell->command->common;
+            thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].commonData = &thisShell->common;
             thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].requestType = WSMAN_PLUGIN_REQUEST_SEND;
             thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miRequestContext = context;
+            thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miOperationInstance = clonedIn;
 
             WSManPluginSend(
                 &thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].pluginRequest,
@@ -669,6 +681,11 @@ error:
     }
 
 	MI_Context_PostResult(context, miResult);
+
+    if (clonedIn)
+    {
+        MI_Instance_Delete(clonedIn);
+    }
 }
 
 /* Shell_Invoke_Receive
@@ -685,21 +702,24 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
 {
     MI_Result miResult = MI_RESULT_OK;
     ShellData *thisShell = FindShell(self, instanceName->Name.value);
+    MI_Instance *clonedIn = NULL;
 
     if (!thisShell)
     {
         GOTO_ERROR(MI_RESULT_NOT_FOUND);
-    }
-    if (!in->commandId.exists)
-    {
-        GOTO_ERROR(MI_RESULT_NOT_SUPPORTED);
     }
     /* If we have a command ID make sure it is the correct one */
     if (in->commandId.exists && (Tcscmp(in->commandId.value, thisShell->command->commandId) != 0))
     {
         GOTO_ERROR(MI_RESULT_NOT_FOUND);
     }
- 
+
+    miResult = MI_Instance_Clone(&in->__instance, &clonedIn);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR(miResult);
+    }
+
     if (in->commandId.exists)
     {
         if (thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext)
@@ -710,6 +730,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
         thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].commonData = &thisShell->command->common;
         thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].requestType = WSMAN_PLUGIN_REQUEST_RECEIVE;
         thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext = context;
+        thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miOperationInstance = clonedIn;
 
         WSManPluginReceive(
             &thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].pluginRequest,
@@ -726,9 +747,10 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
         }
 
         /* TODO: Fill in thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].pluginRequest */
-        thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].commonData = &thisShell->command->common;
+        thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].commonData = &thisShell->common;
         thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].requestType = WSMAN_PLUGIN_REQUEST_RECEIVE;
         thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext = context;
+        thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miOperationInstance = clonedIn;
 
         WSManPluginReceive(
             &thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].pluginRequest,
@@ -743,7 +765,10 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
 
 error:
     MI_Context_PostResult(context, miResult);
-
+    if (clonedIn)
+    {
+        MI_Instance_Delete(clonedIn);
+    }
 }
 
 /* Shell_Invoke_Signal
@@ -760,6 +785,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
 {
     MI_Result miResult = MI_RESULT_OK;
     ShellData *thisShell = FindShell(self, instanceName->Name.value);
+    MI_Instance *clonedIn = NULL;
 
     if (!thisShell)
     {
@@ -775,6 +801,12 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
         GOTO_ERROR(MI_RESULT_NOT_FOUND);
     }
 
+    miResult = MI_Instance_Clone(&in->__instance, &clonedIn);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR(miResult);
+    }
+
     if (in->commandId.exists)
     {
         if (thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miRequestContext)
@@ -785,7 +817,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
         thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].commonData = &thisShell->command->common;
         thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].requestType = WSMAN_PLUGIN_REQUEST_SIGNAL;
         thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miRequestContext = context;
-        miResult = MI_Instance_Clone(&in->__instance, &thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miOperationInstance);
+        thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miOperationInstance = clonedIn;
 
         WSManPluginSignal(
             &thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].pluginRequest,
@@ -801,9 +833,10 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
             GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
         }
         /* TODO: Fill in thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].pluginRequest */
-        thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].commonData = &thisShell->command->common;
+        thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].commonData = &thisShell->common;
         thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].requestType = WSMAN_PLUGIN_REQUEST_SIGNAL;
         thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miRequestContext = context;
+        thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miOperationInstance = clonedIn;
 
         WSManPluginSignal(
             &thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].pluginRequest,
@@ -818,7 +851,10 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
 
 error:
     MI_Context_PostResult(context, miResult);
-
+    if (clonedIn)
+    {
+        MI_Instance_Delete(clonedIn);
+    }
 }
 
 /* Connect allows the client to re-connect to a shell that was started from a different remote machine and continue getting output delivered to a new client */
@@ -885,7 +921,7 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
     )
 {
     MI_Result miResult;
-    CommonData *commonData = (CommonData *)requestDetails;
+    PluginRequest *pluginRequest = (PluginRequest*)requestDetails;
     MI_Context *receiveContext = NULL;
     CommandState commandStateInst;
     Shell_Receive *receive = NULL;
@@ -900,14 +936,21 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
     do
     {
 
-    } while (CondLock_Wait((ptrdiff_t)&commonData->pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext, 
-                           (ptrdiff_t*)&commonData->pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext, 
+    } while (CondLock_Wait((ptrdiff_t)&pluginRequest->miRequestContext,
+                           (ptrdiff_t*)&pluginRequest->miRequestContext,
                            0, 
                            CONDLOCK_DEFAULT_SPINCOUNT) == 0);
     
+    /* Copy off the receive context. Another Receive should not happen at the same time but this makes
+    * sure we are the only one processing it. This will also help to protect us if a Signal comes in
+    * to shut things down as we are now responsible for delivering its results.
+    */
+    receiveContext = pluginRequest->miRequestContext;
+    pluginRequest->miRequestContext = NULL;
+
     /* Construct our instance result objects */
-    receive = (Shell_Receive*) commonData->pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miOperationInstance;
-    commonData->pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miOperationInstance = NULL;
+    receive = (Shell_Receive*)pluginRequest->miOperationInstance;
+    pluginRequest->miOperationInstance = NULL;
 
     miResult =  CommandState_Construct(&commandStateInst, receiveContext);
     if (miResult != MI_RESULT_OK)
@@ -924,27 +967,21 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
     }
 
     /* Set the command ID for the instances that need it */
-    if (commonData->dataType == CommonData_Type_Command)
+    if (pluginRequest->commonData->dataType == CommonData_Type_Command)
     {
-        CommandData *commandData = (CommandData*)commonData;
+        CommandData *commandData = (CommandData*)pluginRequest->commonData;
         CommandState_SetPtr_commandId(&commandStateInst, commandData->commandId);
         Stream_SetPtr_commandId(&receiveStream, commandData->commandId);
     }
 
 
-    /* Copy off the receive context. Another Receive should not happen at the same time but this makes
-    * sure we are the only one processing it. This will also help to protect us if a Signal comes in
-    * to shut things down as we are now responsible for delivering its results.
-    */
-    receiveContext = commonData->pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext;
-    commonData->pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext = NULL;
     
     /* TODO: Does powershell use binary data rather than string? */
     decodeBuffer.buffer = (MI_Char*) streamResult->binaryData.data;
     decodeBuffer.bufferLength = streamResult->binaryData.dataLength;
     decodeBuffer.bufferUsed = decodeBuffer.bufferLength;
 
-    if (IsStreamCompressed(commonData))
+    if (IsStreamCompressed(pluginRequest->commonData))
     {
 		/* Re-compress it from decodeBuffer to decodedBuffer. The result buffer
 		 * gets allocated in this function and we need to free it.
@@ -966,7 +1003,7 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
     miResult = Base64EncodeBuffer(&decodeBuffer, &decodedBuffer);
 
     /* Free previously allocated buffer if it was compressed. */
-    if (IsStreamCompressed(commonData))
+    if (IsStreamCompressed(pluginRequest->commonData))
     {
         free(decodeBuffer.buffer);
     }
@@ -987,11 +1024,11 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
         (Tcscmp(commandState, MI_T("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Done")) == 0))
     {
         /* TODO: Mark stream as complete for either shell or command */
-#if 0
-        MI_Uint32 i;
         CommandState_SetPtr_state(&commandStateInst,
             MI_T("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Done"));
 
+#if 0
+        MI_Uint32 i;
         /* find and mark the stream as done in our records for when command is terminated and we need to terminate streams */
         for (i = 0; i != commandData->shellData->outboundStreamNamesCount; i++)
         {
@@ -1091,7 +1128,6 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
     )
 {
     PluginRequest *pluginRequest = (PluginRequest*) requestDetails;
-    CommonData *commonData = pluginRequest->commonData;
     MI_Result miResult;
 
     /* Question is: which request is this? */
@@ -1100,7 +1136,7 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
     case WSMAN_PLUGIN_REQUEST_OPERATION:
         /* This is more of a clean-up notification for either command or shell... unless they did not post the contexts to us in which case we will need to post the result */
 
-        if (commonData->dataType == CommonData_Type_Shell)
+        if (pluginRequest->commonData->dataType == CommonData_Type_Shell)
         {
             /* TODO: Shell has completed. We should get no more calls after this */
             /* Remove the shell data object from the shell list */
@@ -1118,7 +1154,7 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
     case WSMAN_PLUGIN_REQUEST_RECEIVE:
         /* TODO: This is the termination of the receive. No more will happen for either the command or shell, depending on which is is aimed at */
         /* We may or may not have a pending Receive protocol packet for this depending on if we have already send a command completion message or not */
-        if (commonData->pluginRequest[pluginRequest->requestType].miRequestContext)
+        if (pluginRequest->miRequestContext)
         {
             /* We have a pending request that needs to be terminated */
             WSManPluginReceiveResult(requestDetails, WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA, NULL, NULL, MI_T("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Done"), errorCode);
@@ -1131,11 +1167,11 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
     case WSMAN_PLUGIN_REQUEST_SIGNAL:
     {
         MI_Value miValue;
-        MI_Context *miRequestContext = commonData->pluginRequest[pluginRequest->requestType].miRequestContext;
-        MI_Instance *miOperationInstance = commonData->pluginRequest[pluginRequest->requestType].miOperationInstance;
+        MI_Context *miRequestContext = pluginRequest->miRequestContext;
+        MI_Instance *miOperationInstance = pluginRequest->miOperationInstance;
 
-        commonData->pluginRequest[pluginRequest->requestType].miRequestContext = NULL;
-        commonData->pluginRequest[pluginRequest->requestType].miOperationInstance = NULL;
+        pluginRequest->miRequestContext = NULL;
+        pluginRequest->miOperationInstance = NULL;
 
         /* Methods only have the return code set in the instance so set that and post back. */
         miValue.uint32 = errorCode;

@@ -25,20 +25,25 @@ class CommandState
     uint32 exitCode;
 };
 
+class EnvironmentVariable
+{
+    string Name;
+    string Value;
+};
+
+
 class Shell
 {
     [key] string Name;
-    string StartDirectory;
-    string Environment;
-    datetime Timeout;
-    datetime IdleTimeout;
-    string InputStreams;
-    string OutputStreams;
-    boolean IsCompressed;
+    string WorkingDirectory;
+    [embeddedinstance("EnvironmentVariable")] string Environment[];
+    string InputStreams; /* space delimited string */
+    string OutputStreams; /* space delimited string */
+    boolean IsCompressed; /* internal data that is not part of the actual shell schema */
 
     Uint32 Command(
         string command,
-        string argument,
+        string arguments[],
         [out] string CommandId
         );
 

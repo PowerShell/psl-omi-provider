@@ -5,6 +5,8 @@
 #include <pal/strings.h>
 #include <pal/format.h>
 #include <pal/lock.h>
+#include <base/batch.h>
+#include <base/instance.h>
 
 /* TODO:
     * No provider (de-)initialization through WSManPluginStartup and WSManPluginShutdown
@@ -26,7 +28,17 @@ typedef struct _StreamData
 	MI_Char *streamName;
 	MI_Boolean done;
 } StreamData;
+typedef struct _StreamDataSet
+{
+    MI_Uint32 streamDataCount;
+    StreamData *streamData;
+} StreamDataSet;
 
+typedef struct _StreamSet
+{
+    MI_Uint32 streamNamesCount;
+    MI_Char **streamNames;
+} StreamSet;
 /* Index for PluginRequest arrays as well as the type of the PluginRequest */
 typedef enum
 {
@@ -60,6 +72,9 @@ struct _CommonData
 	/* indexes into pluginRequest array and context array... operation is either for shell or operation depending on the owning data object type */
     PluginRequest pluginRequest[4];
 
+    /* Batch allocator for this shell object and all memory we allocate inside this object */
+    Batch *batch;
+    
     /* common data can be part of either a shell or command data object */
     enum { 
         CommonData_Type_Shell, 
@@ -85,10 +100,13 @@ struct _CommandData
      */
     MI_Char *commandId;
 
-    /* array of outbound streams holding the state as to if they are
-     * completed or not. */
-    MI_Uint32 numberOutboundStreams;
-    StreamData *outboundStreams;
+#if 0
+    /* These stream sets hold which streams are completed. */
+    StreamDataSet inputStreams;
+    StreamDataSet outputStreams;
+#endif
+
+    WSMAN_COMMAND_ARG_SET wsmanArgSet;
 
     /* The shell that owns this command */
     ShellData *shellData;
@@ -99,7 +117,7 @@ struct _CommandData
 struct _ShellData
 {
     CommonData common;
-    
+
     /* This is part of a linked list of shells */
     ShellData *nextShell;
 
@@ -109,8 +127,10 @@ struct _ShellData
     /* Only support a single command, so pointer to the command if one is currenty running */
     CommandData *command;
 
-    MI_Uint32 outboundStreamNamesCount;
-    MI_Char **outboundStreamNames;
+    StreamSet inputStreams;
+    StreamSet outputStreams;
+
+    WSMAN_SHELL_STARTUP_INFO wsmanStartupInfo;
 
     /* Is the inbound/outbound streams compressed? */
     MI_Boolean isCompressed;
@@ -135,14 +155,14 @@ struct _Shell_Self
 /* Based on the shell ID, find the existing ShellData object */
 ShellData * FindShell(struct _Shell_Self *shell, const MI_Char *shellId)
 {
-    ShellData *thisShell = shell->shellList;
+    ShellData *shellData = shell->shellList;
 
-    while (thisShell && (Tcscmp(shellId, thisShell->shellId) != 0))
+    while (shellData && (Tcscmp(shellId, shellData->shellId) != 0))
     {
-        thisShell = thisShell->nextShell;
+        shellData = shellData->nextShell;
     }
 
-    return thisShell;
+    return shellData;
 }
 
 /* Shell_Load is called after the provider has been loaded to return
@@ -215,22 +235,22 @@ void MI_CALL Shell_GetInstance(Shell_Self* self, MI_Context* context,
         const Shell* instanceName, const MI_PropertySet* propertySet)
 {
     MI_Result miResult = MI_RESULT_NOT_FOUND;
-    ShellData *thisShell = FindShell(self, instanceName->Name.value);
+    ShellData *shellData = FindShell(self, instanceName->Name.value);
 
-    if (thisShell)
+    if (shellData)
     {
-        miResult = MI_Context_PostInstance(context, thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miOperationInstance);
+        miResult = MI_Context_PostInstance(context, shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miOperationInstance);
     }
     MI_Context_PostResult(context, miResult);
 }
 
-/* ExtractOutboundStreams takes a list of streams that are space delimited and
+/* ExtractStreamSet takes a list of streams that are space delimited and
  * copies the data into the ShellData object for the stream. These stream
  * names are allocated and so will need to be deleted when the shell is deleted.
  * We allocate a single buffer for the array and the string, then insert null terminators
  * into the string where spaces were and fix up the array pointers to these strings.
  */
-static MI_Boolean ExtractOutboundStreams(const MI_Char *streams, ShellData *thisShell)
+static MI_Boolean ExtractStreamSet(const MI_Char *streams, StreamSet *streamSet, Batch *batch)
 {
 	MI_Char *cursor = (MI_Char*) streams;
 	MI_Uint32 i;
@@ -239,7 +259,7 @@ static MI_Boolean ExtractOutboundStreams(const MI_Char *streams, ShellData *this
 	/* Count how many stream names we have so we can allocate the array */
 	while (cursor && *cursor)
 	{
-		thisShell->outboundStreamNamesCount++;
+        streamSet->streamNamesCount++;
 		cursor = Tcschr(cursor, MI_T(' '));
 		if (cursor && *cursor)
 		{
@@ -248,23 +268,23 @@ static MI_Boolean ExtractOutboundStreams(const MI_Char *streams, ShellData *this
 	}
 
 	/* Allocate the buffer for the array and all strings inside the array */
-	thisShell->outboundStreamNames = malloc(
-			  (sizeof(MI_Char*) * thisShell->outboundStreamNamesCount) /* array length */
+    streamSet->streamNames = Batch_Get(batch,
+			  (sizeof(MI_Char*) * streamSet->streamNamesCount) /* array length */
 			+ (sizeof(MI_Char) * stringLength)); /* Length for the copied stream names */
-	if (thisShell->outboundStreamNames == NULL)
+	if (streamSet->streamNames == NULL)
 		return MI_FALSE;
 
 	/* Set the cursor to the start of where the strings are placed in the buffer */
-	cursor = (MI_Char*) thisShell->outboundStreamNames + (sizeof(MI_Char*) * thisShell->outboundStreamNamesCount);
+	cursor = (MI_Char*)streamSet->streamNames + (sizeof(MI_Char*) * streamSet->streamNamesCount);
 
 	/* Copy the stream names across to the correct place */
 	Tcslcpy(cursor, streams, stringLength);
 
 	/* Loop through the streams fixing up the array pointers and replace spaces with null terminator */
-	for (i = 0; i != thisShell->outboundStreamNamesCount; i++)
+	for (i = 0; i != streamSet->streamNamesCount; i++)
 	{
 		/* Fix up the pointer to the stream name */
-		thisShell->outboundStreamNames[i] = cursor;
+        streamSet->streamNames[i] = cursor;
 
 		/* Find the next space or end of string */
 		cursor = Tcschr(cursor, MI_T(' '));
@@ -280,6 +300,55 @@ static MI_Boolean ExtractOutboundStreams(const MI_Char *streams, ShellData *this
 	return MI_TRUE;
 }
 
+MI_Boolean ExtractStartupInfo(ShellData *shellData, const Shell *shellInstance, Batch *batch)
+{
+    memset(&shellData->wsmanStartupInfo, 0, sizeof(shellData->wsmanStartupInfo));
+    
+    shellData->wsmanStartupInfo.name = shellInstance->Name.value;
+
+    if (shellInstance->WorkingDirectory.exists)
+        shellData->wsmanStartupInfo.workingDirectory = shellInstance->WorkingDirectory.value;
+
+    if (shellInstance->InputStreams.exists)
+    {
+        shellData->wsmanStartupInfo.inputStreamSet = Batch_Get(batch, sizeof(*shellData->wsmanStartupInfo.inputStreamSet));
+        if (shellData->wsmanStartupInfo.inputStreamSet == NULL)
+            return MI_FALSE;
+
+        shellData->wsmanStartupInfo.inputStreamSet->streamIDs = (const MI_Char**) shellData->inputStreams.streamNames;
+        shellData->wsmanStartupInfo.inputStreamSet->streamIDsCount = shellData->inputStreams.streamNamesCount;
+    }
+
+    if (shellInstance->OutputStreams.exists)
+    {
+        shellData->wsmanStartupInfo.outputStreamSet = Batch_Get(batch, sizeof(*shellData->wsmanStartupInfo.outputStreamSet));
+        if (shellData->wsmanStartupInfo.outputStreamSet == NULL)
+            return MI_FALSE;
+
+        shellData->wsmanStartupInfo.outputStreamSet->streamIDs = (const MI_Char**) shellData->outputStreams.streamNames;
+        shellData->wsmanStartupInfo.outputStreamSet->streamIDsCount = shellData->outputStreams.streamNamesCount;
+    }
+
+    if (shellInstance->Environment.exists)
+    {
+        MI_Uint32 i;
+        shellData->wsmanStartupInfo.variableSet = Batch_Get(batch, 
+            sizeof(WSMAN_ENVIRONMENT_VARIABLE_SET) +
+            (sizeof(WSMAN_ENVIRONMENT_VARIABLE) * shellInstance->Environment.value.size));
+        if (shellData->wsmanStartupInfo.variableSet == NULL)
+            return MI_FALSE;
+        shellData->wsmanStartupInfo.variableSet->vars = (WSMAN_ENVIRONMENT_VARIABLE*) (shellData->wsmanStartupInfo.variableSet + 1);
+        shellData->wsmanStartupInfo.variableSet->varsCount = shellInstance->Environment.value.size;
+        for (i = 0; i != shellInstance->Environment.value.size; i++)
+        {
+            shellData->wsmanStartupInfo.variableSet->vars[i].name = shellInstance->Environment.value.data[i]->Name.value;
+            shellData->wsmanStartupInfo.variableSet->vars[i].value = shellInstance->Environment.value.data[i]->Value.value;
+        }
+    }
+
+    return MI_TRUE;
+}
+
 /* Shell_CreateInstance
  * Called by the client to create a shell. The shell is given an ID by us and sent back.
  * The list of streams that a command could have is listed out in the shell instance passed
@@ -289,15 +358,16 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
         const MI_Char* nameSpace, const MI_Char* className,
         const Shell* newInstance)
 {
-    ShellData *thisShell = 0;
+    ShellData *shellData = NULL;
     MI_Result miResult;
-    MI_Instance *miOperationInstance;
+    MI_Instance *miOperationInstance = NULL;
+    Batch *batch;
 
-    /* Shell instance should have the list of output stream names. */
-    if (!newInstance->OutputStreams.exists)
+    /* Allocate our shell data out of a batch so we can allocate most of it from a single page and free it easily */
+    batch = Batch_New(BATCH_MAX_PAGES);
+    if (batch == NULL)
     {
-        MI_Context_PostResult(context, MI_RESULT_INVALID_PARAMETER);
-        return;
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     /* Create an internal representation of the shell object that can can use to
@@ -305,38 +375,59 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
      * to do an EnumerateInstance call to the provider.
      * We also allocate enough space for the shell ID string.
      */
-    thisShell = calloc(1, sizeof(*thisShell) + (sizeof(MI_Char)*ID_LENGTH));
-    if (thisShell == 0)
+    shellData = Batch_GetClear(batch, sizeof(*shellData));
+    if (shellData == NULL)
     {
-        MI_Context_PostResult(context, MI_RESULT_SERVER_LIMITS_EXCEEDED);
-        return;
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
+    shellData->common.batch = batch;
 
     /* Set the shell ID to be the pointer within the bigger buffer */
-    thisShell->shellId = (MI_Char*) (((char*)thisShell)+sizeof(*thisShell));
-    if (Stprintf(thisShell->shellId, ID_LENGTH, MI_T("%llx"), (MI_Uint64) thisShell->shellId) < 0)
+    shellData->shellId = Batch_Get(batch, sizeof(MI_Char)*ID_LENGTH);
+    if (shellData->shellId == NULL)
     {
-    	free(thisShell);
-        MI_Context_PostResult(context, MI_RESULT_FAILED);
-    	return;
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
+    if (Stprintf(shellData->shellId, ID_LENGTH, MI_T("%llx"), (MI_Uint64) shellData->shellId) < 0)
+    {
+        GOTO_ERROR(MI_RESULT_FAILED);
+    }
+
+    /* Create an instance of the shell that we can send for the result of this Create as well as a get/enum operation*/
+    /* Note: Instance is allocated from the batch so will be deleted when the shell batch is destroyed */
+    if (Instance_Clone(&newInstance->__instance, &miOperationInstance, batch) != MI_RESULT_OK)
+    {
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
+    if ((miResult = Shell_SetPtr_Name((Shell*)miOperationInstance, shellData->shellId)) != MI_RESULT_OK)
+    {
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     /* Extract the outbound stream names that are space delimited into an
      * actual array of strings
      */
-    if (!ExtractOutboundStreams(newInstance->OutputStreams.value, thisShell))
+    if (!ExtractStreamSet(newInstance->InputStreams.value, &shellData->inputStreams, batch))
     {
-    	free(thisShell);
-        MI_Context_PostResult(context, MI_RESULT_SERVER_LIMITS_EXCEEDED);
-    	return;
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+    if (!ExtractStreamSet(newInstance->OutputStreams.value, &shellData->outputStreams, batch))
+    {
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
+    if (!ExtractStartupInfo(shellData, newInstance, batch))
+    {
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
     /* Plumb this shell into our list. Failure paths after this need to
      * unplumb it!
      */
-    thisShell->nextShell = self->shellList;
-    self->shellList = thisShell;
-    thisShell->shell = self;
+    shellData->nextShell = self->shellList;
+    self->shellList = shellData;
+    shellData->shell = self;
 
     {
     	MI_Value value;
@@ -348,37 +439,29 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
 				(type == MI_BOOLEAN) &&
 				value.boolean)
 		{
-			thisShell->isCompressed = MI_TRUE;
+			shellData->isCompressed = MI_TRUE;
 		}
     }
 
-    /* Create an instance of the shell and send it back */
-    if ((miResult = MI_Instance_Clone(&newInstance->__instance, &miOperationInstance)) != MI_RESULT_OK)
-    {
-        free(thisShell);
-        MI_Context_PostResult(context, MI_RESULT_SERVER_LIMITS_EXCEEDED);
-        return;
-    }
-    if ((miResult = Shell_SetPtr_Name((Shell*)miOperationInstance, thisShell->shellId)) != MI_RESULT_OK)
-    {
-        MI_Instance_Delete(miOperationInstance);
-        free(thisShell);
-        MI_Context_PostResult(context, MI_RESULT_SERVER_LIMITS_EXCEEDED);
-        return;
-    }
-
-    thisShell->common.dataType = CommonData_Type_Shell;
-    /* TODO: Fill in thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].pluginRequest */
-    thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].commonData = &thisShell->common;
-    thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].requestType = WSMAN_PLUGIN_REQUEST_OPERATION;
-    thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miRequestContext = context;
-    thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miOperationInstance = miOperationInstance;
+    shellData->common.dataType = CommonData_Type_Shell;
+    /* TODO: Fill in shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].pluginRequest */
+    shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].commonData = &shellData->common;
+    shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].requestType = WSMAN_PLUGIN_REQUEST_OPERATION;
+    shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miRequestContext = context;
+    shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miOperationInstance = miOperationInstance;
 
     /* Call out to external plug-in API to continue shell creation.
      * Acceptance of shell is reported through WSManPluginReportContext.
      * If the shell succeeds or fails we will get a call through WSManPluginOperationComplete
      */
-    WSManPluginShell(self->pluginContext, &thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].pluginRequest, 0, NULL, NULL);
+    WSManPluginShell(self->pluginContext, &shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].pluginRequest, 0, NULL, NULL);
+    return;
+
+error:
+    if (batch)
+        Batch_Delete(batch);
+
+    MI_Context_PostResult(context, MI_RESULT_SERVER_LIMITS_EXCEEDED);
 }
 
 
@@ -397,33 +480,28 @@ void MI_CALL Shell_DeleteInstance(Shell_Self* self, MI_Context* context,
         const MI_Char* nameSpace, const MI_Char* className,
         const Shell* instanceName)
 {
-    ShellData *thisShell = self->shellList;
-    ShellData **previous = &self->shellList;
+    ShellData *shellData;
     MI_Result miResult = MI_RESULT_NOT_FOUND;
 
-    /* Find and remove this shell from the list */
-    while (thisShell
-            && (Tcscmp(instanceName->Name.value, thisShell->shellId) != 0))
+    shellData = FindShell(self, instanceName->Name.value);
+
+    if (shellData)
     {
-        previous = &thisShell->nextShell;
-        thisShell = thisShell->nextShell;
-    }
-    if (thisShell)
-    {
-        *previous = thisShell->nextShell;
         /* TODO: Is there an active command? */
         /* TODO: Is shell active? */
 
-        /* Delete the stream list buffer -- they are all allocated out of a single buffer */
-        free(thisShell->outboundStreamNames);
+        /* Decouple shellData from list of active shells */
+        ShellData **pointerToPatch = &self->shellList;
 
-        /* Delete the instance representing the shell */
-        MI_Instance_Delete(thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miOperationInstance);
+        while (*pointerToPatch && (*pointerToPatch != shellData))
+        {
+            pointerToPatch = &(*pointerToPatch)->nextShell;
+        }
+        if (*pointerToPatch)
+            *pointerToPatch = shellData->nextShell;
 
-        /* TODO: Decouple shell from list of active shells */
-
-        /* Delete the shell object which also contains the shell ID string */
-        free(thisShell);
+        /* Delete the shell object and all the memory owned by it (owned by the batch) */
+        Batch_Delete(shellData->common.batch);
 
         miResult = MI_RESULT_OK;
     }
@@ -431,93 +509,154 @@ void MI_CALL Shell_DeleteInstance(Shell_Self* self, MI_Context* context,
     MI_Context_PostResult(context, miResult);
 }
 
+MI_Boolean ExtractCommandArgs(Shell_Command* shellInstance, WSMAN_COMMAND_ARG_SET *wsmanArgSet, Batch *batch)
+{
+    if (shellInstance->arguments.exists)
+    {
+        MI_Uint32 i;
+
+        wsmanArgSet->args = Batch_Get(batch, shellInstance->arguments.value.size * sizeof(MI_Char*));
+        if (wsmanArgSet->args == NULL)
+        {
+            return MI_FALSE;
+        }
+
+        for (i = 0; i != shellInstance->arguments.value.size; i++)
+        {
+            wsmanArgSet->args[i] = shellInstance->arguments.value.data[i];
+        }
+        wsmanArgSet->argsCount = shellInstance->arguments.value.size;
+    }
+    return MI_TRUE;
+}
+
+
 /* Initiate a command on a given shell. The command has parameters and the likes
  * and when created inbound/outbound streams are sent/received via the Send/Receive
  * methods while specifying this command ID. The command is alive until a signal is
  * sent telling us is it officially finished.
  */
 void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
-        const MI_Char* nameSpace, const MI_Char* className,
-        const MI_Char* methodName, const Shell* instanceName,
-        const Shell_Command* in)
+    const MI_Char* nameSpace, const MI_Char* className,
+    const MI_Char* methodName, const Shell* instanceName,
+    const Shell_Command* in)
 {
     MI_Result miResult = MI_RESULT_OK;
-    ShellData *thisShell;
-    MI_Uint32 i;
+    ShellData *shellData;
+    CommandData *commandData;
     MI_Instance *miOperationInstance = NULL;
+    Batch *batch = NULL;
 
-    thisShell = FindShell(self, instanceName->Name.value);
+    shellData = FindShell(self, instanceName->Name.value);
 
-    if (!thisShell)
+    if (!shellData)
     {
         GOTO_ERROR(MI_RESULT_NOT_FOUND);
     }
 
-    if (thisShell->command)
+    if (shellData->command)
     {
         /* Command already exists on this shell so fail operation */
         GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
     }
 
-    /* Create internal command structure. Allocate enough space for our stream list as well as command ID */
-    thisShell->command = calloc(1,
-    		(sizeof(*thisShell->command) +  /* command object */
-    				(sizeof(MI_Char)*ID_LENGTH) +  /* command ID */
-    				thisShell->outboundStreamNamesCount * sizeof(*thisShell->command->outboundStreams)) /* stream name array */
-					);
-    if (!thisShell->command)
+    /* Allocate our shell data out of a batch so we can allocate most of it from a single page and free it easily */
+    batch = Batch_New(BATCH_MAX_PAGES);
+    if (batch == NULL)
     {
         GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
-    thisShell->command->commandId = (MI_Char*)(((char*)thisShell->command) + sizeof(*thisShell->command));
-    Stprintf(thisShell->command->commandId, ID_LENGTH, MI_T("%llx"), (MI_Uint64) thisShell->command->commandId);
-
-    /* Set up the stream objects for the command. We need to hold extra state so we need to copy it */
-    thisShell->command->outboundStreams = (StreamData*)(((char*)thisShell->command) + sizeof(*thisShell->command) +  (sizeof(MI_Char)*ID_LENGTH));
-
-    /* Set up stream name pointers */
-    for (i = 0; i != thisShell->outboundStreamNamesCount; i++)
+    /* Create internal command structure.  */
+    commandData = Batch_GetClear(batch, sizeof(*shellData->command));
+    if (!commandData)
     {
-    	thisShell->command->outboundStreams[i].streamName = thisShell->outboundStreamNames[i];
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
+    shellData->command = commandData;
+    commandData->common.batch = batch;
+
+    commandData->commandId = Batch_Get(batch, sizeof(MI_Char)*ID_LENGTH);
+    if (!commandData->commandId)
+    {
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
+    Stprintf(commandData->commandId, ID_LENGTH, MI_T("%llx"), (MI_Uint64)commandData->commandId);
+
+#if 0
+    /* Set up the stream objects for the command. We need to hold extra state so we need to copy it */
+    commandData->inputStreams.streamData = Batch_Get(batch, shellData->inputStreams.streamNamesCount * sizeof(StreamData));
+    if (!commandData->inputStreams.streamData)
+    {
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
+    {
+        MI_Uint32 i;
+        for (i = 0; i != shellData->inputStreams.streamNamesCount; i++)
+        {
+            commandData->inputStreams.streamData[i].streamName = shellData->inputStreams.streamNames[i];
+        }
+    }
+
+    commandData->outputStreams.streamData = Batch_Get(batch, shellData->outputStreams.streamNamesCount * sizeof(StreamData));
+    if (!commandData->outputStreams.streamData)
+    {
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
+    /* Set up stream name pointers */
+    {
+        MI_Uint32 i;
+        for (i = 0; i != shellData->outputStreams.streamNamesCount; i++)
+        {
+            commandData->outputStreams.streamData[i].streamName = shellData->outputStreams.streamNames[i];
+        }
+    }
+#endif
+
     /* Set up rest of reference data for command */
-    thisShell->command->shellData = thisShell;
-    thisShell->command->common.dataType = CommonData_Type_Command;
+    commandData->shellData = shellData;
+    commandData->common.dataType = CommonData_Type_Command;
 
     /* Create command instance to send back to client */
-    miResult = MI_Instance_Clone(&in->__instance, &miOperationInstance);
+    miResult = Instance_Clone(&in->__instance, &miOperationInstance, batch);
     if (miResult != MI_RESULT_OK)
     {
     	GOTO_ERROR(miResult);
     }
 
-    Shell_Command_SetPtr_CommandId((Shell_Command*) miOperationInstance, thisShell->command->commandId);
+    Shell_Command_SetPtr_CommandId((Shell_Command*) miOperationInstance, commandData->commandId);
+    
+    if (!ExtractCommandArgs((Shell_Command*)miOperationInstance, &commandData->wsmanArgSet, batch))
+    {
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
 
-    /* TODO: Fill in thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].pluginRequest */
-    thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].commonData = &thisShell->command->common;
-    thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miRequestContext = context;
-    thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].requestType = WSMAN_PLUGIN_REQUEST_OPERATION;
-    thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miOperationInstance = miOperationInstance;
+    /* TODO: Fill in shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].pluginRequest */
+    shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].commonData = &commandData->common;
+    shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miRequestContext = context;
+    shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].requestType = WSMAN_PLUGIN_REQUEST_OPERATION;
+    shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].miOperationInstance = miOperationInstance;
 
     WSManPluginCommand(
-    		&thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].pluginRequest,
+    		&commandData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_OPERATION].pluginRequest,
 			0,
-			thisShell->common.pluginOperationContext,
-			NULL, NULL);
+			shellData->common.pluginOperationContext,
+            ((Shell_Command*)miOperationInstance)->command.value, &commandData->wsmanArgSet);
 
     /* Success path will send the response back from the callback from this API*/
     return;
 
 error:
     /* Cleanup all the memory and post the error back*/
-    if (miOperationInstance)
-    {
-        MI_Instance_Delete(miOperationInstance);
-    }
-    free(thisShell->command);
-    thisShell->command = NULL;
+    shellData->command = NULL;
+
+    if (batch)
+        Batch_Delete(batch);
+
     MI_Context_PostResult(context, miResult);
 
 }
@@ -539,7 +678,7 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
 {
     MI_Result miResult = MI_RESULT_OK;
     MI_Uint32 pluginFlags = 0;
-    ShellData *thisShell = FindShell(self, instanceName->Name.value);
+    ShellData *shellData = FindShell(self, instanceName->Name.value);
 	DecodeBuffer decodeBuffer, decodedBuffer;
     MI_Instance *clonedIn = NULL;
     
@@ -547,7 +686,7 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
 	memset(&decodedBuffer, 0, sizeof(decodedBuffer));
 
 	/* Was the shell ID the one we already know about? */
-    if (!thisShell)
+    if (!shellData)
     {
         GOTO_ERROR(MI_RESULT_NOT_FOUND);
     }
@@ -555,8 +694,8 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
     /* Check to make sure the command ID is correct if this send is aimed at the command */
     if (in->streamData.value->commandId.exists)
     {
-        if (!in->streamData.value->commandId.value || !thisShell->command ||
-            (Tcscmp(in->streamData.value->commandId.value, thisShell->command->commandId) != 0))
+        if (!in->streamData.value->commandId.value || !shellData->command ||
+            (Tcscmp(in->streamData.value->commandId.value, shellData->command->commandId) != 0))
         {
             GOTO_ERROR(MI_RESULT_NOT_FOUND);
         }
@@ -592,7 +731,7 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
         decodeBuffer = decodedBuffer;
         memset(&decodedBuffer, 0, sizeof(decodedBuffer));
 
-        if (thisShell->isCompressed)
+        if (shellData->isCompressed)
         {
             /* Decompress it from decodeBuffer to decodedBuffer. The result buffer
              * gets allocated in this function and we need to free it.
@@ -625,40 +764,40 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
 
         if (in->streamData.value->commandId.exists)
         {
-            if (thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miRequestContext)
+            if (shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miRequestContext)
             {
                 GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
             }
-            /* TODO: Fill in thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].pluginRequest */
-            thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].commonData = &thisShell->command->common;
-            thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].requestType = WSMAN_PLUGIN_REQUEST_SEND;
-            thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miRequestContext = context;
-            thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miOperationInstance = clonedIn;
+            /* TODO: Fill in shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].pluginRequest */
+            shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].commonData = &shellData->command->common;
+            shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].requestType = WSMAN_PLUGIN_REQUEST_SEND;
+            shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miRequestContext = context;
+            shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miOperationInstance = clonedIn;
 
             WSManPluginSend(
-                &thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].pluginRequest,
+                &shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].pluginRequest,
                 pluginFlags,
-                thisShell->common.pluginOperationContext,
-                thisShell->command->common.pluginOperationContext,
+                shellData->common.pluginOperationContext,
+                shellData->command->common.pluginOperationContext,
                 in->streamData.value->streamName.value,
                 &inboundData);
         }
         else
         {
-            if (thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miRequestContext)
+            if (shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miRequestContext)
             {
                 GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
             }
-            /* TODO: Fill in thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].pluginRequest */
-            thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].commonData = &thisShell->common;
-            thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].requestType = WSMAN_PLUGIN_REQUEST_SEND;
-            thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miRequestContext = context;
-            thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miOperationInstance = clonedIn;
+            /* TODO: Fill in shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].pluginRequest */
+            shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].commonData = &shellData->common;
+            shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].requestType = WSMAN_PLUGIN_REQUEST_SEND;
+            shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miRequestContext = context;
+            shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].miOperationInstance = clonedIn;
 
             WSManPluginSend(
-                &thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].pluginRequest,
+                &shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SEND].pluginRequest,
                 pluginFlags,
-                thisShell->common.pluginOperationContext,
+                shellData->common.pluginOperationContext,
                 NULL,
                 in->streamData.value->streamName.value,
                 &inboundData);
@@ -701,15 +840,15 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
         const Shell_Receive* in)
 {
     MI_Result miResult = MI_RESULT_OK;
-    ShellData *thisShell = FindShell(self, instanceName->Name.value);
+    ShellData *shellData = FindShell(self, instanceName->Name.value);
     MI_Instance *clonedIn = NULL;
 
-    if (!thisShell)
+    if (!shellData)
     {
         GOTO_ERROR(MI_RESULT_NOT_FOUND);
     }
     /* If we have a command ID make sure it is the correct one */
-    if (in->commandId.exists && (Tcscmp(in->commandId.value, thisShell->command->commandId) != 0))
+    if (in->commandId.exists && (Tcscmp(in->commandId.value, shellData->command->commandId) != 0))
     {
         GOTO_ERROR(MI_RESULT_NOT_FOUND);
     }
@@ -722,40 +861,40 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
 
     if (in->commandId.exists)
     {
-        if (thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext)
+        if (shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext)
         {
             GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
         }
-        /* TODO: Fill in thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].pluginRequest */
-        thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].commonData = &thisShell->command->common;
-        thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].requestType = WSMAN_PLUGIN_REQUEST_RECEIVE;
-        thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext = context;
-        thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miOperationInstance = clonedIn;
+        /* TODO: Fill in shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].pluginRequest */
+        shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].commonData = &shellData->command->common;
+        shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].requestType = WSMAN_PLUGIN_REQUEST_RECEIVE;
+        shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext = context;
+        shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miOperationInstance = clonedIn;
 
         WSManPluginReceive(
-            &thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].pluginRequest,
+            &shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].pluginRequest,
             0,
-            thisShell->common.pluginOperationContext,
-            thisShell->command->common.pluginOperationContext,
+            shellData->common.pluginOperationContext,
+            shellData->command->common.pluginOperationContext,
             NULL);
     }
     else
     {
-        if (thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext)
+        if (shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext)
         {
             GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
         }
 
-        /* TODO: Fill in thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].pluginRequest */
-        thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].commonData = &thisShell->common;
-        thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].requestType = WSMAN_PLUGIN_REQUEST_RECEIVE;
-        thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext = context;
-        thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miOperationInstance = clonedIn;
+        /* TODO: Fill in shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].pluginRequest */
+        shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].commonData = &shellData->common;
+        shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].requestType = WSMAN_PLUGIN_REQUEST_RECEIVE;
+        shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miRequestContext = context;
+        shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].miOperationInstance = clonedIn;
 
         WSManPluginReceive(
-            &thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].pluginRequest,
+            &shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_RECEIVE].pluginRequest,
             0,
-            thisShell->common.pluginOperationContext,
+            shellData->common.pluginOperationContext,
             NULL,
             NULL);
     }
@@ -784,10 +923,10 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
         const Shell_Signal* in)
 {
     MI_Result miResult = MI_RESULT_OK;
-    ShellData *thisShell = FindShell(self, instanceName->Name.value);
+    ShellData *shellData = FindShell(self, instanceName->Name.value);
     MI_Instance *clonedIn = NULL;
 
-    if (!thisShell)
+    if (!shellData)
     {
         GOTO_ERROR(MI_RESULT_NOT_FOUND);
     }
@@ -796,7 +935,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
         GOTO_ERROR(MI_RESULT_NOT_SUPPORTED);
     }
     /* If we have a command ID make sure it is the correct one */
-    if (in->commandId.exists && (Tcscmp(in->commandId.value, thisShell->command->commandId) != 0))
+    if (in->commandId.exists && (Tcscmp(in->commandId.value, shellData->command->commandId) != 0))
     {
         GOTO_ERROR(MI_RESULT_NOT_FOUND);
     }
@@ -809,39 +948,39 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
 
     if (in->commandId.exists)
     {
-        if (thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miRequestContext)
+        if (shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miRequestContext)
         {
             GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
         }
-        /* TODO: Fill in thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].pluginRequest */
-        thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].commonData = &thisShell->command->common;
-        thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].requestType = WSMAN_PLUGIN_REQUEST_SIGNAL;
-        thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miRequestContext = context;
-        thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miOperationInstance = clonedIn;
+        /* TODO: Fill in shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].pluginRequest */
+        shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].commonData = &shellData->command->common;
+        shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].requestType = WSMAN_PLUGIN_REQUEST_SIGNAL;
+        shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miRequestContext = context;
+        shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miOperationInstance = clonedIn;
 
         WSManPluginSignal(
-            &thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].pluginRequest,
+            &shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].pluginRequest,
             0,
-            thisShell->common.pluginOperationContext,
-            thisShell->command->common.pluginOperationContext,
+            shellData->common.pluginOperationContext,
+            shellData->command->common.pluginOperationContext,
             in->code.value);
     }
     else
     {
-        if (thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miRequestContext)
+        if (shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miRequestContext)
         {
             GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
         }
-        /* TODO: Fill in thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].pluginRequest */
-        thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].commonData = &thisShell->common;
-        thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].requestType = WSMAN_PLUGIN_REQUEST_SIGNAL;
-        thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miRequestContext = context;
-        thisShell->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miOperationInstance = clonedIn;
+        /* TODO: Fill in shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].pluginRequest */
+        shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].commonData = &shellData->common;
+        shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].requestType = WSMAN_PLUGIN_REQUEST_SIGNAL;
+        shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miRequestContext = context;
+        shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miOperationInstance = clonedIn;
 
         WSManPluginSignal(
-            &thisShell->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].pluginRequest,
+            &shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].pluginRequest,
             0,
-            thisShell->common.pluginOperationContext,
+            shellData->common.pluginOperationContext,
             NULL,
             in->code.value);
     }
@@ -1032,9 +1171,9 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
         /* find and mark the stream as done in our records for when command is terminated and we need to terminate streams */
         for (i = 0; i != commandData->shellData->outboundStreamNamesCount; i++)
         {
-            if (Tcscmp(stream, commandData->outboundStreams[i].streamName))
+            if (Tcscmp(stream, commandData->outputStreams[i].streamName))
             {
-                commandData->outboundStreams[i].done = MI_TRUE;
+                commandData->outputStreams[i].done = MI_TRUE;
                 break;
             }
         }

@@ -220,7 +220,8 @@ typedef struct _WSMAN_SHELL_STARTUP_INFO
     WSMAN_STREAM_ID_SET *outputStreamSet;
     MI_Uint32 idleTimeoutMs;
     const MI_Char * workingDirectory;
-    WSMAN_ENVIRONMENT_VARIABLE_SET *variableSet;    const MI_Char * name;
+    WSMAN_ENVIRONMENT_VARIABLE_SET *variableSet;    
+    const MI_Char * name;
 } WSMAN_SHELL_STARTUP_INFO;
 
 typedef struct _WSMAN_COMMAND_ARG_SET

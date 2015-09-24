@@ -10,6 +10,7 @@
 #define _Shell_h
 
 #include <MI.h>
+#include "EnvironmentVariable.h"
 #include "Stream.h"
 #include "CommandState.h"
 
@@ -29,10 +30,8 @@ typedef struct _Shell
     MI_Instance __instance;
     /* Shell properties */
     /*KEY*/ MI_ConstStringField Name;
-    MI_ConstStringField StartDirectory;
-    MI_ConstStringField Environment;
-    MI_ConstDatetimeField Timeout;
-    MI_ConstDatetimeField IdleTimeout;
+    MI_ConstStringField WorkingDirectory;
+    EnvironmentVariable_ConstArrayRef Environment;
     MI_ConstStringField InputStreams;
     MI_ConstStringField OutputStreams;
     MI_ConstBooleanField IsCompressed;
@@ -159,7 +158,7 @@ MI_INLINE MI_Result MI_CALL Shell_Clear_Name(
         0);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Set_StartDirectory(
+MI_INLINE MI_Result MI_CALL Shell_Set_WorkingDirectory(
     Shell* self,
     const MI_Char* str)
 {
@@ -171,7 +170,7 @@ MI_INLINE MI_Result MI_CALL Shell_Set_StartDirectory(
         0);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_SetPtr_StartDirectory(
+MI_INLINE MI_Result MI_CALL Shell_SetPtr_WorkingDirectory(
     Shell* self,
     const MI_Char* str)
 {
@@ -183,7 +182,7 @@ MI_INLINE MI_Result MI_CALL Shell_SetPtr_StartDirectory(
         MI_FLAG_BORROW);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Clear_StartDirectory(
+MI_INLINE MI_Result MI_CALL Shell_Clear_WorkingDirectory(
     Shell* self)
 {
     return self->__instance.ft->ClearElementAt(
@@ -193,25 +192,33 @@ MI_INLINE MI_Result MI_CALL Shell_Clear_StartDirectory(
 
 MI_INLINE MI_Result MI_CALL Shell_Set_Environment(
     Shell* self,
-    const MI_Char* str)
+    const EnvironmentVariable * const * data,
+    MI_Uint32 size)
 {
+    MI_Array arr;
+    arr.data = (void*)data;
+    arr.size = size;
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
         2,
-        (MI_Value*)&str,
-        MI_STRING,
+        (MI_Value*)&arr,
+        MI_INSTANCEA,
         0);
 }
 
 MI_INLINE MI_Result MI_CALL Shell_SetPtr_Environment(
     Shell* self,
-    const MI_Char* str)
+    const EnvironmentVariable * const * data,
+    MI_Uint32 size)
 {
+    MI_Array arr;
+    arr.data = (void*)data;
+    arr.size = size;
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
         2,
-        (MI_Value*)&str,
-        MI_STRING,
+        (MI_Value*)&arr,
+        MI_INSTANCEA,
         MI_FLAG_BORROW);
 }
 
@@ -223,45 +230,13 @@ MI_INLINE MI_Result MI_CALL Shell_Clear_Environment(
         2);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Set_Timeout(
-    Shell* self,
-    MI_Datetime x)
-{
-    ((MI_DatetimeField*)&self->Timeout)->value = x;
-    ((MI_DatetimeField*)&self->Timeout)->exists = 1;
-    return MI_RESULT_OK;
-}
-
-MI_INLINE MI_Result MI_CALL Shell_Clear_Timeout(
-    Shell* self)
-{
-    memset((void*)&self->Timeout, 0, sizeof(self->Timeout));
-    return MI_RESULT_OK;
-}
-
-MI_INLINE MI_Result MI_CALL Shell_Set_IdleTimeout(
-    Shell* self,
-    MI_Datetime x)
-{
-    ((MI_DatetimeField*)&self->IdleTimeout)->value = x;
-    ((MI_DatetimeField*)&self->IdleTimeout)->exists = 1;
-    return MI_RESULT_OK;
-}
-
-MI_INLINE MI_Result MI_CALL Shell_Clear_IdleTimeout(
-    Shell* self)
-{
-    memset((void*)&self->IdleTimeout, 0, sizeof(self->IdleTimeout));
-    return MI_RESULT_OK;
-}
-
 MI_INLINE MI_Result MI_CALL Shell_Set_InputStreams(
     Shell* self,
     const MI_Char* str)
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        5,
+        3,
         (MI_Value*)&str,
         MI_STRING,
         0);
@@ -273,7 +248,7 @@ MI_INLINE MI_Result MI_CALL Shell_SetPtr_InputStreams(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        5,
+        3,
         (MI_Value*)&str,
         MI_STRING,
         MI_FLAG_BORROW);
@@ -284,7 +259,7 @@ MI_INLINE MI_Result MI_CALL Shell_Clear_InputStreams(
 {
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
-        5);
+        3);
 }
 
 MI_INLINE MI_Result MI_CALL Shell_Set_OutputStreams(
@@ -293,7 +268,7 @@ MI_INLINE MI_Result MI_CALL Shell_Set_OutputStreams(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        6,
+        4,
         (MI_Value*)&str,
         MI_STRING,
         0);
@@ -305,7 +280,7 @@ MI_INLINE MI_Result MI_CALL Shell_SetPtr_OutputStreams(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        6,
+        4,
         (MI_Value*)&str,
         MI_STRING,
         MI_FLAG_BORROW);
@@ -316,7 +291,7 @@ MI_INLINE MI_Result MI_CALL Shell_Clear_OutputStreams(
 {
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
-        6);
+        4);
 }
 
 MI_INLINE MI_Result MI_CALL Shell_Set_IsCompressed(
@@ -348,7 +323,7 @@ typedef struct _Shell_Command
     MI_Instance __instance;
     /*OUT*/ MI_ConstUint32Field MIReturn;
 MI_ConstStringField command;
-MI_ConstStringField argument;
+MI_ConstStringAField arguments;
     /*OUT*/ MI_ConstStringField CommandId;
 }
 Shell_Command;
@@ -438,31 +413,39 @@ MI_INLINE MI_Result MI_CALL Shell_Command_Clear_command(
         1);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Command_Set_argument(
+MI_INLINE MI_Result MI_CALL Shell_Command_Set_arguments(
     Shell_Command* self,
-    const MI_Char* str)
+    const MI_Char** data,
+    MI_Uint32 size)
 {
+    MI_Array arr;
+    arr.data = (void*)data;
+    arr.size = size;
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
         2,
-        (MI_Value*)&str,
-        MI_STRING,
+        (MI_Value*)&arr,
+        MI_STRINGA,
         0);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Command_SetPtr_argument(
+MI_INLINE MI_Result MI_CALL Shell_Command_SetPtr_arguments(
     Shell_Command* self,
-    const MI_Char* str)
+    const MI_Char** data,
+    MI_Uint32 size)
 {
+    MI_Array arr;
+    arr.data = (void*)data;
+    arr.size = size;
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
         2,
-        (MI_Value*)&str,
-        MI_STRING,
+        (MI_Value*)&arr,
+        MI_STRINGA,
         MI_FLAG_BORROW);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Command_Clear_argument(
+MI_INLINE MI_Result MI_CALL Shell_Command_Clear_arguments(
     Shell_Command* self)
 {
     return self->__instance.ft->ClearElementAt(

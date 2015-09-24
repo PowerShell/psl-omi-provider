@@ -14,7 +14,7 @@ LIBRARIES = miapi omi_error wsman xmlserializer protocol sock provmgr wql base p
 include $(TOP)/mak/rules.mak
 
 gen:
-	$(BINDIR)/omigen  -C $(TOP)/share/networkschema/CIM_Schema.mof schema.mof Shell -e Stream -e CommandState
+	$(BINDIR)/omigen  -C $(TOP)/share/networkschema/CIM_Schema.mof schema.mof Shell -e Stream -e CommandState -e EnvironmentVariable
 
 gen2:
 	$(BINDIR)/omigen  -C $(BINDIR)/omigen -C $(TOP)/cimschema/CIM_Schema.mof schema.mof Shell

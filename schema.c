@@ -11,6 +11,7 @@
 #include "Shell.h"
 #include "Stream.h"
 #include "CommandState.h"
+#include "EnvironmentVariable.h"
 
 /*
 **==============================================================================
@@ -29,6 +30,74 @@ extern MI_SchemaDecl schemaDecl;
 **
 **==============================================================================
 */
+
+/*
+**==============================================================================
+**
+** EnvironmentVariable
+**
+**==============================================================================
+*/
+
+/* property EnvironmentVariable.Name */
+static MI_CONST MI_PropertyDecl EnvironmentVariable_Name_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x006E6504, /* code */
+    MI_T("Name"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(EnvironmentVariable, Name), /* offset */
+    MI_T("EnvironmentVariable"), /* origin */
+    MI_T("EnvironmentVariable"), /* propagator */
+    NULL,
+};
+
+/* property EnvironmentVariable.Value */
+static MI_CONST MI_PropertyDecl EnvironmentVariable_Value_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x00766505, /* code */
+    MI_T("Value"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(EnvironmentVariable, Value), /* offset */
+    MI_T("EnvironmentVariable"), /* origin */
+    MI_T("EnvironmentVariable"), /* propagator */
+    NULL,
+};
+
+static MI_PropertyDecl MI_CONST* MI_CONST EnvironmentVariable_props[] =
+{
+    &EnvironmentVariable_Name_prop,
+    &EnvironmentVariable_Value_prop,
+};
+
+/* class EnvironmentVariable */
+MI_CONST MI_ClassDecl EnvironmentVariable_rtti =
+{
+    MI_FLAG_CLASS, /* flags */
+    0x00656513, /* code */
+    MI_T("EnvironmentVariable"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    EnvironmentVariable_props, /* properties */
+    MI_COUNT(EnvironmentVariable_props), /* numProperties */
+    sizeof(EnvironmentVariable), /* size */
+    NULL, /* superClass */
+    NULL, /* superClassDecl */
+    NULL, /* methods */
+    0, /* numMethods */
+    &schemaDecl, /* schema */
+    NULL, /* functions */
+    NULL, /* owningClass */
+};
 
 /*
 **==============================================================================
@@ -263,21 +332,36 @@ static MI_CONST MI_PropertyDecl Shell_Name_prop =
     NULL,
 };
 
-/* property Shell.StartDirectory */
-static MI_CONST MI_PropertyDecl Shell_StartDirectory_prop =
+/* property Shell.WorkingDirectory */
+static MI_CONST MI_PropertyDecl Shell_WorkingDirectory_prop =
 {
     MI_FLAG_PROPERTY, /* flags */
-    0x0073790E, /* code */
-    MI_T("StartDirectory"), /* name */
+    0x00777910, /* code */
+    MI_T("WorkingDirectory"), /* name */
     NULL, /* qualifiers */
     0, /* numQualifiers */
     MI_STRING, /* type */
     NULL, /* className */
     0, /* subscript */
-    offsetof(Shell, StartDirectory), /* offset */
+    offsetof(Shell, WorkingDirectory), /* offset */
     MI_T("Shell"), /* origin */
     MI_T("Shell"), /* propagator */
     NULL,
+};
+
+static MI_CONST MI_Char* Shell_Environment_EmbeddedInstance_qual_value = MI_T("EnvironmentVariable");
+
+static MI_CONST MI_Qualifier Shell_Environment_EmbeddedInstance_qual =
+{
+    MI_T("EmbeddedInstance"),
+    MI_STRING,
+    0,
+    &Shell_Environment_EmbeddedInstance_qual_value
+};
+
+static MI_Qualifier MI_CONST* MI_CONST Shell_Environment_quals[] =
+{
+    &Shell_Environment_EmbeddedInstance_qual,
 };
 
 /* property Shell.Environment */
@@ -286,46 +370,12 @@ static MI_CONST MI_PropertyDecl Shell_Environment_prop =
     MI_FLAG_PROPERTY, /* flags */
     0x0065740B, /* code */
     MI_T("Environment"), /* name */
-    NULL, /* qualifiers */
-    0, /* numQualifiers */
-    MI_STRING, /* type */
-    NULL, /* className */
+    Shell_Environment_quals, /* qualifiers */
+    MI_COUNT(Shell_Environment_quals), /* numQualifiers */
+    MI_INSTANCEA, /* type */
+    MI_T("EnvironmentVariable"), /* className */
     0, /* subscript */
     offsetof(Shell, Environment), /* offset */
-    MI_T("Shell"), /* origin */
-    MI_T("Shell"), /* propagator */
-    NULL,
-};
-
-/* property Shell.Timeout */
-static MI_CONST MI_PropertyDecl Shell_Timeout_prop =
-{
-    MI_FLAG_PROPERTY, /* flags */
-    0x00747407, /* code */
-    MI_T("Timeout"), /* name */
-    NULL, /* qualifiers */
-    0, /* numQualifiers */
-    MI_DATETIME, /* type */
-    NULL, /* className */
-    0, /* subscript */
-    offsetof(Shell, Timeout), /* offset */
-    MI_T("Shell"), /* origin */
-    MI_T("Shell"), /* propagator */
-    NULL,
-};
-
-/* property Shell.IdleTimeout */
-static MI_CONST MI_PropertyDecl Shell_IdleTimeout_prop =
-{
-    MI_FLAG_PROPERTY, /* flags */
-    0x0069740B, /* code */
-    MI_T("IdleTimeout"), /* name */
-    NULL, /* qualifiers */
-    0, /* numQualifiers */
-    MI_DATETIME, /* type */
-    NULL, /* className */
-    0, /* subscript */
-    offsetof(Shell, IdleTimeout), /* offset */
     MI_T("Shell"), /* origin */
     MI_T("Shell"), /* propagator */
     NULL,
@@ -385,10 +435,8 @@ static MI_CONST MI_PropertyDecl Shell_IsCompressed_prop =
 static MI_PropertyDecl MI_CONST* MI_CONST Shell_props[] =
 {
     &Shell_Name_prop,
-    &Shell_StartDirectory_prop,
+    &Shell_WorkingDirectory_prop,
     &Shell_Environment_prop,
-    &Shell_Timeout_prop,
-    &Shell_IdleTimeout_prop,
     &Shell_InputStreams_prop,
     &Shell_OutputStreams_prop,
     &Shell_IsCompressed_prop,
@@ -408,18 +456,18 @@ static MI_CONST MI_ParameterDecl Shell_Command_command_param =
     offsetof(Shell_Command, command), /* offset */
 };
 
-/* parameter Shell.Command(): argument */
-static MI_CONST MI_ParameterDecl Shell_Command_argument_param =
+/* parameter Shell.Command(): arguments */
+static MI_CONST MI_ParameterDecl Shell_Command_arguments_param =
 {
     MI_FLAG_PARAMETER, /* flags */
-    0x00617408, /* code */
-    MI_T("argument"), /* name */
+    0x00617309, /* code */
+    MI_T("arguments"), /* name */
     NULL, /* qualifiers */
     0, /* numQualifiers */
-    MI_STRING, /* type */
+    MI_STRINGA, /* type */
     NULL, /* className */
     0, /* subscript */
-    offsetof(Shell_Command, argument), /* offset */
+    offsetof(Shell_Command, arguments), /* offset */
 };
 
 /* parameter Shell.Command(): CommandId */
@@ -454,7 +502,7 @@ static MI_ParameterDecl MI_CONST* MI_CONST Shell_Command_params[] =
 {
     &Shell_Command_MIReturn_param,
     &Shell_Command_command_param,
-    &Shell_Command_argument_param,
+    &Shell_Command_arguments_param,
     &Shell_Command_CommandId_param,
 };
 
@@ -886,6 +934,7 @@ MI_Server* __mi_server;
 static MI_ClassDecl MI_CONST* MI_CONST classes[] =
 {
     &CommandState_rtti,
+    &EnvironmentVariable_rtti,
     &Shell_rtti,
     &Stream_rtti,
 };

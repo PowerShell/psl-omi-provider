@@ -924,7 +924,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
 {
     MI_Result miResult = MI_RESULT_OK;
     ShellData *shellData = FindShell(self, instanceName->Name.value);
-    MI_Instance *clonedIn = NULL;
+    Shell_Signal *clonedIn = NULL;
 
     if (!shellData)
     {
@@ -940,7 +940,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
         GOTO_ERROR(MI_RESULT_NOT_FOUND);
     }
 
-    miResult = MI_Instance_Clone(&in->__instance, &clonedIn);
+    miResult = Shell_Signal_Clone(in, &clonedIn);
     if (miResult != MI_RESULT_OK)
     {
         GOTO_ERROR(miResult);
@@ -956,7 +956,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
         shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].commonData = &shellData->command->common;
         shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].requestType = WSMAN_PLUGIN_REQUEST_SIGNAL;
         shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miRequestContext = context;
-        shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miOperationInstance = clonedIn;
+        shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miOperationInstance = &clonedIn->__instance;
 
         WSManPluginSignal(
             &shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].pluginRequest,
@@ -975,14 +975,14 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
         shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].commonData = &shellData->common;
         shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].requestType = WSMAN_PLUGIN_REQUEST_SIGNAL;
         shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miRequestContext = context;
-        shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miOperationInstance = clonedIn;
+        shellData->command->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].miOperationInstance = &clonedIn->__instance;
 
         WSManPluginSignal(
             &shellData->common.pluginRequest[WSMAN_PLUGIN_REQUEST_SIGNAL].pluginRequest,
             0,
             shellData->common.pluginOperationContext,
             NULL,
-            in->code.value);
+            clonedIn->code.value);
     }
 
     /* Posting on signal context happens when we get a WSManPluginOperationComplete callback */
@@ -992,7 +992,7 @@ error:
     MI_Context_PostResult(context, miResult);
     if (clonedIn)
     {
-        MI_Instance_Delete(clonedIn);
+        Shell_Signal_Delete(clonedIn);
     }
 }
 
@@ -1160,11 +1160,10 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
     */
 
     if (commandState &&
-        (Tcscmp(commandState, MI_T("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Done")) == 0))
+        (Tcscasecmp(commandState, WSMAN_COMMAND_STATE_DONE) == 0))
     {
         /* TODO: Mark stream as complete for either shell or command */
-        CommandState_SetPtr_state(&commandStateInst,
-            MI_T("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Done"));
+        CommandState_SetPtr_state(&commandStateInst, WSMAN_COMMAND_STATE_DONE);
 
 #if 0
         MI_Uint32 i;
@@ -1185,8 +1184,7 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
     }
     else
     {
-        CommandState_SetPtr_state(&commandStateInst,
-            MI_T("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Running"));
+        CommandState_SetPtr_state(&commandStateInst, WSMAN_COMMAND_STATE_RUNNING);
     }
 
     /* Stream holds the results of the inbound/outbound stream. A result can have more
@@ -1296,14 +1294,14 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
         if (pluginRequest->miRequestContext)
         {
             /* We have a pending request that needs to be terminated */
-            WSManPluginReceiveResult(requestDetails, WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA, NULL, NULL, MI_T("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Done"), errorCode);
+            WSManPluginReceiveResult(requestDetails, WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA, NULL, NULL, WSMAN_COMMAND_STATE_DONE, errorCode);
         }
         break;
 
    
         /* Send/Receive only need to post back the operation instance with the MIReturn code set */
-    case WSMAN_PLUGIN_REQUEST_SEND:
     case WSMAN_PLUGIN_REQUEST_SIGNAL:
+    case WSMAN_PLUGIN_REQUEST_SEND:
     {
         MI_Value miValue;
         MI_Context *miRequestContext = pluginRequest->miRequestContext;
@@ -1321,10 +1319,28 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
             MI_UINT32,
             0);
         
+        /* If this is the end signal code for the command we need to delete the commandData */
+        if (pluginRequest->requestType == WSMAN_PLUGIN_REQUEST_SIGNAL)
+        {
+            Shell_Signal *signalInstance = (Shell_Signal*)miOperationInstance;
+
+            if ((pluginRequest->commonData->dataType == CommonData_Type_Command) &&
+                signalInstance->code.value &&
+                ((Tcscasecmp(signalInstance->code.value, WSMAN_SIGNAL_CODE_EXIT) == 0) ||
+                 (Tcscasecmp(signalInstance->code.value, WSMAN_SIGNAL_CODE_TERMINATE) == 0)))
+            {
+                /* The command has now completed and everything needs to be deleted */
+                CommandData *commandData = (CommandData *)pluginRequest->commonData;
+                commandData->shellData->command = NULL;
+                Batch_Delete(commandData->common.batch);
+            }
+        }
+
         miResult = MI_Context_PostInstance(miRequestContext, miOperationInstance);
         MI_Context_PostResult(miRequestContext, miResult);
 
         MI_Instance_Delete(miOperationInstance);
+        
         break;
     }
     }

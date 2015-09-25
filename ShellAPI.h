@@ -134,11 +134,10 @@ MI_Uint32 MI_CALL WSManPluginReportContext(
     _In_ MI_Uint32 flags,
     _In_ void * context
     );
-
-#define WSMAN_SHELL_NS "http://schemas.microsoft.com/wbem/wsman/1/windows/shell"
-#define WSMAN_COMMAND_STATE_DONE WSMAN_SHELL_NS "/CommandState/Done"
-#define WSMAN_COMMAND_STATE_PENDING WSMAN_SHELL_NS "/CommandState/Pending"
-#define WSMAN_COMMAND_STATE_RUNNING WSMAN_SHELL_NS "/CommandState/Running"
+#define WSMAN_SHELL_NS PAL_T("http://schemas.microsoft.com/wbem/wsman/1/windows/shell")
+#define WSMAN_COMMAND_STATE_DONE WSMAN_SHELL_NS PAL_T("/CommandState/Done")
+#define WSMAN_COMMAND_STATE_PENDING WSMAN_SHELL_NS PAL_T("/CommandState/Pending")
+#define WSMAN_COMMAND_STATE_RUNNING WSMAN_SHELL_NS PAL_T("/CommandState/Running")
 
 #define WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA 1
 #define WSMAN_FLAG_RECEIVE_FLUSH               2
@@ -285,6 +284,13 @@ void MI_CALL WSManPluginReceive(
     _In_opt_ void * commandContext,
     _In_opt_ WSMAN_STREAM_ID_SET *streamSet
     );
+
+/* Default signal codes where _EXIT comes from the client to confirm the command has completed and is the last request targeting the command */
+#define WSMAN_SIGNAL_CODE_TERMINATE WSMAN_SHELL_NS PAL_T("/signal/Terminate") 
+#define WSMAN_SIGNAL_CODE_BREAK     WSMAN_SHELL_NS PAL_T("/signal/Break")
+#define WSMAN_SIGNAL_CODE_PAUSE     WSMAN_SHELL_NS PAL_T("/signal/Pause")
+#define WSMAN_SIGNAL_CODE_RESUME    WSMAN_SHELL_NS PAL_T("/signal/Resume")
+#define WSMAN_SIGNAL_CODE_EXIT      WSMAN_SHELL_NS PAL_T("/signal/Exit")
 
 void MI_CALL WSManPluginSignal(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,

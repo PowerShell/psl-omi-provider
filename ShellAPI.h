@@ -317,4 +317,11 @@ void MI_CALL WSManPluginReleaseCommandContext(
     _In_ void * commandContext
     );
 
+typedef void (MI_CALL *WSManPluginShutdownCallback)(_In_opt_ void *shutdownContext);
+
+void MI_CALL WSManPluginRegisterShutdownCallback(
+    _In_ WSMAN_PLUGIN_REQUEST *requestDetails, 
+    _In_ WSManPluginShutdownCallback shutdownCallback, 
+    _In_opt_ void *shutdownContext);
+
 #endif /* _SHELL_API_H_ */

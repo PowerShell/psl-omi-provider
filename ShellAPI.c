@@ -152,9 +152,12 @@ void MI_CALL WSManPluginSend(
 	PluginShell *shell = (PluginShell*) shellContext;
 	PluginCommand *command = (PluginCommand*) commandContext;
 	const MI_Char * commandState;
+    MI_Uint32 resultFlags = 0;
+
 	if (flags == WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA)
 	{
 		commandState = WSMAN_COMMAND_STATE_DONE;
+        resultFlags = WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA;
 	}
 	else
 	{
@@ -170,11 +173,11 @@ void MI_CALL WSManPluginSend(
 	/* Send the data back to the client for the pending Receive call */
     if (command)
     {
-        WSManPluginReceiveResult(command->receiveRequestDetails, 0, stream, inboundData, commandState, 0);
+        WSManPluginReceiveResult(command->receiveRequestDetails, resultFlags, stream, inboundData, commandState, 0);
     }
     else
     {
-        WSManPluginReceiveResult(shell->receiveRequestDetails, 0, stream, inboundData, commandState, 0);
+        WSManPluginReceiveResult(shell->receiveRequestDetails, resultFlags, stream, inboundData, commandState, 0);
     }
 
 	if (flags == WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA)

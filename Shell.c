@@ -20,20 +20,6 @@
 #define GOTO_ERROR(result) { miResult = result; goto error; }
 #define GOTO_ERROR_EX(result, label) { miResult = result; goto label; }
 
-/* Indexes into the WSMAN_PLUGIN_REQUEST arrays in CommandData and ShellData */
-
-/* Commands and shells can have multiple streams associated with them. */
-typedef struct _StreamData
-{
-	MI_Char *streamName;
-	MI_Boolean done;
-} StreamData;
-typedef struct _StreamDataSet
-{
-    MI_Uint32 streamDataCount;
-    StreamData *streamData;
-} StreamDataSet;
-
 typedef struct _StreamSet
 {
     MI_Uint32 streamNamesCount;
@@ -42,11 +28,11 @@ typedef struct _StreamSet
 /* Index for CommonData arrays as well as the type of the CommonData */
 typedef enum
 {
-    WSMAN_PLUGIN_REQUEST_SHELL = 0,
-    WSMAN_PLUGIN_REQUEST_COMMAND = 1,
-    WSMAN_PLUGIN_REQUEST_SEND = 2,
-    WSMAN_PLUGIN_REQUEST_RECEIVE = 3,
-    WSMAN_PLUGIN_REQUEST_SIGNAL = 4
+    CommonData_Type_Shell = 0,
+    CommonData_Type_Command = 1,
+    CommonData_Type_Send = 2,
+    CommonData_Type_Receive = 3,
+    CommonData_Type_Signal = 4
 } CommonData_Type;
 
 typedef struct _CommonData CommonData;
@@ -79,6 +65,9 @@ struct _CommonData
 
     /* Batch allocator for this request data object and all memory we allocate inside this object */
     Batch *batch;
+
+    WSManPluginShutdownCallback shutdownCallback;
+    void *shutdownContext;
 } ;
 
 struct _ShellData
@@ -138,6 +127,8 @@ struct _ReceiveData
     /* MUST BE FIRST ITEM IN STRUCTURE as pointer to CommonData gets cast to ReceiveData */
     CommonData common;
 
+    StreamSet outputStreams;
+    WSMAN_STREAM_ID_SET wsmanOutputStreams;
 };
 
 struct _SignalData
@@ -158,7 +149,7 @@ struct _Shell_Self
 } ;
 
 /* Based on the shell ID, find the existing ShellData object */
-ShellData * FindShell(struct _Shell_Self *shell, const MI_Char *shellId)
+ShellData * FindShellFromSelf(struct _Shell_Self *shell, const MI_Char *shellId)
 {
     ShellData *shellData = shell->shellList;
 
@@ -243,7 +234,7 @@ void MI_CALL Shell_GetInstance(Shell_Self* self, MI_Context* context,
         const Shell* instanceName, const MI_PropertySet* propertySet)
 {
     MI_Result miResult = MI_RESULT_NOT_FOUND;
-    ShellData *shellData = FindShell(self, instanceName->Name.value);
+    ShellData *shellData = FindShellFromSelf(self, instanceName->Name.value);
 
     if (shellData)
     {
@@ -446,7 +437,7 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
 
     /* TODO: Fill in shellData->common.pluginRequest */
     shellData->common.parentData = NULL;    /* We are the top-level shell object */
-    shellData->common.requestType = WSMAN_PLUGIN_REQUEST_SHELL;
+    shellData->common.requestType = CommonData_Type_Shell;
     shellData->common.miRequestContext = context;
     shellData->common.miOperationInstance = miOperationInstance;
     shellData->common.batch = batch;
@@ -480,6 +471,31 @@ void MI_CALL Shell_ModifyInstance(Shell_Self* self, MI_Context* context,
     MI_Context_PostResult(context, MI_RESULT_NOT_SUPPORTED);
 }
 
+void RecursiveNotifyShutdown(CommonData *commonData)
+{
+    CommonData *child = NULL;;
+
+    /* If there are children notify them first */
+    if (commonData->requestType == CommonData_Type_Shell)
+    {
+        child = ((ShellData*)commonData)->childNext;
+    }
+    else if (commonData->requestType == CommonData_Type_Command)
+    {
+        child = ((CommandData*)commonData)->childNext;
+    }
+
+    while (child)
+    {
+        RecursiveNotifyShutdown(child);
+        child = child->siblingData;
+    }
+
+    /* Now notify for this object if a shutduwn registration is present */
+    if (commonData->shutdownCallback)
+        commonData->shutdownCallback(commonData->shutdownContext);
+}
+
 /* Delete a shell instance. This should not be done by the client until
  * the command is finished and shut down.
  */
@@ -490,24 +506,16 @@ void MI_CALL Shell_DeleteInstance(Shell_Self* self, MI_Context* context,
     ShellData *shellData;
     MI_Result miResult = MI_RESULT_NOT_FOUND;
 
-    shellData = FindShell(self, instanceName->Name.value);
+    shellData = FindShellFromSelf(self, instanceName->Name.value);
 
     if (shellData)
     {
-        /* TODO: Is there an active child requests? */
+        /* Notify shell to shut itself down. We don't delete things
+           here because the shell itself will tell us when it is finished
+           */
+        RecursiveNotifyShutdown((CommonData*)shellData);
 
-        /* Decouple shellData from list of active shells */
-        ShellData **pointerToPatch = &self->shellList;
-
-        while (*pointerToPatch && (*pointerToPatch != shellData))
-        {
-            pointerToPatch = (ShellData **) &(*pointerToPatch)->common.siblingData;
-        }
-        if (*pointerToPatch)
-            *pointerToPatch = (ShellData *) shellData->common.siblingData;
-
-        /* Delete the shell object and all the memory owned by it (owned by the batch) */
-        Batch_Delete(shellData->common.batch);
+        /* TODO: Do we need to wait for the shell shutdown to complete? */
 
         miResult = MI_RESULT_OK;
     }
@@ -574,7 +582,7 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
     MI_Instance *miOperationInstance = NULL;
     Batch *batch = NULL;
 
-    shellData = FindShell(self, instanceName->Name.value);
+    shellData = FindShellFromSelf(self, instanceName->Name.value);
 
     if (!shellData)
     {
@@ -605,38 +613,6 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
 
     Stprintf(commandData->commandId, ID_LENGTH, MI_T("%llx"), (MI_Uint64)commandData->commandId);
 
-#if 0
-    /* Set up the stream objects for the command. We need to hold extra state so we need to copy it */
-    commandData->inputStreams.streamData = Batch_Get(batch, shellData->inputStreams.streamNamesCount * sizeof(StreamData));
-    if (!commandData->inputStreams.streamData)
-    {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
-    }
-
-    {
-        MI_Uint32 i;
-        for (i = 0; i != shellData->inputStreams.streamNamesCount; i++)
-        {
-            commandData->inputStreams.streamData[i].streamName = shellData->inputStreams.streamNames[i];
-        }
-    }
-
-    commandData->outputStreams.streamData = Batch_Get(batch, shellData->outputStreams.streamNamesCount * sizeof(StreamData));
-    if (!commandData->outputStreams.streamData)
-    {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
-    }
-
-    /* Set up stream name pointers */
-    {
-        MI_Uint32 i;
-        for (i = 0; i != shellData->outputStreams.streamNamesCount; i++)
-        {
-            commandData->outputStreams.streamData[i].streamName = shellData->outputStreams.streamNames[i];
-        }
-    }
-#endif
-
     /* Create command instance to send back to client */
     miResult = Instance_Clone(&in->__instance, &miOperationInstance, batch);
     if (miResult != MI_RESULT_OK)
@@ -653,7 +629,7 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
 
     /* TODO: Fill in shellData->command->common.pluginRequest */
     commandData->common.parentData = (CommonData*)shellData;
-    commandData->common.requestType = WSMAN_PLUGIN_REQUEST_COMMAND;
+    commandData->common.requestType = CommonData_Type_Command;
     commandData->common.miRequestContext = context;
     commandData->common.miOperationInstance = miOperationInstance;
 
@@ -682,7 +658,7 @@ error:
 
 }
 
-CommandData *GetCommand(const ShellData *shell, const MI_Char *commandId)
+CommandData *FindCommandFromShell(const ShellData *shell, const MI_Char *commandId)
 {
     CommonData *child = shell->childNext;
 
@@ -691,7 +667,7 @@ CommandData *GetCommand(const ShellData *shell, const MI_Char *commandId)
 
     while (child)
     {
-        if (child->requestType == WSMAN_PLUGIN_REQUEST_COMMAND)
+        if (child->requestType == CommonData_Type_Command)
         {
             CommandData *command = (CommandData*)child;
             if (Tcscmp(commandId, command->commandId) == 0)
@@ -720,7 +696,7 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
 {
     MI_Result miResult = MI_RESULT_OK;
     MI_Uint32 pluginFlags = 0;
-    ShellData *shellData = FindShell(self, instanceName->Name.value);
+    ShellData *shellData = FindShellFromSelf(self, instanceName->Name.value);
     CommandData *commandData = NULL;
     SendData *sendData = NULL;
     Batch *batch = NULL;
@@ -739,7 +715,7 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
     /* Check to make sure the command ID is correct if this send is aimed at the command */
     if (in->streamData.value->commandId.exists)
     {
-        commandData = GetCommand(shellData, in->streamData.value->commandId.value);
+        commandData = FindCommandFromShell(shellData, in->streamData.value->commandId.value);
         if (commandData == NULL)
         {
             GOTO_ERROR(MI_RESULT_NOT_FOUND);
@@ -821,7 +797,7 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
         sendData->common.batch = batch;
         sendData->common.miRequestContext = context;
         sendData->common.miOperationInstance = clonedIn;
-        sendData->common.requestType = WSMAN_PLUGIN_REQUEST_SEND;
+        sendData->common.requestType = CommonData_Type_Send;
         /* TODO: Fill in sendData->common.pluginRequest */
 
         if (commandData)
@@ -894,7 +870,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
         const Shell_Receive* in)
 {
     MI_Result miResult = MI_RESULT_OK;
-    ShellData *shellData = FindShell(self, instanceName->Name.value);
+    ShellData *shellData = FindShellFromSelf(self, instanceName->Name.value);
     CommandData *commandData = NULL;
     ReceiveData *receiveData = NULL;
     Batch *batch = NULL;
@@ -907,7 +883,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     /* If we have a command ID make sure it is the correct one */
     if (in->commandId.exists)
     {
-        commandData = GetCommand(shellData, in->commandId.value);
+        commandData = FindCommandFromShell(shellData, in->commandId.value);
         if (commandData == NULL)
         {
             GOTO_ERROR(MI_RESULT_NOT_FOUND);
@@ -916,7 +892,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
         /* Find an existing receiveData is one exists */
         {
             CommonData *tmp = commandData->childNext;
-            while (tmp && (tmp->requestType != WSMAN_PLUGIN_REQUEST_RECEIVE))
+            while (tmp && (tmp->requestType != CommonData_Type_Receive))
             {
                 tmp = tmp->siblingData;
             }
@@ -927,7 +903,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     {
         /* Find an existing receiveData is one exists */
         CommonData *tmp = shellData->childNext;
-        while (tmp && (tmp->requestType != WSMAN_PLUGIN_REQUEST_RECEIVE))
+        while (tmp && (tmp->requestType != CommonData_Type_Receive))
         {
             tmp = tmp->siblingData;
         }
@@ -961,10 +937,19 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     {
         GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
+
+    if (!ExtractStreamSet(((Shell_Receive*)clonedIn)->streamSet.value, &receiveData->outputStreams, batch))
+    {
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
+    receiveData->wsmanOutputStreams.streamIDsCount = receiveData->outputStreams.streamNamesCount;
+    receiveData->wsmanOutputStreams.streamIDs = (const MI_Char**) receiveData->outputStreams.streamNames;
+
     receiveData->common.batch = batch;
     receiveData->common.miRequestContext = context;
     receiveData->common.miOperationInstance = clonedIn;
-    receiveData->common.requestType = WSMAN_PLUGIN_REQUEST_RECEIVE;
+    receiveData->common.requestType = CommonData_Type_Receive;
     /* TODO: Fill in receiveData->common.pluginRequest */
 
 
@@ -982,7 +967,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
             0,
             shellData->pluginShellContext,
             commandData->pluginCommandContext,
-            NULL);
+            &receiveData->wsmanOutputStreams);
     }
     else
     {
@@ -998,7 +983,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
             0,
             shellData->pluginShellContext,
             NULL,
-            NULL);
+            &receiveData->wsmanOutputStreams);
     }
 
     /* Posting on receive context happens when we get WSManPluginOperationComplete callback to terminate the request or WSManPluginReceiveResult with some data */
@@ -1026,7 +1011,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
         const Shell_Signal* in)
 {
     MI_Result miResult = MI_RESULT_OK;
-    ShellData *shellData = FindShell(self, instanceName->Name.value);
+    ShellData *shellData = FindShellFromSelf(self, instanceName->Name.value);
     CommandData *commandData = NULL;
     SignalData *signalData = NULL;
     Batch *batch = NULL;
@@ -1043,7 +1028,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
     /* If we have a command ID make sure it is the correct one */
     if (in->commandId.exists)
     {
-        commandData = GetCommand(shellData, in->commandId.value);
+        commandData = FindCommandFromShell(shellData, in->commandId.value);
         if (commandData == NULL)
         {
             GOTO_ERROR(MI_RESULT_NOT_FOUND);
@@ -1070,7 +1055,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
     signalData->common.batch = batch;
     signalData->common.miRequestContext = context;
     signalData->common.miOperationInstance = clonedIn;
-    signalData->common.requestType = WSMAN_PLUGIN_REQUEST_RECEIVE;
+    signalData->common.requestType = CommonData_Type_Signal;
     /* TODO: Fill in signalData->common.pluginRequest */
 
     if (commandData)
@@ -1127,6 +1112,23 @@ void MI_CALL Shell_Invoke_Connect(Shell_Self* self, MI_Context* context,
     MI_Context_PostResult(context, MI_RESULT_NOT_SUPPORTED);
 }
 
+ShellData *GetShellFromOperation(CommonData *commonData)
+{
+    if (commonData->parentData == NULL)
+        return (ShellData*)commonData;
+    
+    return GetShellFromOperation(commonData->parentData);
+}
+
+CommandData *GetCommandFromOperation(CommonData *commonData)
+{
+    if (commonData == NULL)
+        return NULL;
+    if (commonData->requestType == CommonData_Type_Command)
+        return (CommandData *)commonData;
+
+    return GetCommandFromOperation(commonData->parentData);
+}
 
 /* report a shell or command context from teh winrm plugin. We use this for future calls into the plugin.
  This also means the shell or command has been started successfully so we can post the operation instance
@@ -1142,11 +1144,11 @@ MI_Uint32 MI_CALL WSManPluginReportContext(
     MI_Result miResult;
 
     /* Grab the providers context, which may be shell or command, and store it in our object */
-    if (commonData->requestType == WSMAN_PLUGIN_REQUEST_SHELL)
+    if (commonData->requestType == CommonData_Type_Shell)
     {
         ((ShellData*)commonData)->pluginShellContext = context;
     }
-    else if (commonData->requestType == WSMAN_PLUGIN_REQUEST_COMMAND)
+    else if (commonData->requestType == CommonData_Type_Command)
     {
         ((CommandData*)commonData)->pluginCommandContext = context;
     }
@@ -1199,7 +1201,7 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
     memset(&decodeBuffer, 0, sizeof(decodeBuffer));
     memset(&decodedBuffer, 0, sizeof(decodedBuffer));
 
-    if (commonData->requestType != WSMAN_PLUGIN_REQUEST_RECEIVE)
+    if (commonData->requestType != CommonData_Type_Receive)
         return MI_RESULT_INVALID_PARAMETER;
 
     /* TODO: Which stream if stream is NULL? */
@@ -1219,9 +1221,12 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
     receiveContext = commonData->miRequestContext;
     commonData->miRequestContext = NULL;
 
-    /* Construct our instance result objects */
-    receive = (Shell_Receive*)commonData->miOperationInstance;
-    commonData->miOperationInstance = NULL;
+    /* Clone the result object for Receive because we will reuse it for each receive response */
+    miResult = Instance_Clone(commonData->miOperationInstance, (MI_Instance**)&receive, NULL);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR_EX(miResult, errorSkipInstanceDeletes);
+    }
 
     miResult =  CommandState_Construct(&commandStateInst, receiveContext);
     if (miResult != MI_RESULT_OK)
@@ -1238,56 +1243,62 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
     }
 
     /* Set the command ID for the instances that need it */
-    if (commonData->parentData->requestType == WSMAN_PLUGIN_REQUEST_COMMAND)
+    if (commonData->parentData->requestType == CommonData_Type_Command)
     {
         CommandData *commandData = (CommandData*)commonData->parentData;
         CommandState_SetPtr_commandId(&commandStateInst, commandData->commandId);
         Stream_SetPtr_commandId(&receiveStream, commandData->commandId);
     }
 
+    if (streamResult)
+    {
+        decodeBuffer.buffer = (MI_Char*)streamResult->binaryData.data;
+        decodeBuffer.bufferLength = streamResult->binaryData.dataLength;
+        decodeBuffer.bufferUsed = decodeBuffer.bufferLength;
 
+        if (IsStreamCompressed(commonData))
+        {
+            /* Re-compress it from decodeBuffer to decodedBuffer. The result buffer
+             * gets allocated in this function and we need to free it.
+             */
+            miResult = CompressBuffer(&decodeBuffer, &decodedBuffer, sizeof(MI_Char));
+            if (miResult != MI_RESULT_OK)
+            {
+                decodeBuffer.buffer = NULL;
+                GOTO_ERROR(miResult);
+            }
+
+            /* switch the decodedBuffer back to decodeBuffer for further processing.
+             */
+            decodeBuffer = decodedBuffer;
+        }
+
+        /* TODO: This does not support unicode MI_Char strings */
+        /* NOTE: Base64EncodeBuffer allocates enough space for a NULL terminator */
+        miResult = Base64EncodeBuffer(&decodeBuffer, &decodedBuffer);
+
+        /* Free previously allocated buffer if it was compressed. */
+        if (IsStreamCompressed(commonData))
+        {
+            free(decodeBuffer.buffer);
+        }
+        decodeBuffer.buffer = NULL;
+
+        if (miResult != MI_RESULT_OK)
+        {
+            GOTO_ERROR(miResult);
+        }
+
+        /* Set the null terminator on the end of the buffer as this is supposed to be a string*/
+        memset(decodedBuffer.buffer + decodedBuffer.bufferUsed, 0, sizeof(MI_Char));
+        
+        /* Add the final string to the stream. This is just a pointer to it and
+        * is not getting copied so we need to delete the buffer after we have posted the instance
+        * to the receive context.
+        */
+        Stream_SetPtr_data(&receiveStream, decodedBuffer.buffer);
+    }
     
-    /* TODO: Does powershell use binary data rather than string? */
-    decodeBuffer.buffer = (MI_Char*) streamResult->binaryData.data;
-    decodeBuffer.bufferLength = streamResult->binaryData.dataLength;
-    decodeBuffer.bufferUsed = decodeBuffer.bufferLength;
-
-    if (IsStreamCompressed(commonData))
-    {
-		/* Re-compress it from decodeBuffer to decodedBuffer. The result buffer
-		 * gets allocated in this function and we need to free it.
-		 */
-		miResult = CompressBuffer(&decodeBuffer, &decodedBuffer, sizeof(MI_Char));
-		if (miResult != MI_RESULT_OK)
-		{
-			decodeBuffer.buffer = NULL;
-			GOTO_ERROR(miResult);
-		}
-
-		/* switch the decodedBuffer back to decodeBuffer for further processing.
-		 */
-		decodeBuffer = decodedBuffer;
-	}
-
-    /* TODO: This does not support unicode MI_Char strings */
-    /* NOTE: Base64EncodeBuffer allocates enough space for a NULL terminator */
-    miResult = Base64EncodeBuffer(&decodeBuffer, &decodedBuffer);
-
-    /* Free previously allocated buffer if it was compressed. */
-    if (IsStreamCompressed(commonData))
-    {
-        free(decodeBuffer.buffer);
-    }
-    decodeBuffer.buffer = NULL;
-
-    if (miResult != MI_RESULT_OK)
-    {
-    	GOTO_ERROR(miResult);
-    }
-
-    /* Set the null terminator on the end of the buffer as this is supposed to be a string*/
-    memset(decodedBuffer.buffer+decodedBuffer.bufferUsed, 0, sizeof(MI_Char));
-
     /* CommandState tells the client if we are done or not with this stream.
     */
 
@@ -1296,19 +1307,6 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
     {
         /* TODO: Mark stream as complete for either shell or command */
         CommandState_SetPtr_state(&commandStateInst, WSMAN_COMMAND_STATE_DONE);
-
-#if 0
-        MI_Uint32 i;
-        /* find and mark the stream as done in our records for when command is terminated and we need to terminate streams */
-        for (i = 0; i != commandData->shellData->outboundStreamNamesCount; i++)
-        {
-            if (Tcscmp(stream, commandData->outputStreams[i].streamName))
-            {
-                commandData->outputStreams[i].done = MI_TRUE;
-                break;
-            }
-        }
-#endif
     }
     else if (commandState)
     {
@@ -1327,7 +1325,10 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
     else
         Stream_Set_endOfStream(&receiveStream, MI_FALSE);
 
-    Stream_SetPtr_streamName(&receiveStream, stream);
+    if (stream)
+    {
+        Stream_SetPtr_streamName(&receiveStream, stream);
+    }
 
     /* The result of the Receive contains the command results and a set of streams.
     * We only support one stream at a time for now.
@@ -1335,11 +1336,6 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
     Shell_Receive_Set_MIReturn(receive, MI_RESULT_OK);
     Shell_Receive_SetPtr_CommandState(receive, &commandStateInst);
 
-    /* Add the final string to the stream. This is just a pointer to it and
-     * is not getting copied so we need to delete the buffer after we have posted the instance
-     * to the receive context.
-     */
-    Stream_SetPtr_data(&receiveStream, decodedBuffer.buffer);
 
     /* Add the stream embedded instance to the receive result.  */
     Shell_Receive_SetPtr_Stream(receive, &receiveStream);
@@ -1386,6 +1382,30 @@ MI_Uint32 MI_CALL WSManPluginGetConfiguration (
     return (MI_Uint32)MI_RESULT_FAILED;
 }
 
+MI_Boolean DetachOperationFromParent(CommonData *commonData)
+{
+    CommonData *parent = commonData->parentData;
+    CommonData **parentsChildren;
+
+    if (parent->requestType == CommonData_Type_Command)
+        parentsChildren = &((CommandData*)parent)->childNext;
+    else
+        parentsChildren = &((ShellData*)parent)->childNext;
+
+    while (*parentsChildren)
+    {
+        if ((*parentsChildren) == commonData)
+        {
+            /* found it, remove it from the list */
+            (*parentsChildren) = commonData->siblingData;
+            return MI_TRUE;
+        }
+        parentsChildren = &(*parentsChildren)->siblingData;
+    }
+
+    return MI_FALSE;
+}
+
 /*
 * Reports the completion of an operation by all operation entry points except for the WSMAN_PLUGIN_STARTUP and WSMAN_PLUGIN_SHUTDOWN methods.
 */
@@ -1402,17 +1422,35 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
     /* Question is: which request is this? */
     switch (commonData->requestType)
     {
-    case WSMAN_PLUGIN_REQUEST_SHELL:
+    case CommonData_Type_Shell:
+    {
         /* TODO: Shell has completed. We should get no more calls after this */
-        /* Remove the shell data object from the shell list */
-        /* Delete the shell batch */
+        /* Did we already send the response back? If not we need to do something */
+        /* TODO: Are there other outstanding operations? */
+
+        ShellData *shellData = (ShellData *)commonData;
+        ShellData **pointerToPatch = &shellData->shell->shellList;
+
+        while (*pointerToPatch && (*pointerToPatch != shellData))
+        {
+            pointerToPatch = (ShellData **)&(*pointerToPatch)->common.siblingData;
+        }
+        if (*pointerToPatch)
+            *pointerToPatch = (ShellData *)shellData->common.siblingData;
+
+        /* Delete the shell object and all the memory owned by it (owned by the batch) */
+        Batch_Delete(commonData->batch);
         break;
-    case WSMAN_PLUGIN_REQUEST_COMMAND:
+    }
+    case CommonData_Type_Command:
         /* TODO: This command is complete. No more calls for this command should happen */
-        /* Remove the command data pointer from the owning shell */
-        /* Delete the command batch */
+        /* TODO: Did we already send the response back? If not we need to do something */
+        /* TODO: Are there any active child objects? */
+
+        DetachOperationFromParent(commonData);
+        Batch_Delete(commonData->batch);
         break;
-    case WSMAN_PLUGIN_REQUEST_RECEIVE:
+    case CommonData_Type_Receive:
         /* TODO: This is the termination of the receive. No more will happen for either the command or shell, depending on which is is aimed at */
         /* We may or may not have a pending Receive protocol packet for this depending on if we have already send a command completion message or not */
         if (commonData->miRequestContext)
@@ -1420,14 +1458,15 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
             /* We have a pending request that needs to be terminated */
             WSManPluginReceiveResult(requestDetails, WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA, NULL, NULL, WSMAN_COMMAND_STATE_DONE, errorCode);
         }
-        /* TODO: Clean-up here */
-        /* TODO: Remove this item from the parent object */
-        /* TODO: Delete the batch */
+
+        /* Clean up the Receive data as there is nothing else going to happen */
+        DetachOperationFromParent(commonData);
+        Batch_Delete(commonData->batch);
         break;
 
     /* Send/Receive only need to post back the operation instance with the MIReturn code set */
-    case WSMAN_PLUGIN_REQUEST_SIGNAL:
-    case WSMAN_PLUGIN_REQUEST_SEND:
+    case CommonData_Type_Signal:
+    case CommonData_Type_Send:
     {
         MI_Value miValue;
         MI_Context *miRequestContext = commonData->miRequestContext;
@@ -1445,22 +1484,26 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
             MI_UINT32,
             0);
         
+#if 0
+        /* TODO: Do we need to do this? There will be an OperationComplete on the command to achieve this won't there? */
         /* If this is the end signal code for the command we need to delete the commandData */
-        if (commonData->requestType == WSMAN_PLUGIN_REQUEST_SIGNAL)
+        if (commonData->requestType == CommonData_Type_Signal)
         {
             Shell_Signal *signalInstance = (Shell_Signal*)miOperationInstance;
+            CommandData *commandData = GetCommandFromOperation(commonData);
 
-            if ((commonData->parentData->requestType == WSMAN_PLUGIN_REQUEST_COMMAND) &&
+            if (commandData &&
                 signalInstance->code.value &&
                 ((Tcscasecmp(signalInstance->code.value, WSMAN_SIGNAL_CODE_EXIT) == 0) ||
                  (Tcscasecmp(signalInstance->code.value, WSMAN_SIGNAL_CODE_TERMINATE) == 0)))
             {
                 /* The command has now completed and everything needs to be deleted */
-                CommandData *commandData = (CommandData *)commonData->parentData;
-                commandData->shellData->command = NULL;
+                /* TODO: Need to make sure there aren't other active child operations */
+                DetachOperationFromParent((CommonData*)commandData);
                 Batch_Delete(commandData->common.batch);
             }
         }
+#endif
 
         miResult = MI_Context_PostInstance(miRequestContext, miOperationInstance);
         MI_Context_PostResult(miRequestContext, miResult);
@@ -1468,8 +1511,10 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
         MI_Instance_Delete(miOperationInstance);
 
         /* Remove self from parent */
+        DetachOperationFromParent(commonData);
         /* Delete out batch */
-        
+        Batch_Delete(commonData->batch);
+
         break;
     }
     }
@@ -1490,4 +1535,15 @@ MI_Uint32 MI_CALL WSManPluginReportCompletion(
 MI_Uint32 MI_CALL WSManPluginFreeRequestDetails(_In_ WSMAN_PLUGIN_REQUEST *requestDetails)
 {
 	return MI_RESULT_OK;
+}
+
+
+void MI_CALL WSManPluginRegisterShutdownCallback(
+    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+    _In_ WSManPluginShutdownCallback shutdownCallback,
+    _In_opt_ void *shutdownContext)
+{
+    CommonData *commonData = (CommonData*)requestDetails;
+    commonData->shutdownCallback = shutdownCallback;
+    commonData->shutdownContext = shutdownContext;
 }

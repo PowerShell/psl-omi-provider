@@ -4,6 +4,7 @@
 
 #include "ShellAPI.h"
 #include <pal/lock.h>
+#include <pal/thread.h>
 
 typedef struct _PluginCommand PluginCommand;
 typedef struct _PluginDetails PluginDetails;
@@ -140,21 +141,28 @@ void MI_CALL WSManPluginReleaseCommandContext(
 	shell->command = NULL;
 }
 
-void MI_CALL WSManPluginSend(
-    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-    _In_ MI_Uint32 flags,
-    _In_ void * shellContext,
-    _In_opt_ void * commandContext,
-    _In_ const MI_Char * stream,
-    _In_ WSMAN_DATA *inboundData
-    )
+/* Swich threads so we don't lock up some IO thread */
+
+typedef struct _WSManPluginSendData
 {
-	PluginShell *shell = (PluginShell*) shellContext;
-	PluginCommand *command = (PluginCommand*) commandContext;
+    _In_ WSMAN_PLUGIN_REQUEST *requestDetails;
+    _In_ MI_Uint32 flags;
+    _In_ void * shellContext;
+    _In_opt_ void * commandContext;
+    _In_ const MI_Char * stream;
+    _In_ WSMAN_DATA *inboundData;
+} WSManPluginSendData;
+
+PAL_Uint32  _WSManPluginSend(void *param)
+{
+    WSManPluginSendData *pData = (WSManPluginSendData*)param;
+
+	PluginShell *shell = (PluginShell*)pData->shellContext;
+	PluginCommand *command = (PluginCommand*)pData->commandContext;
 	const MI_Char * commandState;
     MI_Uint32 resultFlags = 0;
 
-	if (flags == WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA)
+	if (pData->flags == WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA)
 	{
 		commandState = WSMAN_COMMAND_STATE_DONE;
         resultFlags = WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA;
@@ -173,23 +181,55 @@ void MI_CALL WSManPluginSend(
 	/* Send the data back to the client for the pending Receive call */
     if (command)
     {
-        WSManPluginReceiveResult(command->receiveRequestDetails, resultFlags, stream, inboundData, commandState, 0);
+        WSManPluginReceiveResult(command->receiveRequestDetails, resultFlags, pData->stream, pData->inboundData, commandState, 0);
     }
     else
     {
-        WSManPluginReceiveResult(shell->receiveRequestDetails, resultFlags, stream, inboundData, commandState, 0);
+        WSManPluginReceiveResult(shell->receiveRequestDetails, resultFlags, pData->stream, pData->inboundData, commandState, 0);
     }
 
-	if (flags == WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA)
+	if (pData->flags == WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA)
 	{
 		WSManPluginOperationComplete(command->receiveRequestDetails, 0, MI_RESULT_OK, NULL);
 		command->receiveRequestDetails = NULL;
 	}
 
 	/* Complete the send request */
-	WSManPluginOperationComplete(requestDetails, 0, MI_RESULT_OK, NULL);
+	WSManPluginOperationComplete(pData->requestDetails, 0, MI_RESULT_OK, NULL);
+
+    free(param);
+
+    return 0;
 }
 
+
+
+void MI_CALL WSManPluginSend(
+    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+    _In_ MI_Uint32 flags,
+    _In_ void * shellContext,
+    _In_opt_ void * commandContext,
+    _In_ const MI_Char * stream,
+    _In_ WSMAN_DATA *inboundData
+    )
+{
+    WSManPluginSendData *pData = calloc(1, sizeof(WSManPluginSendData));
+    if (pData)
+    {
+        pData->requestDetails = requestDetails;
+        pData->flags = flags;
+        pData->shellContext = shellContext;
+        pData->commandContext = commandContext;
+        pData->stream = stream;
+        pData->inboundData = inboundData;
+        
+        if (Thread_CreateDetached(_WSManPluginSend, NULL, pData) == 0)
+            return;
+    }
+
+    /* Something failed so return an error */
+    WSManPluginOperationComplete(requestDetails, 0, MI_RESULT_SERVER_LIMITS_EXCEEDED, NULL);
+}
 void MI_CALL WSManPluginReceive(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
     _In_ MI_Uint32 flags,

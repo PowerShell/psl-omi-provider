@@ -120,6 +120,8 @@ struct _SendData
     /* MUST BE FIRST ITEM IN STRUCTURE as pointer to CommonData gets cast to SendData */
     CommonData common;
 
+    WSMAN_DATA inboundData;
+
 };
 
 struct _ReceiveData
@@ -783,21 +785,21 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
         pluginFlags = WSMAN_FLAG_SEND_NO_MORE_DATA;
     }
     {
-        WSMAN_DATA inboundData;
-        memset(&inboundData, 0, sizeof(inboundData));
-        inboundData.type = WSMAN_DATA_TYPE_BINARY;
-        inboundData.binaryData.data = (MI_Uint8*) decodeBuffer.buffer;
-        inboundData.binaryData.dataLength = decodeBuffer.bufferUsed;
-
         sendData = Batch_GetClear(batch, sizeof(SendData));
         if (sendData == NULL)
         {
             GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
         }
+
+        sendData->inboundData.type = WSMAN_DATA_TYPE_BINARY;
+        sendData->inboundData.binaryData.data = (MI_Uint8*)decodeBuffer.buffer;
+        sendData->inboundData.binaryData.dataLength = decodeBuffer.bufferUsed;
+
         sendData->common.batch = batch;
         sendData->common.miRequestContext = context;
         sendData->common.miOperationInstance = clonedIn;
         sendData->common.requestType = CommonData_Type_Send;
+        
         /* TODO: Fill in sendData->common.pluginRequest */
 
         if (commandData)
@@ -815,7 +817,7 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
                 shellData->pluginShellContext,
                 commandData->pluginCommandContext,
                 in->streamData.value->streamName.value,
-                &inboundData);
+                &sendData->inboundData);
         }
         else
         {
@@ -832,24 +834,15 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
                 shellData->pluginShellContext,
                 NULL,
                 in->streamData.value->streamName.value,
-                &inboundData);
+                &sendData->inboundData);
         }
     }
     /* Now the plugin has been called the result is sent from the WSManPluginOperationComplete callback */
-    free(decodedBuffer.buffer);
     return;
 
 error:
-	free(decodedBuffer.buffer);
-
-	if (miResult == MI_RESULT_OK)
-    {
-        Shell_Send send;
-        Shell_Send_Construct(&send, context);
-        Shell_Send_Set_MIReturn(&send, MI_RESULT_OK);
-        Shell_Send_Post(&send, context);
-        Shell_Send_Destruct(&send);
-    }
+    if (decodedBuffer.buffer)
+	    free(decodedBuffer.buffer);
 
 	MI_Context_PostResult(context, miResult);
 
@@ -1477,34 +1470,8 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
 
         /* Methods only have the return code set in the instance so set that and post back. */
         miValue.uint32 = errorCode;
-        MI_Instance_SetElement(
-            miOperationInstance,
-            MI_T("MIReturn"),
-            &miValue,
-            MI_UINT32,
-            0);
+        MI_Instance_SetElement(miOperationInstance,MI_T("MIReturn"),&miValue,MI_UINT32,0);
         
-#if 0
-        /* TODO: Do we need to do this? There will be an OperationComplete on the command to achieve this won't there? */
-        /* If this is the end signal code for the command we need to delete the commandData */
-        if (commonData->requestType == CommonData_Type_Signal)
-        {
-            Shell_Signal *signalInstance = (Shell_Signal*)miOperationInstance;
-            CommandData *commandData = GetCommandFromOperation(commonData);
-
-            if (commandData &&
-                signalInstance->code.value &&
-                ((Tcscasecmp(signalInstance->code.value, WSMAN_SIGNAL_CODE_EXIT) == 0) ||
-                 (Tcscasecmp(signalInstance->code.value, WSMAN_SIGNAL_CODE_TERMINATE) == 0)))
-            {
-                /* The command has now completed and everything needs to be deleted */
-                /* TODO: Need to make sure there aren't other active child operations */
-                DetachOperationFromParent((CommonData*)commandData);
-                Batch_Delete(commandData->common.batch);
-            }
-        }
-#endif
-
         miResult = MI_Context_PostInstance(miRequestContext, miOperationInstance);
         MI_Context_PostResult(miRequestContext, miResult);
 
@@ -1512,6 +1479,14 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
 
         /* Remove self from parent */
         DetachOperationFromParent(commonData);
+
+        /* Some extra data to clean up from send request */
+        if (commonData->requestType == CommonData_Type_Send)
+        {
+            SendData *sendData = (SendData*)commonData;
+            free(sendData->inboundData.binaryData.data);
+
+        }
         /* Delete out batch */
         Batch_Delete(commonData->batch);
 

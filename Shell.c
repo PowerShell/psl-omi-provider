@@ -369,7 +369,11 @@ MI_Boolean ExtractPluginRequest(MI_Context *context, CommonData *commonData)
     
     if (MI_Context_GetStringOption(context, MI_T("WSMAN_ResourceURI"), &value) == MI_RESULT_OK)
         commonData->pluginRequest.resourceUri = value;
-    
+    if (MI_Context_GetStringOption(context, MI_T("WSMAN_Locale"), &value) == MI_RESULT_OK)
+        commonData->pluginRequest.locale = value;
+    if (MI_Context_GetStringOption(context, MI_T("WSMAN_DataLocale"), &value) == MI_RESULT_OK)
+        commonData->pluginRequest.dataLocale = value;
+
     commonData->pluginRequest.senderDetails = &commonData->senderDetails;
 
     if (MI_Context_GetStringOption(context, MI_T("HTTP_URL"), &value) == MI_RESULT_OK)

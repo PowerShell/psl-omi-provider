@@ -47,6 +47,7 @@ struct _CommonData
 {
     /* MUST BE FIRST ITEM IN STRUCTURE  as pluginRequest gets cast to CommonData*/
     WSMAN_PLUGIN_REQUEST pluginRequest;
+    WSMAN_SENDER_DETAILS senderDetails;
 
     /* Pointer to the owning operation data, either commandData, shellData or NULL if this is the shell */
     CommonData *parentData;
@@ -350,6 +351,39 @@ MI_Boolean ExtractStartupInfo(ShellData *shellData, const Shell *shellInstance, 
     return MI_TRUE;
 }
 
+/*
+typedef struct _WSMAN_PLUGIN_REQUEST
+{
+    WSMAN_SENDER_DETAILS *senderDetails;
+    const MI_Char * locale;
+    const MI_Char * resourceUri;
+    WSMAN_OPERATION_INFO *operationInfo;
+    volatile BOOL shutdownNotification;
+    HANDLE shutdownNotificationHandle;
+    const MI_Char * dataLocale;
+} WSMAN_PLUGIN_REQUEST;
+*/
+MI_Boolean ExtractPluginRequest(MI_Context *context, CommonData *commonData)
+{
+    const MI_Char *value;
+    
+    if (MI_Context_GetStringOption(context, MI_T("WSMAN_ResourceURI"), &value) == MI_RESULT_OK)
+        commonData->pluginRequest.resourceUri = value;
+    
+    commonData->pluginRequest.senderDetails = &commonData->senderDetails;
+
+    if (MI_Context_GetStringOption(context, MI_T("HTTP_URL"), &value) == MI_RESULT_OK)
+        commonData->senderDetails.httpURL = value;
+    
+    if (MI_Context_GetStringOption(context, MI_T("HTTP_USERNAME"), &value) == MI_RESULT_OK)
+        commonData->senderDetails.senderName = value;
+
+    if (MI_Context_GetStringOption(context, MI_T("HTTP_AUTHORIZATION"), &value) == MI_RESULT_OK)
+        commonData->senderDetails.authenticationMechanism = value;
+
+    return MI_TRUE;
+}
+
 /* Shell_CreateInstance
  * Called by the client to create a shell. The shell is given an ID by us and sent back.
  * The list of streams that a command could have is listed out in the shell instance passed
@@ -419,6 +453,10 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
     }
 
     if (!ExtractStartupInfo(shellData, newInstance, batch))
+    {
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+    if (!ExtractPluginRequest(context, &shellData->common))
     {
         GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
@@ -629,6 +667,11 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
         GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
+    if (!ExtractPluginRequest(context, &shellData->common))
+    {
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
     /* TODO: Fill in shellData->command->common.pluginRequest */
     commandData->common.parentData = (CommonData*)shellData;
     commandData->common.requestType = CommonData_Type_Command;
@@ -784,6 +827,12 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
     {
         pluginFlags = WSMAN_FLAG_SEND_NO_MORE_DATA;
     }
+
+    if (!ExtractPluginRequest(context, &shellData->common))
+    {
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
     {
         sendData = Batch_GetClear(batch, sizeof(SendData));
         if (sendData == NULL)
@@ -936,6 +985,11 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
         GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
+    if (!ExtractPluginRequest(context, &shellData->common))
+    {
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
     receiveData->wsmanOutputStreams.streamIDsCount = receiveData->outputStreams.streamNamesCount;
     receiveData->wsmanOutputStreams.streamIDs = (const MI_Char**) receiveData->outputStreams.streamNames;
 
@@ -1045,6 +1099,12 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
     {
         GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
+
+    if (!ExtractPluginRequest(context, &shellData->common))
+    {
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
     signalData->common.batch = batch;
     signalData->common.miRequestContext = context;
     signalData->common.miOperationInstance = clonedIn;

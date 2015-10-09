@@ -48,6 +48,7 @@ struct _CommonData
     /* MUST BE FIRST ITEM IN STRUCTURE  as pluginRequest gets cast to CommonData*/
     WSMAN_PLUGIN_REQUEST pluginRequest;
     WSMAN_SENDER_DETAILS senderDetails;
+    WSMAN_OPERATION_INFO operationInfo;
 
     /* Pointer to the owning operation data, either commandData, shellData or NULL if this is the shell */
     CommonData *parentData;
@@ -85,6 +86,7 @@ struct _ShellData
     StreamSet outputStreams;
 
     WSMAN_SHELL_STARTUP_INFO wsmanStartupInfo;
+    WSMAN_DATA extraInfo;
 
     /* Is the inbound/outbound streams compressed? */
     MI_Boolean isCompressed;
@@ -363,6 +365,48 @@ typedef struct _WSMAN_PLUGIN_REQUEST
     const MI_Char * dataLocale;
 } WSMAN_PLUGIN_REQUEST;
 */
+
+MI_Boolean ExtractOperationInfo(MI_Context *context, CommonData *commonData)
+{
+    MI_Uint32 count;
+
+    if (MI_Context_GetCustomOptionCount(context, &count) != MI_RESULT_OK)
+        return MI_FALSE;
+
+    commonData->pluginRequest.operationInfo = &commonData->operationInfo;
+
+    /* Allocate enough space for all of them even though we may not need to use them all */
+    commonData->operationInfo.optionSet.options = Batch_GetClear(commonData->batch, sizeof(WSMAN_OPTION)*count);
+    if (commonData->operationInfo.optionSet.options == NULL)
+        return MI_FALSE;
+
+    for (; count; count--)
+    {
+        MI_Value value;
+        const MI_Char *name;
+        MI_Type type;
+
+        if (MI_Context_GetCustomOptionAt(context, count - 1, &name, &type, &value) != MI_RESULT_OK)
+            return MI_FALSE;
+
+        if (type != MI_STRING)
+            continue;
+
+        /* Skip the internal headers */
+        if ((Tcsncmp(name, MI_T("WSMAN_"), 6) == 0) || (Tcsncmp(name, MI_T("HTTP_"), 5) == 0))
+        {
+            continue;
+        }
+
+        commonData->operationInfo.optionSet.options[commonData->operationInfo.optionSet.optionsCount].name = name;
+        commonData->operationInfo.optionSet.options[commonData->operationInfo.optionSet.optionsCount].value = value.string;
+        commonData->operationInfo.optionSet.optionsCount++;
+
+    }
+
+    return MI_TRUE;
+}
+
 MI_Boolean ExtractPluginRequest(MI_Context *context, CommonData *commonData)
 {
     const MI_Char *value;
@@ -385,7 +429,7 @@ MI_Boolean ExtractPluginRequest(MI_Context *context, CommonData *commonData)
     if (MI_Context_GetStringOption(context, MI_T("HTTP_AUTHORIZATION"), &value) == MI_RESULT_OK)
         commonData->senderDetails.authenticationMechanism = value;
 
-    return MI_TRUE;
+    return ExtractOperationInfo(context, commonData);
 }
 
 /* Shell_CreateInstance
@@ -398,6 +442,7 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
         const Shell* newInstance)
 {
     ShellData *shellData = NULL;
+    WSMAN_DATA *pExtraInfo = NULL;
     MI_Result miResult;
     MI_Instance *miOperationInstance = NULL;
     Batch *batch;
@@ -419,6 +464,7 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
     {
         GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
+    shellData->common.batch = batch;
 
     /* Set the shell ID to be the pointer within the bigger buffer */
     shellData->shellId = Batch_Get(batch, sizeof(MI_Char)*ID_LENGTH);
@@ -484,7 +530,6 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
     shellData->common.requestType = CommonData_Type_Shell;
     shellData->common.miRequestContext = context;
     shellData->common.miOperationInstance = miOperationInstance;
-    shellData->common.batch = batch;
 
     /* Plumb this shell into our list. Failure paths after this need to unplumb it!
     */
@@ -492,11 +537,26 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
     self->shellList = shellData;
     shellData->shell = self;
 
+    if (newInstance->CreationXml.value)
+    {
+        MI_Char *pStr;
+        pExtraInfo = &shellData->extraInfo;
+        pExtraInfo->type = WSMAN_DATA_TYPE_TEXT;
+        pExtraInfo->text.bufferLength = Tcslen(newInstance->CreationXml.value) + (Tcslen(MI_T("</CreationXml>")) * 2) + 1; /* Yes, we are 1 longer than needed! */
+        pStr = Batch_Get(batch, pExtraInfo->text.bufferLength*sizeof(MI_Char));
+        if (pStr == NULL)
+            GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        Tcslcpy(pStr, MI_T("<CreationXml>"), pExtraInfo->text.bufferLength);
+        Tcslcat(pStr, newInstance->CreationXml.value, pExtraInfo->text.bufferLength);
+        Tcslcat(pStr, MI_T("</CreationXml>"), pExtraInfo->text.bufferLength);
+        pExtraInfo->text.buffer = pStr;
+    }
+
     /* Call out to external plug-in API to continue shell creation.
      * Acceptance of shell is reported through WSManPluginReportContext.
      * If the shell succeeds or fails we will get a call through WSManPluginOperationComplete
      */
-    WSManPluginShell(self->pluginContext, &shellData->common.pluginRequest, 0, &shellData->wsmanStartupInfo, NULL);
+    WSManPluginShell(self->pluginContext, &shellData->common.pluginRequest, 0, &shellData->wsmanStartupInfo, pExtraInfo);
     return;
 
 error:
@@ -777,6 +837,13 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
         GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
+    sendData = Batch_GetClear(batch, sizeof(SendData));
+    if (sendData == NULL)
+    {
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+    sendData->common.batch = batch;
+
     miResult = Instance_Clone(&in->__instance, &clonedIn, batch);
     if (miResult != MI_RESULT_OK)
     {
@@ -838,17 +905,10 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
     }
 
     {
-        sendData = Batch_GetClear(batch, sizeof(SendData));
-        if (sendData == NULL)
-        {
-            GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
-        }
-
         sendData->inboundData.type = WSMAN_DATA_TYPE_BINARY;
         sendData->inboundData.binaryData.data = (MI_Uint8*)decodeBuffer.buffer;
         sendData->inboundData.binaryData.dataLength = decodeBuffer.bufferUsed;
 
-        sendData->common.batch = batch;
         sendData->common.miRequestContext = context;
         sendData->common.miOperationInstance = clonedIn;
         sendData->common.requestType = CommonData_Type_Send;
@@ -983,6 +1043,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     {
         GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
+    receiveData->common.batch = batch;
 
     if (!ExtractStreamSet(((Shell_Receive*)clonedIn)->streamSet.value, &receiveData->outputStreams, batch))
     {
@@ -997,7 +1058,6 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     receiveData->wsmanOutputStreams.streamIDsCount = receiveData->outputStreams.streamNamesCount;
     receiveData->wsmanOutputStreams.streamIDs = (const MI_Char**) receiveData->outputStreams.streamNames;
 
-    receiveData->common.batch = batch;
     receiveData->common.miRequestContext = context;
     receiveData->common.miOperationInstance = clonedIn;
     receiveData->common.requestType = CommonData_Type_Receive;
@@ -1103,13 +1163,13 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
     {
         GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
+    signalData->common.batch = batch;
 
     if (!ExtractPluginRequest(context, &shellData->common))
     {
         GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
-    signalData->common.batch = batch;
     signalData->common.miRequestContext = context;
     signalData->common.miOperationInstance = clonedIn;
     signalData->common.requestType = CommonData_Type_Signal;

@@ -432,6 +432,23 @@ static MI_CONST MI_PropertyDecl Shell_IsCompressed_prop =
     NULL,
 };
 
+/* property Shell.CreationXml */
+static MI_CONST MI_PropertyDecl Shell_CreationXml_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x00636C0B, /* code */
+    MI_T("CreationXml"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, CreationXml), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
 static MI_PropertyDecl MI_CONST* MI_CONST Shell_props[] =
 {
     &Shell_Name_prop,
@@ -440,6 +457,7 @@ static MI_PropertyDecl MI_CONST* MI_CONST Shell_props[] =
     &Shell_InputStreams_prop,
     &Shell_OutputStreams_prop,
     &Shell_IsCompressed_prop,
+    &Shell_CreationXml_prop,
 };
 
 /* parameter Shell.Command(): command */

@@ -40,6 +40,7 @@ class Shell
     string InputStreams; /* space delimited string */
     string OutputStreams; /* space delimited string */
     boolean IsCompressed; /* internal data that is not part of the actual shell schema */
+    string CreationXml; /* Specific to PowerShell */
 
     Uint32 Command(
         string command,

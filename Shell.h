@@ -35,6 +35,7 @@ typedef struct _Shell
     MI_ConstStringField InputStreams;
     MI_ConstStringField OutputStreams;
     MI_ConstBooleanField IsCompressed;
+    MI_ConstStringField CreationXml;
 }
 Shell;
 
@@ -308,6 +309,38 @@ MI_INLINE MI_Result MI_CALL Shell_Clear_IsCompressed(
 {
     memset((void*)&self->IsCompressed, 0, sizeof(self->IsCompressed));
     return MI_RESULT_OK;
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_CreationXml(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        6,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_SetPtr_CreationXml(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        6,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_CreationXml(
+    Shell* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
+        6);
 }
 
 /*

@@ -5,6 +5,8 @@
 #include "ShellAPI.h"
 #include <pal/lock.h>
 #include <pal/thread.h>
+#include <base/batch.h>
+#include "BufferManipulation.h"
 
 typedef struct _PluginCommand PluginCommand;
 typedef struct _PluginDetails PluginDetails;
@@ -32,8 +34,8 @@ struct _PluginDetails
 
 MI_Uint32 MI_CALL WSManPluginStartup(
     _In_ MI_Uint32 flags,
-    _In_ const MI_Char * applicationIdentification,
-    _In_opt_ const MI_Char * extraInfo,
+    _In_ const MI_Char16 * applicationIdentification,
+    _In_opt_ const MI_Char16 * extraInfo,
     _Out_ void * *pluginContext
     )
 {
@@ -104,7 +106,7 @@ void MI_CALL WSManPluginCommand(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
     _In_ MI_Uint32 flags,
     _In_ void * shellContext,
-    _In_ const MI_Char * commandLine,
+    _In_ const MI_Char16 * commandLine,
     _In_opt_ WSMAN_COMMAND_ARG_SET *arguments
     )
 {
@@ -141,7 +143,7 @@ void MI_CALL WSManPluginReleaseCommandContext(
 	shell->command = NULL;
 }
 
-/* Swich threads so we don't lock up some IO thread */
+/* Switch threads so we don't lock up some IO thread */
 
 typedef struct _WSManPluginSendData
 {
@@ -149,7 +151,7 @@ typedef struct _WSManPluginSendData
     _In_ MI_Uint32 flags;
     _In_ void * shellContext;
     _In_opt_ void * commandContext;
-    _In_ const MI_Char * stream;
+    _In_ const MI_Char16 * stream;
     _In_ WSMAN_DATA *inboundData;
 } WSManPluginSendData;
 
@@ -159,17 +161,40 @@ PAL_Uint32  _WSManPluginSend(void *param)
 
 	PluginShell *shell = (PluginShell*)pData->shellContext;
 	PluginCommand *command = (PluginCommand*)pData->commandContext;
-	const MI_Char * commandState;
+	MI_Char16 * commandState;
     MI_Uint32 resultFlags = 0;
+    MI_Result miResult = MI_RESULT_OK;
+    Batch *batch;
 
 	if (pData->flags == WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA)
 	{
-		commandState = WSMAN_COMMAND_STATE_DONE;
+		batch = Batch_New(BATCH_MAX_PAGES);
+		if (batch == NULL)
+		{
+			miResult = MI_RESULT_FAILED;
+			goto finished;
+		}
+		if (!Utf8ToUtf16Le(batch, WSMAN_COMMAND_STATE_DONE, &commandState))
+		{
+			miResult = MI_RESULT_FAILED;
+			goto finished;
+		}
         resultFlags = WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA;
 	}
 	else
 	{
-		commandState = WSMAN_COMMAND_STATE_RUNNING;
+		batch = Batch_New(BATCH_MAX_PAGES);
+		if (batch == NULL)
+		{
+			miResult = MI_RESULT_FAILED;
+			goto finished;
+		}
+		if (!Utf8ToUtf16Le(batch, WSMAN_COMMAND_STATE_RUNNING, &commandState))
+		{
+			miResult = MI_RESULT_FAILED;
+			goto finished;
+		}
+        resultFlags = WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA;
 	}
 
     /* Wait for a Receive request to come in before we post the result back */
@@ -194,12 +219,16 @@ PAL_Uint32  _WSManPluginSend(void *param)
 		command->receiveRequestDetails = NULL;
 	}
 
+finished:
 	/* Complete the send request */
 	WSManPluginOperationComplete(pData->requestDetails, 0, MI_RESULT_OK, NULL);
 
     free(param);
 
-    return 0;
+    if (batch)
+    	Batch_Delete(batch);
+
+    return miResult;
 }
 
 
@@ -209,7 +238,7 @@ void MI_CALL WSManPluginSend(
     _In_ MI_Uint32 flags,
     _In_ void * shellContext,
     _In_opt_ void * commandContext,
-    _In_ const MI_Char * stream,
+    _In_ const MI_Char16 * stream,
     _In_ WSMAN_DATA *inboundData
     )
 {
@@ -269,7 +298,7 @@ void MI_CALL WSManPluginSignal(
     _In_ MI_Uint32 flags,
     _In_ void * shellContext,
     _In_opt_ void * commandContext,
-    _In_ const MI_Char * code
+    _In_ const MI_Char16 * code
     )
 {
 	/* If the operation has finished we need to finish receives and close all commands and shells as

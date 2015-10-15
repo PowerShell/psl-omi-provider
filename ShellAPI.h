@@ -4,12 +4,14 @@
 #include <pal/palcommon.h>
 #include <MI.h>
 
+/* NOTE: All strings need to be UTF-16. */
+
 typedef void * HANDLE;
 
 typedef struct _WSMAN_DATA_TEXT
 {
     MI_Uint32 bufferLength;
-    _In_reads_(bufferLength) const MI_Char * buffer;
+    _In_reads_(bufferLength) const MI_Char16 * buffer;
 }WSMAN_DATA_TEXT;
 
 typedef struct _WSMAN_DATA_BINARY
@@ -40,8 +42,8 @@ typedef struct _WSMAN_DATA
 
 typedef struct _WSMAN_OPTION
 {
-    const MI_Char * name;
-    const MI_Char * value;
+    const MI_Char16 * name;
+    const MI_Char16 * value;
     BOOL mustComply;
 } WSMAN_OPTION;
 
@@ -54,8 +56,8 @@ typedef struct _WSMAN_OPTION_SET
 
 typedef struct _WSMAN_KEY
 {
-    const MI_Char * key;
-    const MI_Char * value;
+    const MI_Char16 * key;
+    const MI_Char16 * value;
 } WSMAN_KEY;
 
 typedef struct _WSMAN_SELECTOR_SET
@@ -67,15 +69,15 @@ typedef struct _WSMAN_SELECTOR_SET
 
 typedef struct _WSMAN_FRAGMENT
 {
-    _In_ const MI_Char * path;               // fragment path - WS-Transfer
-    _In_opt_ const MI_Char * dialect;        // dialect for Fragment path
+    _In_ const MI_Char16 * path;               // fragment path - WS-Transfer
+    _In_opt_ const MI_Char16 * dialect;        // dialect for Fragment path
 
 } WSMAN_FRAGMENT;
 
 typedef struct _WSMAN_FILTER
 {
-    _In_ const MI_Char * filter;              // filter enumeration/subscription - allows ad-hoc queries using quey languages like SQL
-    _In_opt_ const MI_Char * dialect;         // dialect for filter predicate
+    _In_ const MI_Char16 * filter;              // filter enumeration/subscription - allows ad-hoc queries using quey languages like SQL
+    _In_opt_ const MI_Char16 * dialect;         // dialect for filter predicate
 
 } WSMAN_FILTER;
 
@@ -91,33 +93,33 @@ typedef struct _WSMAN_OPERATION_INFO
 
 typedef struct _WSMAN_CERTIFICATE_DETAILS
 {
-    const MI_Char * subject;         // Certificate subject in distinguished form
+    const MI_Char16 * subject;         // Certificate subject in distinguished form
                             // Ex: "CN=xyz.com, OU=xyz management, O=Microsoft, L=Redmond, S=Washington, C=US"
-    const MI_Char * issuerName;      // Certificate issuer in distinguished form
+    const MI_Char16 * issuerName;      // Certificate issuer in distinguished form
                             // Ex: "CN=Microsoft Secure Server Authority, DC=redmond, DC=corp, DC=microsoft, DC=com"
-    const MI_Char * issuerThumbprint;// Thumbprint of Certificate issuer
-    const MI_Char * subjectName;     // Certificate Subject Alternative Name (SAN) if available or subject Common Name (CN)
+    const MI_Char16 * issuerThumbprint;// Thumbprint of Certificate issuer
+    const MI_Char16 * subjectName;     // Certificate Subject Alternative Name (SAN) if available or subject Common Name (CN)
                             // Ex: "xyz.com"
 } WSMAN_CERTIFICATE_DETAILS;
 
 typedef struct _WSMAN_SENDER_DETAILS
 {
-    const MI_Char * senderName;                  // Username of the sender
-    const MI_Char * authenticationMechanism;      //
+    const MI_Char16 * senderName;                  // Username of the sender
+    const MI_Char16 * authenticationMechanism;      //
     WSMAN_CERTIFICATE_DETAILS *certificateDetails; // valid only if the authentication is client certificates
     HANDLE clientToken;
-    const MI_Char * httpURL;
+    const MI_Char16 * httpURL;
 } WSMAN_SENDER_DETAILS;
 
 typedef struct _WSMAN_PLUGIN_REQUEST
 {
     WSMAN_SENDER_DETAILS *senderDetails;
-    const MI_Char * locale;
-    const MI_Char * resourceUri;
+    const MI_Char16 * locale;
+    const MI_Char16 * resourceUri;
     WSMAN_OPERATION_INFO *operationInfo;
     volatile BOOL shutdownNotification;
     HANDLE shutdownNotificationHandle;
-    const MI_Char * dataLocale;
+    const MI_Char16 * dataLocale;
 } WSMAN_PLUGIN_REQUEST;
 
 
@@ -146,9 +148,9 @@ MI_Uint32 MI_CALL WSManPluginReportContext(
 MI_Uint32 MI_CALL WSManPluginReceiveResult(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
     _In_ MI_Uint32 flags,
-    _In_opt_ const MI_Char * stream,
+    _In_opt_ const MI_Char16 * stream,
     _In_opt_ WSMAN_DATA *streamResult,
-    _In_opt_ const MI_Char * commandState,
+    _In_opt_ const MI_Char16 * commandState,
     _In_ MI_Uint32 exitCode
     );
 
@@ -156,7 +158,7 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
     _In_ MI_Uint32 flags,
     _In_ MI_Uint32 errorCode,
-    _In_opt_ const MI_Char * extendedInformation
+    _In_opt_ const MI_Char16 * extendedInformation
     );
 
 #define WSMAN_PLUGIN_PARAMS_MAX_ENVELOPE_SIZE 1
@@ -198,13 +200,13 @@ MI_Uint32 MI_CALL WSManPluginFreeRequestDetails(_In_ WSMAN_PLUGIN_REQUEST *reque
 typedef struct _WSMAN_STREAM_ID_SET
 {
     MI_Uint32 streamIDsCount;
-    _In_reads_opt_(streamIDsCount) const MI_Char * *streamIDs;
+    _In_reads_opt_(streamIDsCount) const MI_Char16 * *streamIDs;
 
 } WSMAN_STREAM_ID_SET;
 typedef struct _WSMAN_ENVIRONMENT_VARIABLE
 {
-    const MI_Char * name;
-    const MI_Char * value;
+    const MI_Char16 * name;
+    const MI_Char16 * value;
 
 } WSMAN_ENVIRONMENT_VARIABLE;
 typedef struct _WSMAN_ENVIRONMENT_VARIABLE_SET
@@ -218,15 +220,15 @@ typedef struct _WSMAN_SHELL_STARTUP_INFO
     WSMAN_STREAM_ID_SET *inputStreamSet;
     WSMAN_STREAM_ID_SET *outputStreamSet;
     MI_Uint32 idleTimeoutMs;
-    const MI_Char * workingDirectory;
+    const MI_Char16 * workingDirectory;
     WSMAN_ENVIRONMENT_VARIABLE_SET *variableSet;    
-    const MI_Char * name;
+    const MI_Char16 * name;
 } WSMAN_SHELL_STARTUP_INFO;
 
 typedef struct _WSMAN_COMMAND_ARG_SET
 {
     MI_Uint32 argsCount;
-    _In_reads_opt_(argsCount) const MI_Char * *args;
+    _In_reads_opt_(argsCount) const MI_Char16 * *args;
 
 } WSMAN_COMMAND_ARG_SET;
 
@@ -239,8 +241,8 @@ typedef struct _WSMAN_COMMAND_ARG_SET
 
 MI_Uint32 MI_CALL WSManPluginStartup(
     _In_ MI_Uint32 flags,
-    _In_ const MI_Char * applicationIdentification,
-    _In_opt_ const MI_Char * extraInfo,
+    _In_ const MI_Char16 * applicationIdentification,
+    _In_opt_ const MI_Char16 * extraInfo,
     _Out_ void * *pluginContext
     );
 
@@ -262,7 +264,7 @@ void MI_CALL WSManPluginCommand(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
     _In_ MI_Uint32 flags,
     _In_ void * shellContext,
-    _In_ const MI_Char * commandLine,
+    _In_ const MI_Char16 * commandLine,
     _In_opt_ WSMAN_COMMAND_ARG_SET *arguments
     );
 
@@ -273,7 +275,7 @@ void MI_CALL WSManPluginSend(
     _In_ MI_Uint32 flags,
     _In_ void * shellContext,
     _In_opt_ void * commandContext,
-    _In_ const MI_Char * stream,
+    _In_ const MI_Char16 * stream,
     _In_ WSMAN_DATA *inboundData
     );
 
@@ -286,7 +288,7 @@ void MI_CALL WSManPluginReceive(
     );
 
 /* Default signal codes where _EXIT comes from the client to confirm the command has completed and is the last request targeting the command */
-#define WSMAN_SIGNAL_CODE_TERMINATE WSMAN_SHELL_NS PAL_T("/signal/Terminate") 
+#define WSMAN_SIGNAL_CODE_TERMINATE WSMAN_SHELL_NS PAL_T("/signal/Terminate")
 #define WSMAN_SIGNAL_CODE_BREAK     WSMAN_SHELL_NS PAL_T("/signal/Break")
 #define WSMAN_SIGNAL_CODE_PAUSE     WSMAN_SHELL_NS PAL_T("/signal/Pause")
 #define WSMAN_SIGNAL_CODE_RESUME    WSMAN_SHELL_NS PAL_T("/signal/Resume")
@@ -297,7 +299,7 @@ void MI_CALL WSManPluginSignal(
     _In_ MI_Uint32 flags,
     _In_ void * shellContext,
     _In_opt_ void * commandContext,
-    _In_ const MI_Char * code
+    _In_ const MI_Char16 * code
     );
 
 void MI_CALL WSManPluginConnect(

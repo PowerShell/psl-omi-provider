@@ -1,4 +1,4 @@
-TOP = ../../..
+TOP = ../omi/Unix
 include $(TOP)/config.mak
 
 CSHLIBRARY = TestShell

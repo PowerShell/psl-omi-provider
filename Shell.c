@@ -3,6 +3,7 @@
 #include "Shell.h"
 #include "ShellAPI.h"
 #include "BufferManipulation.h"
+#include "coreclrutil.h"
 #include <pal/strings.h>
 #include <pal/format.h>
 #include <pal/lock.h>

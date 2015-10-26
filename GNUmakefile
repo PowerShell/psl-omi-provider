@@ -7,9 +7,9 @@ DEFINES = HOOK_BUILD
 
 SOURCES = Shell.c module.c schema.c xpress.c ShellAPI.c BufferManipulation.c
 
-INCLUDES = $(TOP) $(TOP)/common
+INCLUDES = $(TOP) $(TOP)/common ../monad-native/host/
 
-LIBRARIES = miapi omi_error wsman xmlserializer protocol sock provmgr wql base pal
+LIBRARIES = miapi omi_error wsman xmlserializer protocol sock provmgr wql base pal pshost
 
 include $(TOP)/mak/rules.mak
 

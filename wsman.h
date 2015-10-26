@@ -239,53 +239,8 @@ typedef struct _WSMAN_COMMAND_ARG_SET
  * ===================================================================
  */
 
-MI_Uint32 MI_CALL WSManPluginStartup(
-    _In_ MI_Uint32 flags,
-    _In_ const MI_Char16 * applicationIdentification,
-    _In_opt_ const MI_Char16 * extraInfo,
-    _Out_ void * *pluginContext
-    );
-
-MI_Uint32 MI_CALL WSManPluginShutdown(
-    _In_opt_ void * pluginContext,
-    _In_ MI_Uint32 flags,
-    _In_ MI_Uint32 reason
-    );
-
-void MI_CALL WSManPluginShell(
-    _In_ void * pluginContext,   //Relates to context returned from WSMAN_PLUGIN_STARTUP
-    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-    _In_ MI_Uint32 flags,
-    _In_opt_ WSMAN_SHELL_STARTUP_INFO *startupInfo,
-    _In_opt_ WSMAN_DATA *inboundShellInformation
-    );
-
-void MI_CALL WSManPluginCommand(
-    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-    _In_ MI_Uint32 flags,
-    _In_ void * shellContext,
-    _In_ const MI_Char16 * commandLine,
-    _In_opt_ WSMAN_COMMAND_ARG_SET *arguments
-    );
-
 #define WSMAN_FLAG_SEND_NO_MORE_DATA 1
 
-void MI_CALL WSManPluginSend(
-    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-    _In_ MI_Uint32 flags,
-    _In_ void * shellContext,
-    _In_opt_ void * commandContext,
-    _In_ const MI_Char16 * stream,
-    _In_ WSMAN_DATA *inboundData
-    );
-
-void MI_CALL WSManPluginReceive(
-    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-    _In_ MI_Uint32 flags,
-    _In_ void * shellContext,
-    _In_opt_ void * commandContext,
-    _In_opt_ WSMAN_STREAM_ID_SET *streamSet
-    );
 
 /* Default signal codes where _EXIT comes from the client to confirm the command has completed and is the last request targeting the command */
 #define WSMAN_SIGNAL_CODE_TERMINATE WSMAN_SHELL_NS PAL_T("/signal/Terminate")
@@ -294,21 +249,6 @@ void MI_CALL WSManPluginReceive(
 #define WSMAN_SIGNAL_CODE_RESUME    WSMAN_SHELL_NS PAL_T("/signal/Resume")
 #define WSMAN_SIGNAL_CODE_EXIT      WSMAN_SHELL_NS PAL_T("/signal/Exit")
 
-void MI_CALL WSManPluginSignal(
-    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-    _In_ MI_Uint32 flags,
-    _In_ void * shellContext,
-    _In_opt_ void * commandContext,
-    _In_ const MI_Char16 * code
-    );
-
-void MI_CALL WSManPluginConnect(
-    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-    _In_ MI_Uint32 flags,
-    _In_ void * shellContext,
-    _In_opt_ void * commandContext,
-    _In_opt_ WSMAN_DATA *inboundConnectInformation
-     );
 
 void MI_CALL WSManPluginReleaseShellContext(
     _In_ void * shellContext
@@ -325,5 +265,90 @@ void MI_CALL WSManPluginRegisterShutdownCallback(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails, 
     _In_ WSManPluginShutdownCallback shutdownCallback, 
     _In_opt_ void *shutdownContext);
+
+typedef void (MI_CALL *ShutdownPluginFuncPtr)(_In_ void* pluginContext);
+
+typedef void (MI_CALL *WSManPluginShellFuncPtr)(
+    _In_ void* pluginContext,
+    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+    _In_ MI_Uint32 flags,
+    _In_ MI_Char16 *extraInfo,
+    _In_opt_ WSMAN_SHELL_STARTUP_INFO *startupInfo,
+    _In_opt_ WSMAN_DATA *inboundShellInformation
+    );
+
+typedef void (MI_CALL *WSManPluginConnectFuncPtr)(
+    _In_ void* pluginContext,
+    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+    _In_ MI_Uint32 flags,
+    _In_ void* shellContext,
+    _In_opt_ void* commandContext,
+    _In_opt_ WSMAN_DATA *inboundConnectInformation
+    );
+
+typedef void (MI_CALL *WSManPluginReleaseShellContextFuncPtr)(
+    _In_ void* pluginContext,
+    _In_ void* shellContext
+    );
+
+typedef void (MI_CALL *WSManPluginCommandFuncPtr)(
+    _In_ void* pluginContext,
+    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+    _In_ MI_Uint32 flags,
+    _In_ void* shellContext,
+    _In_ MI_Char16 *commandLine,
+    _In_opt_ WSMAN_COMMAND_ARG_SET *arguments
+    );
+
+typedef void (MI_CALL *WSManPluginReleaseCommandContextFuncPtr)(
+    _In_ void* pluginContext,
+    _In_ void* shellContext,
+    _In_ void* commandContext
+    );
+
+typedef void (MI_CALL *WSManPluginSendFuncPtr)(
+    _In_ void* pluginContext,
+    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+    _In_ MI_Uint32 flags,
+    _In_ void* shellContext,
+    _In_opt_ void* commandContext,
+    _In_ MI_Char16 *stream,
+    _In_ WSMAN_DATA *inboundData
+    );
+
+typedef void (MI_CALL *WSManPluginReceiveFuncPtr)(
+    _In_ void* pluginContext,
+    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+    _In_ MI_Uint32 flags,
+    _In_ void* shellContext,
+    _In_opt_ void* commandContext,
+    _In_opt_ WSMAN_STREAM_ID_SET* streamSet
+    );
+
+typedef void (MI_CALL *WSManPluginSignalFuncPtr)(
+    _In_ void* pluginContext,
+    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+    _In_ MI_Uint32 flags,
+    _In_ void* shellContext,
+    _In_opt_ void* commandContext,
+    _In_ MI_Char16 *code);
+
+/* List of managed powershell functions we call into to carry out shell operations */
+typedef struct _PwrshPluginWkr_Ptrs
+{
+    ShutdownPluginFuncPtr shutdownPluginFuncPtr;
+    WSManPluginShellFuncPtr wsManPluginShellFuncPtr;
+    WSManPluginReleaseShellContextFuncPtr wsManPluginReleaseShellContextFuncPtr;
+    WSManPluginCommandFuncPtr wsManPluginCommandFuncPtr;
+    WSManPluginReleaseCommandContextFuncPtr wsManPluginReleaseCommandContextFuncPtr;
+    WSManPluginSendFuncPtr wsManPluginSendFuncPtr;
+    WSManPluginReceiveFuncPtr wsManPluginReceiveFuncPtr;
+    WSManPluginSignalFuncPtr wsManPluginSignalFuncPtr;
+    WSManPluginConnectFuncPtr wsManPluginConnectFuncPtr;
+} PwrshPluginWkr_Ptrs;
+
+/* Function that calls into powershell to get the full set of function pointers */
+typedef MI_Uint32 (MI_CALL *InitPluginWkrPtrsFuncPtr)(_Out_ PwrshPluginWkr_Ptrs* wkrPtrs);
+
 
 #endif /* _SHELL_API_H_ */

@@ -1,7 +1,7 @@
 #include <iconv.h>
 #include <MI.h>
 #include "Shell.h"
-#include "ShellAPI.h"
+#include "wsman.h"
 #include "BufferManipulation.h"
 #include "coreclrutil.h"
 #include <pal/strings.h>
@@ -9,6 +9,7 @@
 #include <pal/lock.h>
 #include <base/batch.h>
 #include <base/instance.h>
+#include "coreclrutil.h"
 
 /* TODO:
     * No provider (de-)initialization through WSManPluginStartup and WSManPluginShutdown
@@ -21,6 +22,8 @@
 
 #define GOTO_ERROR(result) { miResult = result; goto error; }
 #define GOTO_ERROR_EX(result, label) { miResult = result; goto label; }
+
+#define POWERSHELL_INIT_STRING  "<InitializationParameters><Param Name=\"PSVersion\" Value=\"5.0\"></Param></InitializationParameters>"
 
 typedef struct _StreamSet
 {
@@ -94,7 +97,7 @@ struct _ShellData
     MI_Boolean isCompressed;
 
     /* MI provider self pointer that is returned from MI provider load which holds all shell state. When our shell
-     * goes away we will need to remove outself from the list 
+     * goes away we will need to remove ourself from the list
     */
     Shell_Self *shell;
 
@@ -152,7 +155,10 @@ struct _Shell_Self
 {
     ShellData *shellList;
 
-    void *pluginContext;
+    PwrshPluginWkr_Ptrs managedPointers;
+
+    void* hostHandle;
+    unsigned int domainId;
 } ;
 
 
@@ -180,17 +186,44 @@ ShellData * FindShellFromSelf(struct _Shell_Self *shell, const MI_Char *shellId)
 void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
         MI_Context* context)
 {
+	MI_Uint32 miResult = MI_RESULT_OK;
+
     *self = calloc(1, sizeof(Shell_Self));
     if (*self == NULL)
     {
-    	MI_Context_PostResult(context, MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    	GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
-    else
-    {
-        MI_Uint32 result = WSManPluginStartup(0, NULL, NULL, &(*self)->pluginContext);
 
-        MI_Context_PostResult(context, result);
+    /* TODO: Initialize the CLR */
+    startCoreCLR("ps_omi_host", &(*self)->hostHandle, &(*self)->domainId);
+
+    /* TODO: call into the managed function to get the shell delegates */
+    InitPluginWkrPtrsFuncPtr entryPointDelegate = NULL;
+
+    /* TODO: Create delegate to managed code InitPlugin method */
+//    result = CreateDelegate(
+//    		appDomainId,
+//			L"System.Management.Automation, Version=3.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35",
+//			L"System.Management.Automation.Remoting.WSManPluginManagedEntryWrapper",
+//			L"InitPlugin",
+//			(void*)&entryPointDelegate);
+//    if (result)
+//    {
+//    	GOTO_ERROR(MI_RESULT_FAILED);
+//    }
+
+    /* Call managed delegate InitPlugin method */
+    if (entryPointDelegate)
+    {
+    	miResult = entryPointDelegate(&(*self)->managedPointers);
+    	if (miResult)
+    	{
+    		GOTO_ERROR(miResult);
+    	}
     }
+
+error:
+    MI_Context_PostResult(context, miResult);
 }
 
 /* Shell_Unload is called after all operations have completed, or they should
@@ -202,10 +235,15 @@ void MI_CALL Shell_Unload(Shell_Self* self, MI_Context* context)
 {
     /* TODO: Do we have any shells still active? */
     
-    WSManPluginShutdown(self->pluginContext, 0, 0);
     /* NOTE: Expectation is that WSManPluginReportCompletion should be called, but it is not looking like that is always happening */
 
-    free(self);
+	/* Call managed code Shutdown function */
+	if (self->managedPointers.shutdownPluginFuncPtr)
+		self->managedPointers.shutdownPluginFuncPtr(self);
+
+	/* TODO: Shut down CLR */
+
+	free(self);
     MI_Context_PostResult(context, MI_RESULT_OK);
 }
 
@@ -561,6 +599,7 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
     MI_Result miResult;
     MI_Instance *miOperationInstance = NULL;
     Batch *batch;
+    MI_Char16 *initString;
 
     /* Allocate our shell data out of a batch so we can allocate most of it from a single page and free it easily */
     batch = Batch_New(BATCH_MAX_PAGES);
@@ -650,7 +689,11 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
 		}
     }
 
-    /* TODO: Fill in shellData->common.pluginRequest */
+    if (!Utf8ToUtf16Le(shellData->common.batch, POWERSHELL_INIT_STRING, &initString))
+    {
+    	GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
     shellData->common.parentData = NULL;    /* We are the top-level shell object */
     shellData->common.requestType = CommonData_Type_Shell;
     shellData->common.miRequestContext = context;
@@ -666,7 +709,9 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
      * Acceptance of shell is reported through WSManPluginReportContext.
      * If the shell succeeds or fails we will get a call through WSManPluginOperationComplete
      */
-    WSManPluginShell(self->pluginContext, &shellData->common.pluginRequest, 0, &shellData->wsmanStartupInfo, pExtraInfo);
+    if (self->managedPointers.wsManPluginShellFuncPtr)
+    	self->managedPointers.wsManPluginShellFuncPtr(self, &shellData->common.pluginRequest, 0, initString, &shellData->wsmanStartupInfo, pExtraInfo);
+
     return;
 
 error:
@@ -856,7 +901,6 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
     	GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
-    /* TODO: Fill in shellData->command->common.pluginRequest */
     commandData->common.parentData = (CommonData*)shellData;
     commandData->common.requestType = CommonData_Type_Command;
     commandData->common.miRequestContext = context;
@@ -867,12 +911,16 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
         GOTO_ERROR(MI_RESULT_ALREADY_EXISTS); /* Only one command allowed at a time */
     }
 
-    WSManPluginCommand(
-    		&commandData->common.pluginRequest,
-			0,
-			shellData->pluginShellContext,
-            command,
-            &commandData->wsmanArgSet);
+    if (self->managedPointers.wsManPluginCommandFuncPtr)
+    {
+    	self->managedPointers.wsManPluginCommandFuncPtr(
+    			self,
+				&commandData->common.pluginRequest,
+				0,
+				shellData->pluginShellContext,
+				command,
+				&commandData->wsmanArgSet);
+    }
 
     /* Success path will send the response back from the callback from this API*/
     return;
@@ -983,7 +1031,6 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
 
         /* Base-64 decode the data from decodeBuffer to decodedBuffer. The result buffer
          * gets allocated in this function and we need to free it.*/
-         /* TODO: This does not support unicode MI_Char strings */
         miResult = Base64DecodeBuffer(&decodeBuffer, &decodedBuffer);
         if (miResult != MI_RESULT_OK)
         {
@@ -1049,13 +1096,17 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
                 GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
             }
 
-            WSManPluginSend(
-                &sendData->common.pluginRequest,
-                pluginFlags,
-                shellData->pluginShellContext,
-                commandData->pluginCommandContext,
-                streamName,
-                &sendData->inboundData);
+            if (self->managedPointers.wsManPluginSendFuncPtr)
+            {
+            	self->managedPointers.wsManPluginSendFuncPtr(
+            			self,
+						&sendData->common.pluginRequest,
+						pluginFlags,
+						shellData->pluginShellContext,
+						commandData->pluginCommandContext,
+						streamName,
+						&sendData->inboundData);
+            }
         }
         else
         {
@@ -1066,13 +1117,17 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
                 GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
             }
 
-            WSManPluginSend(
-                &sendData->common.pluginRequest,
-                pluginFlags,
-                shellData->pluginShellContext,
-                NULL,
-                streamName,
-                &sendData->inboundData);
+            if (self->managedPointers.wsManPluginSendFuncPtr)
+            {
+            	self->managedPointers.wsManPluginSendFuncPtr(
+            			self,
+						&sendData->common.pluginRequest,
+						pluginFlags,
+						shellData->pluginShellContext,
+						NULL,
+						streamName,
+						&sendData->inboundData);
+            }
         }
     }
     /* Now the plugin has been called the result is sent from the WSManPluginOperationComplete callback */
@@ -1202,12 +1257,16 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
             GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
         }
 
-        WSManPluginReceive(
-            &receiveData->common.pluginRequest,
-            0,
-            shellData->pluginShellContext,
-            commandData->pluginCommandContext,
-            &receiveData->wsmanOutputStreams);
+        if (self->managedPointers.wsManPluginReceiveFuncPtr)
+        {
+        	self->managedPointers.wsManPluginReceiveFuncPtr(
+        			self,
+					&receiveData->common.pluginRequest,
+					0,
+					shellData->pluginShellContext,
+					commandData->pluginCommandContext,
+					&receiveData->wsmanOutputStreams);
+        }
     }
     else
     {
@@ -1218,12 +1277,16 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
             GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
         }
 
-        WSManPluginReceive(
-            &receiveData->common.pluginRequest,
-            0,
-            shellData->pluginShellContext,
-            NULL,
-            &receiveData->wsmanOutputStreams);
+        if (self->managedPointers.wsManPluginReceiveFuncPtr)
+        {
+        	self->managedPointers.wsManPluginReceiveFuncPtr(
+        			self,
+					&receiveData->common.pluginRequest,
+					0,
+					shellData->pluginShellContext,
+					NULL,
+					&receiveData->wsmanOutputStreams);
+        }
     }
 
     /* Posting on receive context happens when we get WSManPluginOperationComplete callback to terminate the request or WSManPluginReceiveResult with some data */
@@ -1321,12 +1384,16 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
             GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
         }
 
-        WSManPluginSignal(
-            &signalData->common.pluginRequest,
-            0,
-            shellData->pluginShellContext,
-            commandData->pluginCommandContext,
-            signalCode);
+        if (self->managedPointers.wsManPluginSignalFuncPtr)
+        {
+        	self->managedPointers.wsManPluginSignalFuncPtr(
+        			self,
+					&signalData->common.pluginRequest,
+					0,
+					shellData->pluginShellContext,
+					commandData->pluginCommandContext,
+					signalCode);
+        }
     }
     else
     {
@@ -1337,12 +1404,16 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
             GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
         }
 
-        WSManPluginSignal(
-            &signalData->common.pluginRequest,
-            0,
-            shellData->pluginShellContext,
-            NULL,
-            signalCode);
+        if (self->managedPointers.wsManPluginSignalFuncPtr)
+        {
+        	self->managedPointers.wsManPluginSignalFuncPtr(
+        			self,
+					&signalData->common.pluginRequest,
+					0,
+					shellData->pluginShellContext,
+					NULL,
+					signalCode);
+        }
     }
 
     /* Posting on signal context happens when we get a WSManPluginOperationComplete callback */
@@ -1385,7 +1456,7 @@ CommandData *GetCommandFromOperation(CommonData *commonData)
     return GetCommandFromOperation(commonData->parentData);
 }
 
-/* report a shell or command context from teh winrm plugin. We use this for future calls into the plugin.
+/* report a shell or command context from the winrm plugin. We use this for future calls into the plugin.
  This also means the shell or command has been started successfully so we can post the operation instance
  back to the client to indicate to them that they can now post data to the operation or receive data back from it.
  */
@@ -1544,7 +1615,6 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
             decodeBuffer = decodedBuffer;
         }
 
-        /* TODO: This does not support unicode MI_Char strings */
         /* NOTE: Base64EncodeBuffer allocates enough space for a NULL terminator */
         miResult = Base64EncodeBuffer(&decodeBuffer, &decodedBuffer);
 

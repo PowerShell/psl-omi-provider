@@ -1,15 +1,17 @@
 TOP = ../omi/Unix
+PSNATIVEHOST = ../monad-native/host
+
 include $(TOP)/config.mak
 
-CSHLIBRARY = TestShell
+CSHLIBRARY = psrpomiprov
 
 DEFINES = HOOK_BUILD
 
-SOURCES = Shell.c module.c schema.c xpress.c ShellAPI.c BufferManipulation.c
+SOURCES = Shell.c module.c schema.c xpress.c BufferManipulation.c
 
-INCLUDES = $(TOP) $(TOP)/common ../monad-native/host/
+INCLUDES = $(TOP) $(TOP)/common $(PSNATIVEHOST)
 
-LIBRARIES = miapi omi_error wsman xmlserializer protocol sock provmgr wql base pal pshost
+LIBRARIES = miapi omi_error wsman xmlserializer protocol sock provmgr wql base pal pshost stdc++ icuuc
 
 include $(TOP)/mak/rules.mak
 

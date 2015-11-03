@@ -187,6 +187,9 @@ void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
         MI_Context* context)
 {
 	MI_Uint32 miResult = MI_RESULT_OK;
+	int ret;
+
+	printf("Shell_Load\n");
 
     *self = calloc(1, sizeof(Shell_Self));
     if (*self == NULL)
@@ -194,23 +197,33 @@ void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
     	GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
-    /* TODO: Initialize the CLR */
-    startCoreCLR("ps_omi_host", &(*self)->hostHandle, &(*self)->domainId);
+    /* Initialize the CLR */
+    ret = startCoreCLR("ps_omi_host", &(*self)->hostHandle, &(*self)->domainId);
+    if (ret != 0)
+    {
+    	GOTO_ERROR(MI_RESULT_FAILED);
+    }
 
     /* TODO: call into the managed function to get the shell delegates */
     InitPluginWkrPtrsFuncPtr entryPointDelegate = NULL;
 
-    /* TODO: Create delegate to managed code InitPlugin method */
-//    result = CreateDelegate(
-//    		appDomainId,
+    /* Create delegate to managed code InitPlugin method in PowerShell assembly */
+    ret = createDelegate(
+    		(*self)->hostHandle,
+			(*self)->domainId,
+        "System.Management.Automation, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+        "System.Management.Automation.Remoting.WSManPluginManagedEntryWrapper",
+        "InitPlugin",
+        (void**)&entryPointDelegate);
 //			L"System.Management.Automation, Version=3.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35",
 //			L"System.Management.Automation.Remoting.WSManPluginManagedEntryWrapper",
 //			L"InitPlugin",
 //			(void*)&entryPointDelegate);
-//    if (result)
-//    {
-//    	GOTO_ERROR(MI_RESULT_FAILED);
-//    }
+    if (ret != 0)
+    {
+    	GOTO_ERROR(MI_RESULT_FAILED);
+    }
+
 
     /* Call managed delegate InitPlugin method */
     if (entryPointDelegate)
@@ -233,6 +246,7 @@ error:
  */
 void MI_CALL Shell_Unload(Shell_Self* self, MI_Context* context)
 {
+	printf("Shell_Unload\n");
     /* TODO: Do we have any shells still active? */
     
     /* NOTE: Expectation is that WSManPluginReportCompletion should be called, but it is not looking like that is always happening */
@@ -259,6 +273,7 @@ void MI_CALL Shell_EnumerateInstances(Shell_Self* self, MI_Context* context,
 	ShellData *shellData = self->shellList;
 	MI_Result miResult = MI_RESULT_OK;
 
+	printf("Shell_EnumerateInstances\n");
 	while (shellData)
 	{
 		miResult = MI_Context_PostInstance(context, shellData->common.miOperationInstance);
@@ -515,6 +530,8 @@ MI_Boolean ExtractPluginRequest(MI_Context *context, CommonData *commonData)
     return ExtractOperationInfo(context, commonData);
 }
 
+#define CREATION_XML_START "<creationXml xmlns=\"http://schemas.microsoft.com/powershell\">"
+#define CREATION_XML_END   "</creationXml>"
 MI_Boolean ExtractExtraInfo(ShellData *shellData, const Shell* newInstance)
 {
     WSMAN_DATA *pExtraInfo = NULL;
@@ -539,7 +556,7 @@ MI_Boolean ExtractExtraInfo(ShellData *shellData, const Shell* newInstance)
     	goto cleanup;
     }
 
-    toBytesTotal = (sizeof("<CreationXml>") - 1 + creationXmlLength + sizeof("</CreationXml>") ) * 2; /* Assume buffer is twice as big. */
+    toBytesTotal = (sizeof(CREATION_XML_START) - 1 + creationXmlLength + sizeof(CREATION_XML_END) - 1 ) * 2; /* Assume buffer is twice as big. */
     toBytesLeft = toBytesTotal;
 
     toBuffer = Batch_Get(shellData->common.batch, toBytesTotal);
@@ -548,8 +565,8 @@ MI_Boolean ExtractExtraInfo(ShellData *shellData, const Shell* newInstance)
     toBufferCurrent = toBuffer;
 
 
-    fromBytesLeft =  sizeof("<CreationXml>") - 1; /* Remove null terminator from this one */
-    fromBuffer = "<CreationXml>";
+    fromBytesLeft =  sizeof(CREATION_XML_START) - 1; /* Remove null terminator from this one */
+    fromBuffer = CREATION_XML_START;
     iconv_return = iconv(iconvData, &fromBuffer, &fromBytesLeft, &toBufferCurrent, &toBytesLeft);
     if (iconv_return == (size_t) -1)
     {
@@ -563,8 +580,8 @@ MI_Boolean ExtractExtraInfo(ShellData *shellData, const Shell* newInstance)
     	goto cleanup;
     }
 
-    fromBytesLeft = sizeof("</CreationXml>"); /* We want the null terminator this time */
-    fromBuffer = "</CreationXml>";
+    fromBytesLeft = sizeof(CREATION_XML_END) - 1; /* We want the null terminator this time */
+    fromBuffer = CREATION_XML_END;
     iconv_return = iconv(iconvData, &fromBuffer, &fromBytesLeft, &toBufferCurrent, &toBytesLeft);
     if (iconv_return == (size_t)-1)
     {
@@ -573,7 +590,7 @@ MI_Boolean ExtractExtraInfo(ShellData *shellData, const Shell* newInstance)
 
     pExtraInfo = &shellData->extraInfo;
     pExtraInfo->type = WSMAN_DATA_TYPE_TEXT;
-    pExtraInfo->text.bufferLength = toBytesTotal - (toBytesTotal- toBytesLeft); /* Adjust for any unused buffer */
+    pExtraInfo->text.bufferLength = (toBytesTotal - toBytesLeft)/2; /* Adjust for any unused buffer... length is also string length, not byte length -- another assumption being made about buffer being twice as long */
     pExtraInfo->text.buffer = (const MI_Char16*) toBuffer;
 
     returnValue = MI_TRUE;
@@ -585,6 +602,55 @@ cleanup:
     return returnValue;
 }
 
+typedef struct _CreateShellParams
+{
+    _In_ Shell_Self* self;
+    _In_ WSMAN_PLUGIN_REQUEST *requestDetails;
+    _In_ MI_Uint32 flags;
+    _In_ MI_Char16 *extraInfo;
+    _In_opt_ WSMAN_SHELL_STARTUP_INFO *startupInfo;
+    _In_opt_ WSMAN_DATA *inboundShellInformation;
+} CreateShellParams;
+
+PAL_Uint32  _CallCreateShell(void *_params)
+{
+	CreateShellParams *params = (CreateShellParams*) _params;
+
+	params->self->managedPointers.wsManPluginShellFuncPtr(
+			params->self,
+			params->requestDetails,
+			params->flags,
+			params->extraInfo,
+			params->startupInfo,
+			params->inboundShellInformation);
+	free(params);
+	return 0;
+}
+MI_Boolean CallCreateShell(
+	    _In_ Shell_Self* self,
+	    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+	    _In_ MI_Uint32 flags,
+	    _In_ MI_Char16 *extraInfo,
+	    _In_opt_ WSMAN_SHELL_STARTUP_INFO *startupInfo,
+	    _In_opt_ WSMAN_DATA *inboundShellInformation)
+{
+	CreateShellParams *params = malloc(sizeof(CreateShellParams));
+	if (params)
+	{
+		params->self = self;
+		params->requestDetails = requestDetails;
+		params->flags = flags;
+		params->extraInfo = extraInfo;
+		params->startupInfo = startupInfo;
+		params->inboundShellInformation = inboundShellInformation;
+		if (Thread_CreateDetached(_CallCreateShell, NULL, params) == 0)
+			return MI_TRUE;
+
+		free(params);
+	}
+
+	return MI_FALSE;
+}
 /* Shell_CreateInstance
  * Called by the client to create a shell. The shell is given an ID by us and sent back.
  * The list of streams that a command could have is listed out in the shell instance passed
@@ -709,17 +775,24 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
      * Acceptance of shell is reported through WSManPluginReportContext.
      * If the shell succeeds or fails we will get a call through WSManPluginOperationComplete
      */
-    if (self->managedPointers.wsManPluginShellFuncPtr)
-    	self->managedPointers.wsManPluginShellFuncPtr(self, &shellData->common.pluginRequest, 0, initString, &shellData->wsmanStartupInfo, pExtraInfo);
+    printf("Shell_CreateInstance namespace=%s, className=%s, shellId=%s\n", nameSpace, className, shellData->shellId);
+    if (!CallCreateShell(self, &shellData->common.pluginRequest, 0, initString, &shellData->wsmanStartupInfo, pExtraInfo))
+    {
+    	/* Need to detatch ourself */
+    	/* TODO: This is not thread safe... another shell could come in and mess this up */
+    	self->shellList = (ShellData*) shellData->common.siblingData;
+    	GOTO_ERROR(MI_RESULT_FAILED);
+    }
 
     return;
 
 error:
+printf("Shell_CreateInstance namespace=%s, className=%s, FAILED, result=%u\n", nameSpace, className, miResult);
 
     if (batch)
         Batch_Delete(batch);
 
-    MI_Context_PostResult(context, MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    MI_Context_PostResult(context, miResult);
 }
 
 
@@ -770,6 +843,7 @@ void MI_CALL Shell_DeleteInstance(Shell_Self* self, MI_Context* context,
 
     if (shellData)
     {
+        printf("Shell_DeleteInstance namespace=%s, className=%s, shellId=%s\n", nameSpace, className, instanceName->Name.value);
         /* Notify shell to shut itself down. We don't delete things
            here because the shell itself will tell us when it is finished
            */
@@ -778,6 +852,10 @@ void MI_CALL Shell_DeleteInstance(Shell_Self* self, MI_Context* context,
         /* TODO: Do we need to wait for the shell shutdown to complete? */
 
         miResult = MI_RESULT_OK;
+    }
+    else
+    {
+        printf("Shell_DeleteInstance namespace=%s, className=%s, shellId=%s, FAILED, result=%u\n", nameSpace, className, instanceName->Name.value, miResult);
     }
 
     MI_Context_PostResult(context, miResult);
@@ -813,7 +891,8 @@ MI_Boolean AddChild(CommonData **childHeadPointer, CommonData *childData)
 
     while (currentChild)
     {
-        if (currentChild->requestType == childData->requestType)
+        if ((currentChild->requestType != CommonData_Type_Command) &&
+        		(currentChild->requestType == childData->requestType))
         {
             /* Already have one of those */
             return MI_FALSE;
@@ -829,6 +908,55 @@ MI_Boolean AddChild(CommonData **childHeadPointer, CommonData *childData)
     return MI_TRUE;
 }
 
+typedef struct _CommandParams
+{
+    _In_ Shell_Self* self;
+    _In_ WSMAN_PLUGIN_REQUEST *requestDetails;
+    _In_ MI_Uint32 flags;
+    _In_ void* shellContext;
+    _In_ MI_Char16 *commandLine;
+    _In_opt_ WSMAN_COMMAND_ARG_SET *arguments;
+} CommandParams;
+
+PAL_Uint32  _CallCommand(void *_params)
+{
+	CommandParams *params = (CommandParams*) _params;
+
+	params->self->managedPointers.wsManPluginCommandFuncPtr(
+			params->self,
+			params->requestDetails,
+			params->flags,
+			params->shellContext,
+			params->commandLine,
+			params->arguments);
+	free(params);
+	return 0;
+}
+MI_Boolean CallCommand(
+	    _In_ Shell_Self* self,
+	    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+	    _In_ MI_Uint32 flags,
+	    _In_ void* shellContext,
+	    _In_ MI_Char16 *commandLine,
+	    _In_opt_ WSMAN_COMMAND_ARG_SET *arguments)
+{
+	CommandParams *params = malloc(sizeof(CommandParams));
+	if (params)
+	{
+		params->self = self;
+		params->requestDetails = requestDetails;
+		params->flags = flags;
+		params->shellContext = shellContext;
+		params->commandLine = commandLine;
+		params->arguments = arguments;
+		if (Thread_CreateDetached(_CallCommand, NULL, params) == 0)
+			return MI_TRUE;
+
+		free(params);
+	}
+
+	return MI_FALSE;
+}
 /* Initiate a command on a given shell. The command has parameters and the likes
  * and when created inbound/outbound streams are sent/received via the Send/Receive
  * methods while specifying this command ID. The command is alive until a signal is
@@ -845,6 +973,7 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
     MI_Instance *miOperationInstance = NULL;
     Batch *batch = NULL;
     MI_Char16 *command = NULL;
+
 
     shellData = FindShellFromSelf(self, instanceName->Name.value);
 
@@ -911,21 +1040,24 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
         GOTO_ERROR(MI_RESULT_ALREADY_EXISTS); /* Only one command allowed at a time */
     }
 
-    if (self->managedPointers.wsManPluginCommandFuncPtr)
-    {
-    	self->managedPointers.wsManPluginCommandFuncPtr(
+    printf("Shell_Invoke_Command namespace=%s, className=%s, shellId=%s, commandId=%s, command=%s\n", nameSpace, className, instanceName->Name.value, commandData->commandId, ((Shell_Command*)miOperationInstance)->command.value);
+    if (!CallCommand(
     			self,
 				&commandData->common.pluginRequest,
 				0,
 				shellData->pluginShellContext,
 				command,
-				&commandData->wsmanArgSet);
+				&commandData->wsmanArgSet))
+    {
+    	/* TODO: Remove self from parent */
+    	GOTO_ERROR(MI_RESULT_FAILED);
     }
 
     /* Success path will send the response back from the callback from this API*/
     return;
 
 error:
+	printf("Shell_Invoke_Command namespace=%s, className=%s, shellId=%s, FAILED result=%u\n",  nameSpace, className, instanceName->Name.value, miResult);
     /* Cleanup all the memory and post the error back*/
 
     if (batch)
@@ -959,6 +1091,59 @@ CommandData *FindCommandFromShell(const ShellData *shell, const MI_Char *command
     return NULL;
 }
 
+typedef struct _SendParams
+{
+    _In_ Shell_Self* self;
+    _In_ WSMAN_PLUGIN_REQUEST *requestDetails;
+    _In_ MI_Uint32 flags;
+    _In_ void* shellContext;
+    _In_opt_ void* commandContext;
+    _In_ MI_Char16 *stream;
+    _In_ WSMAN_DATA *inboundData;
+} SendParams;
+
+PAL_Uint32  _CallSend(void *_params)
+{
+	SendParams *params = (SendParams*) _params;
+
+	params->self->managedPointers.wsManPluginSendFuncPtr(
+			params->self,
+			params->requestDetails,
+			params->flags,
+			params->shellContext,
+			params->commandContext,
+			params->stream,
+			params->inboundData);
+	free(params);
+	return 0;
+}
+MI_Boolean CallSend(
+	    _In_ Shell_Self* self,
+	    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+	    _In_ MI_Uint32 flags,
+	    _In_ void* shellContext,
+	    _In_opt_ void* commandContext,
+	    _In_ MI_Char16 *stream,
+	    _In_ WSMAN_DATA *inboundData)
+{
+	SendParams *params = malloc(sizeof(SendParams));
+	if (params)
+	{
+		params->self = self;
+		params->requestDetails = requestDetails;
+		params->flags = flags;
+		params->shellContext = shellContext;
+		params->commandContext = commandContext;
+		params->stream = stream;
+		params->inboundData = inboundData;
+		if (Thread_CreateDetached(_CallSend, NULL, params) == 0)
+			return MI_TRUE;
+
+		free(params);
+	}
+
+	return MI_FALSE;
+}
 /* Shell_Invoke_Send
  *
  * This CIM method is called when the client is delivering a chunk of data to the shell.
@@ -1095,17 +1280,20 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
             {
                 GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
             }
+            printf("Shell_Invoke_Send namespace=%s, className=%s, shellId=%s, commandId=%s, streamName=%s\n",
+            		nameSpace, className, instanceName->Name.value, in->streamData.value->commandId.value, in->streamData.value->streamName.value);
 
-            if (self->managedPointers.wsManPluginSendFuncPtr)
-            {
-            	self->managedPointers.wsManPluginSendFuncPtr(
+            if (!CallSend(
             			self,
 						&sendData->common.pluginRequest,
 						pluginFlags,
 						shellData->pluginShellContext,
 						commandData->pluginCommandContext,
 						streamName,
-						&sendData->inboundData);
+						&sendData->inboundData))
+            {
+            	/* TODO: Remove child */
+            	GOTO_ERROR(MI_RESULT_FAILED);
             }
         }
         else
@@ -1116,17 +1304,20 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
             {
                 GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
             }
+            printf("Shell_Invoke_Send namespace=%s, className=%s, shellId=%s, streamName=%s\n",
+            		nameSpace, className, instanceName->Name.value, in->streamData.value->streamName.value);
 
-            if (self->managedPointers.wsManPluginSendFuncPtr)
-            {
-            	self->managedPointers.wsManPluginSendFuncPtr(
+            if (!CallSend(
             			self,
 						&sendData->common.pluginRequest,
 						pluginFlags,
 						shellData->pluginShellContext,
 						NULL,
 						streamName,
-						&sendData->inboundData);
+						&sendData->inboundData))
+            {
+            	/* TODO: Remove child */
+            	GOTO_ERROR(MI_RESULT_FAILED);
             }
         }
     }
@@ -1134,6 +1325,8 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
     return;
 
 error:
+	printf("Shell_Invoke_Send namespace=%s, className=%s, shellId=%s, streamName=%s FAILED result=%u\n",
+		nameSpace, className, instanceName->Name.value, in->streamData.value->streamName.value, miResult);
     if (decodedBuffer.buffer)
 	    free(decodedBuffer.buffer);
 
@@ -1143,6 +1336,55 @@ error:
         Batch_Delete(batch);
 }
 
+typedef struct _ReceiveParams
+{
+    _In_ Shell_Self* self;
+    _In_ WSMAN_PLUGIN_REQUEST *requestDetails;
+    _In_ MI_Uint32 flags;
+    _In_ void* shellContext;
+    _In_opt_ void* commandContext;
+    _In_opt_ WSMAN_STREAM_ID_SET* streamSet;
+} ReceiveParams;
+
+PAL_Uint32  _CallReceive(void *_params)
+{
+	ReceiveParams *params = (ReceiveParams*) _params;
+
+	params->self->managedPointers.wsManPluginReceiveFuncPtr(
+			params->self,
+			params->requestDetails,
+			params->flags,
+			params->shellContext,
+			params->commandContext,
+			params->streamSet);
+	free(params);
+	return 0;
+}
+MI_Boolean CallReceive(
+	    _In_ Shell_Self* self,
+	    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+	    _In_ MI_Uint32 flags,
+	    _In_ void* shellContext,
+	    _In_opt_ void* commandContext,
+	    _In_opt_ WSMAN_STREAM_ID_SET* streamSet)
+{
+	ReceiveParams *params = malloc(sizeof(ReceiveParams));
+	if (params)
+	{
+		params->self = self;
+		params->requestDetails = requestDetails;
+		params->flags = flags;
+		params->shellContext = shellContext;
+		params->commandContext = commandContext;
+		params->streamSet = streamSet;
+		if (Thread_CreateDetached(_CallReceive, NULL, params) == 0)
+			return MI_TRUE;
+
+		free(params);
+	}
+
+	return MI_FALSE;
+}
 /* Shell_Invoke_Receive
  * This gets called to queue up a receive of output from the provider when there is enough
  * data to send.
@@ -1257,15 +1499,17 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
             GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
         }
 
-        if (self->managedPointers.wsManPluginReceiveFuncPtr)
-        {
-        	self->managedPointers.wsManPluginReceiveFuncPtr(
+        printf("Shell_Invoke_Receive shellId=%s, commandId=%s\n", instanceName->Name.value, in->commandId.value);
+        if (!CallReceive(
         			self,
 					&receiveData->common.pluginRequest,
 					0,
 					shellData->pluginShellContext,
 					commandData->pluginCommandContext,
-					&receiveData->wsmanOutputStreams);
+					&receiveData->wsmanOutputStreams))
+        {
+        	/* TODO: Remove child */
+        	GOTO_ERROR(MI_RESULT_FAILED);
         }
     }
     else
@@ -1277,15 +1521,17 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
             GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
         }
 
-        if (self->managedPointers.wsManPluginReceiveFuncPtr)
-        {
-        	self->managedPointers.wsManPluginReceiveFuncPtr(
+        printf("Shell_Invoke_Receive shellId=%s\n", instanceName->Name.value);
+        if (!CallReceive(
         			self,
 					&receiveData->common.pluginRequest,
 					0,
 					shellData->pluginShellContext,
 					NULL,
-					&receiveData->wsmanOutputStreams);
+					&receiveData->wsmanOutputStreams))
+        {
+        	/* TODO: Remove child */
+        	GOTO_ERROR(MI_RESULT_FAILED);
         }
     }
 
@@ -1293,6 +1539,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     return;
 
 error:
+	printf("Shell_Invoke_Receive shellId=%s FAILED result=%u\n", instanceName->Name.value, miResult);
 
     MI_Context_PostResult(context, miResult);
     
@@ -1302,6 +1549,55 @@ error:
     }
 }
 
+typedef struct _SignalParams
+{
+    _In_ Shell_Self* self;
+    _In_ WSMAN_PLUGIN_REQUEST *requestDetails;
+    _In_ MI_Uint32 flags;
+    _In_ void* shellContext;
+    _In_opt_ void* commandContext;
+    _In_ MI_Char16 *code;
+} SignalParams;
+
+PAL_Uint32  _CallSignal(void *_params)
+{
+	SignalParams *params = (SignalParams*) _params;
+	printf("About to call signal\n");
+	params->self->managedPointers.wsManPluginSignalFuncPtr(
+			params->self,
+			params->requestDetails,
+			params->flags,
+			params->shellContext,
+			params->commandContext,
+			params->code);
+	free(params);
+	return 0;
+}
+MI_Boolean CallSignal(
+	    _In_ Shell_Self* self,
+	    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+	    _In_ MI_Uint32 flags,
+	    _In_ void* shellContext,
+	    _In_opt_ void* commandContext,
+	    _In_ MI_Char16 *code)
+{
+	SignalParams *params = malloc(sizeof(SignalParams));
+	if (params)
+	{
+		params->self = self;
+		params->requestDetails = requestDetails;
+		params->flags = flags;
+		params->shellContext = shellContext;
+		params->commandContext = commandContext;
+		params->code = code;
+		if (Thread_CreateDetached(_CallSignal, NULL, params) == 0)
+			return MI_TRUE;
+
+		free(params);
+	}
+
+	return MI_FALSE;
+}
 /* Shell_Invoke_Signal
  * This function is called for a few reasons like hitting Ctrl+C. It is
  * also called to signal the completion of a command from the clients perspective
@@ -1359,7 +1655,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
         GOTO_ERROR(miResult);
     }
 
-    if (!ExtractPluginRequest(context, &shellData->common))
+    if (!ExtractPluginRequest(context, &signalData->common))
     {
         GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
@@ -1384,15 +1680,17 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
             GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
         }
 
-        if (self->managedPointers.wsManPluginSignalFuncPtr)
-        {
-        	self->managedPointers.wsManPluginSignalFuncPtr(
+        printf("Shell_Invoke_Signal shellId=%s, commandId=%s, signalCode=%s\n", instanceName->Name.value, in->commandId.value, ((Shell_Signal*)clonedIn)->code.value);
+        if (!CallSignal(
         			self,
 					&signalData->common.pluginRequest,
 					0,
 					shellData->pluginShellContext,
 					commandData->pluginCommandContext,
-					signalCode);
+					signalCode))
+        {
+        	/* TODO: Remove child */
+        	GOTO_ERROR(MI_RESULT_FAILED);
         }
     }
     else
@@ -1404,15 +1702,17 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
             GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
         }
 
-        if (self->managedPointers.wsManPluginSignalFuncPtr)
-        {
-        	self->managedPointers.wsManPluginSignalFuncPtr(
+        printf("Shell_Invoke_Signal shellId=%s, signalCode=%s\n", instanceName->Name.value, ((Shell_Signal*)clonedIn)->code.value);
+        if (!CallSignal(
         			self,
 					&signalData->common.pluginRequest,
 					0,
 					shellData->pluginShellContext,
 					NULL,
-					signalCode);
+					signalCode))
+        {
+        	/* TODO: Remove child */
+        	GOTO_ERROR(MI_RESULT_FAILED);
         }
     }
 
@@ -1420,6 +1720,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
     return;
 
 error:
+	printf("Shell_Invoke_Signal shellId=%s, signalCode=%s FAILED result=%u\n", instanceName->Name.value, ((Shell_Signal*)clonedIn)->code.value, miResult);
 
 	MI_Context_PostResult(context, miResult);
 
@@ -1435,14 +1736,18 @@ void MI_CALL Shell_Invoke_Connect(Shell_Self* self, MI_Context* context,
         const MI_Char* methodName, const Shell* instanceName,
         const Shell_Connect* in)
 {
+	printf("Shell_Invoke_Signal FAILED -- NOT SUPPORTED\n");
     MI_Context_PostResult(context, MI_RESULT_NOT_SUPPORTED);
 }
 
 ShellData *GetShellFromOperation(CommonData *commonData)
 {
-    if (commonData->parentData == NULL)
+	if (commonData == NULL)
+		return NULL; /* probably orphaned */
+
+	if (commonData->requestType == CommonData_Type_Shell)
         return (ShellData*)commonData;
-    
+
     return GetShellFromOperation(commonData->parentData);
 }
 
@@ -1460,7 +1765,7 @@ CommandData *GetCommandFromOperation(CommonData *commonData)
  This also means the shell or command has been started successfully so we can post the operation instance
  back to the client to indicate to them that they can now post data to the operation or receive data back from it.
  */
-MI_Uint32 MI_CALL WSManPluginReportContext(
+MI_EXPORT  MI_Uint32 MI_CALL WSManPluginReportContext(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
     _In_ MI_Uint32 flags,
     _In_ void * context
@@ -1472,14 +1777,17 @@ MI_Uint32 MI_CALL WSManPluginReportContext(
     /* Grab the providers context, which may be shell or command, and store it in our object */
     if (commonData->requestType == CommonData_Type_Shell)
     {
+        printf("WSManPluginReportContext -- shell\n");
         ((ShellData*)commonData)->pluginShellContext = context;
     }
     else if (commonData->requestType == CommonData_Type_Command)
     {
+        printf("WSManPluginReportContext -- command\n");
         ((CommandData*)commonData)->pluginCommandContext = context;
     }
     else
     {
+        printf("WSManPluginReportContext -- ERROR\n");
         return MI_RESULT_INVALID_PARAMETER;
     }
 
@@ -1508,7 +1816,7 @@ MI_Boolean IsStreamCompressed(CommonData *commonData)
  * At our level, however, we need to potentially wait for the next request
  * before we can send more.
  */
-MI_Uint32 MI_CALL WSManPluginReceiveResult(
+MI_EXPORT  MI_Uint32 MI_CALL WSManPluginReceiveResult(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
     _In_ MI_Uint32 flags,
     _In_opt_ const MI_Char16 * _streamName,
@@ -1681,6 +1989,12 @@ MI_Uint32 MI_CALL WSManPluginReceiveResult(
     /* Add the stream embedded instance to the receive result.  */
     Shell_Receive_SetPtr_Stream(receive, &receiveStream);
 
+    {
+    	ShellData *shell = GetShellFromOperation(commonData);
+    	printf("WSManPluginReceiveResult - shellId=%s, commandId=%s, streamName=%s, commandState=%s, flags=%u\n",
+    		shell->shellId, receiveStream.commandId.value, streamName, commandStateInst.state.value, flags);
+    }
+
     /* Post the result back to the client. We can delete the base-64 encoded buffer after
     * posting it.
     */
@@ -1700,6 +2014,8 @@ errorSkipInstanceDeletes:
     if (decodedBuffer.buffer)
     	free(decodedBuffer.buffer);
 
+
+    printf("WSManPluginReceiveResult completed, result = %u\n", miResult);
     return (MI_Uint32) miResult;
 
 }
@@ -1709,31 +2025,37 @@ errorSkipInstanceDeletes:
  * Other things that could be retrieved are things like operation timeout. 
  * This data should be retrieved from the operation context through the operation options method.
  */
-MI_Uint32 MI_CALL WSManPluginGetOperationParameters (
+MI_EXPORT  MI_Uint32 MI_CALL WSManPluginGetOperationParameters (
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
     _In_ MI_Uint32 flags,
     _Out_ WSMAN_DATA *data
     )
 {
 	CommonData *commonData = (CommonData*) requestDetails;
+
+	printf("WSManPluginGetOperationParameters flags=%u\n", flags);
+
 	if ((flags == WSMAN_PLUGIN_PARAMS_GET_REQUESTED_LOCALE) ||
 			(flags == WSMAN_PLUGIN_PARAMS_GET_REQUESTED_DATA_LOCALE))
 	{
 		if (!Utf8ToUtf16Le(commonData->batch, "en-us", (MI_Char16**)&data->text.buffer))
 			return MI_RESULT_FAILED;
 		data->text.bufferLength = 5;
+		data->type = WSMAN_DATA_TYPE_TEXT;
 		return MI_RESULT_OK;
 	}
+	printf("WSManPluginGetOperationParameters: Invalid option %u\n", flags);
 	return (MI_Uint32) MI_RESULT_FAILED;
 }
 
 /* Gets information about the host the provider is hosted in */
-MI_Uint32 MI_CALL WSManPluginGetConfiguration (
+MI_EXPORT  MI_Uint32 MI_CALL WSManPluginGetConfiguration (
   _In_   void * pluginOperationContext,
   _In_   MI_Uint32 flags,
   _Out_  WSMAN_DATA *data
 )
 {
+	printf("WSManPluginGetConfiguration");
     return (MI_Uint32)MI_RESULT_FAILED;
 }
 
@@ -1742,7 +2064,12 @@ MI_Boolean DetachOperationFromParent(CommonData *commonData)
     CommonData *parent = commonData->parentData;
     CommonData **parentsChildren;
 
-    if (parent->requestType == CommonData_Type_Command)
+    if (!parent)
+    {
+    	/* We have been orphaned so nothing to do */
+    	return MI_TRUE;
+    }
+    else if (parent->requestType == CommonData_Type_Command)
         parentsChildren = &((CommandData*)parent)->childNext;
     else
         parentsChildren = &((ShellData*)parent)->childNext;
@@ -1764,7 +2091,7 @@ MI_Boolean DetachOperationFromParent(CommonData *commonData)
 /*
 * Reports the completion of an operation by all operation entry points except for the WSMAN_PLUGIN_STARTUP and WSMAN_PLUGIN_SHUTDOWN methods.
 */
-MI_Uint32 MI_CALL WSManPluginOperationComplete(
+MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
     _In_ MI_Uint32 flags,
     _In_ MI_Uint32 errorCode,
@@ -1774,7 +2101,7 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
     CommonData *commonData = (CommonData*) requestDetails;
     MI_Result miResult;
 
-    /* Question is: which request is this? */
+     /* Question is: which request is this? */
     switch (commonData->requestType)
     {
     case CommonData_Type_Shell:
@@ -1785,6 +2112,10 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
 
         ShellData *shellData = (ShellData *)commonData;
         ShellData **pointerToPatch = &shellData->shell->shellList;
+        CommonData *child;
+
+        printf("WSManPluginOperationComplete SHELL shellId=%s, flags=%u, errorCode=%u\n",
+        		shellData->shellId, flags, errorCode);
 
         while (*pointerToPatch && (*pointerToPatch != shellData))
         {
@@ -1793,20 +2124,72 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
         if (*pointerToPatch)
             *pointerToPatch = (ShellData *)shellData->common.siblingData;
 
+        /* Orphan any children we still have */
+        child = shellData->childNext;
+        while (child)
+        {
+        	child->parentData = NULL;
+        	child = child->siblingData;
+        }
         /* Delete the shell object and all the memory owned by it (owned by the batch) */
         Batch_Delete(commonData->batch);
         break;
     }
     case CommonData_Type_Command:
+    {
+    	ShellData *shellData = GetShellFromOperation(commonData);
+    	CommandData *commandData = GetCommandFromOperation(commonData);
+        CommonData *child;
+
         /* TODO: This command is complete. No more calls for this command should happen */
         /* TODO: Did we already send the response back? If not we need to do something */
         /* TODO: Are there any active child objects? */
 
+        if (shellData)
+        {
+			printf("WSManPluginOperationComplete COMMAND shellId=%s, commandId=%s, flags=%u, errorCode=%u\n",
+					shellData->shellId, commandData->commandId, flags, errorCode);
+        }
+        else
+        {
+			printf("WSManPluginOperationComplete COMMAND shellId=%s, commandId=%s, flags=%u, errorCode=%u\n",
+					"<orphaned>", commandData->commandId, flags, errorCode);
+
+        }
         DetachOperationFromParent(commonData);
+
+        /* Orphan any children we still have */
+        child = commandData->childNext;
+        while (child)
+        {
+        	child->parentData = NULL;
+        	child = child->siblingData;
+        }
+
         Batch_Delete(commonData->batch);
         break;
+    }
     case CommonData_Type_Receive:
-        /* TODO: This is the termination of the receive. No more will happen for either the command or shell, depending on which is is aimed at */
+    {
+    	ShellData *shellData = GetShellFromOperation(commonData);
+    	CommandData *commandData = GetCommandFromOperation(commonData);
+    	if (shellData && commandData)
+    	{
+			printf("WSManPluginOperationComplete RECEIVE shellId=%s, commandId=%s, flags=%u, errorCode=%u\n",
+					shellData->shellId, commandData->commandId, flags, errorCode);
+			}
+    	else if (shellData)
+    	{
+			printf("WSManPluginOperationComplete RECEIVE shellId=%s, flags=%u, errorCode=%u\n",
+					shellData->shellId, flags, errorCode);
+    	}
+    	else
+    	{
+			printf("WSManPluginOperationComplete RECEIVE shellId=<orphaned>, flags=%u, errorCode=%u\n",
+					flags, errorCode);
+    	}
+
+    	/* TODO: This is the termination of the receive. No more will happen for either the command or shell, depending on which is is aimed at */
         /* We may or may not have a pending Receive protocol packet for this depending on if we have already send a command completion message or not */
         if (commonData->miRequestContext)
         {
@@ -1823,7 +2206,7 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
         DetachOperationFromParent(commonData);
         Batch_Delete(commonData->batch);
         break;
-
+    }
     /* Send/Receive only need to post back the operation instance with the MIReturn code set */
     case CommonData_Type_Signal:
     case CommonData_Type_Send:
@@ -1831,6 +2214,36 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
         MI_Value miValue;
         MI_Context *miRequestContext = commonData->miRequestContext;
         MI_Instance *miOperationInstance = commonData->miOperationInstance;
+    	ShellData *shellData = GetShellFromOperation(commonData);
+    	CommandData *commandData = GetCommandFromOperation(commonData);
+    	if (shellData && commandData)
+    	{
+    		if (commonData->requestType == CommonData_Type_Signal)
+    			printf("WSManPluginOperationComplete SIGNAL shellId=%s, commandId=%s, flags=%u, errorCode=%u\n",
+    					shellData->shellId, commandData->commandId, flags, errorCode);
+    		else
+    			printf("WSManPluginOperationComplete SEND shellId=%s, commandId=%s, flags=%u, errorCode=%u\n",
+    					shellData->shellId, commandData->commandId, flags, errorCode);
+			}
+    	else if (shellData)
+    	{
+    		if (commonData->requestType == CommonData_Type_Signal)
+    			printf("WSManPluginOperationComplete SIGNAL shellId=%s, flags=%u, errorCode=%u\n",
+    					shellData->shellId, flags, errorCode);
+    		else
+    			printf("WSManPluginOperationComplete SEND shellId=%s, flags=%u, errorCode=%u\n",
+    			    	shellData->shellId, flags, errorCode);
+
+    	}
+    	else
+    	{
+    		if (commonData->requestType == CommonData_Type_Signal)
+    			printf("WSManPluginOperationComplete SIGNAL shellId=%s, flags=%u, errorCode=%u\n",
+    					"<orphaned>", flags, errorCode);
+    		else
+    			printf("WSManPluginOperationComplete SEND shellId=%s, flags=%u, errorCode=%u\n",
+    			    	"<orphaned>", flags, errorCode);
+    	}
 
         commonData->miRequestContext = NULL;
         commonData->miOperationInstance = NULL;
@@ -1865,22 +2278,24 @@ MI_Uint32 MI_CALL WSManPluginOperationComplete(
 }
 
 /* Seems to be called to say the plug-in is actually done */
-MI_Uint32 MI_CALL WSManPluginReportCompletion(
+MI_EXPORT MI_Uint32 MI_CALL WSManPluginReportCompletion(
   _In_      void * pluginOperationContext,
   _In_      MI_Uint32 flags
   )
 {
+	printf("WSManPluginReportCompletion\n");
     return (MI_Uint32)MI_RESULT_OK;
 }
 
 /* Free up information inside requestDetails if possible */
-MI_Uint32 MI_CALL WSManPluginFreeRequestDetails(_In_ WSMAN_PLUGIN_REQUEST *requestDetails)
+MI_EXPORT  MI_Uint32 MI_CALL WSManPluginFreeRequestDetails(_In_ WSMAN_PLUGIN_REQUEST *requestDetails)
 {
+	printf("WSManPluginFreeRequestDetails\n");
 	return MI_RESULT_OK;
 }
 
 
-void MI_CALL WSManPluginRegisterShutdownCallback(
+MI_EXPORT  void MI_CALL WSManPluginRegisterShutdownCallback(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
     _In_ WSManPluginShutdownCallback shutdownCallback,
     _In_opt_ void *shutdownContext)
@@ -1888,4 +2303,5 @@ void MI_CALL WSManPluginRegisterShutdownCallback(
     CommonData *commonData = (CommonData*)requestDetails;
     commonData->shutdownCallback = shutdownCallback;
     commonData->shutdownContext = shutdownContext;
+    printf("WSManPluginRegisterShutdownCallback");
 }

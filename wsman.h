@@ -333,6 +333,10 @@ typedef void (MI_CALL *WSManPluginSignalFuncPtr)(
     _In_opt_ void* commandContext,
     _In_ MI_Char16 *code);
 
+typedef void (MI_CALL *WSManPluginShellCloseFuncPtr)(
+   _In_ void* pluginContext, 
+   _In_ void* shellContext);
+
 /* List of managed powershell functions we call into to carry out shell operations */
 typedef struct _PwrshPluginWkr_Ptrs
 {
@@ -345,6 +349,7 @@ typedef struct _PwrshPluginWkr_Ptrs
     WSManPluginReceiveFuncPtr wsManPluginReceiveFuncPtr;
     WSManPluginSignalFuncPtr wsManPluginSignalFuncPtr;
     WSManPluginConnectFuncPtr wsManPluginConnectFuncPtr;
+    WSManPluginShellCloseFuncPtr wsManPluginShellCloseFuncPtr;
 } PwrshPluginWkr_Ptrs;
 
 /* Function that calls into powershell to get the full set of function pointers */

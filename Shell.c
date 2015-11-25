@@ -8,9 +8,11 @@
 #include <pal/format.h>
 #include <pal/lock.h>
 #include <pal/atomic.h>
+#include <pal/sem.h>
 #include <base/batch.h>
 #include <base/result.h>
 #include <base/instance.h>
+#include <base/helpers.h>
 #include "coreclrutil.h"
 
 /* TODO:
@@ -22,7 +24,7 @@
 /* Number of characters reserved for command ID and shell ID -- max number of digits for hex 64-bit number with null terminator */
 #define ID_LENGTH 17
 
-#define GOTO_ERROR(result) { miResult = result; goto error; }
+#define GOTO_ERROR(result) { printf("ERROR %u, %s, %u\n", result, __FILE__, __LINE__); miResult = result; goto error; }
 #define GOTO_ERROR_EX(result, label) { miResult = result; goto label; }
 
 #define POWERSHELL_INIT_STRING  "<InitializationParameters><Param Name=\"PSVersion\" Value=\"5.0\"></Param></InitializationParameters>"
@@ -134,6 +136,8 @@ struct _SendData
 
 };
 
+ PAL_Uint32 THREAD_API ReceiveTimeoutThread(void* param);
+
 struct _ReceiveData
 {
     /* MUST BE FIRST ITEM IN STRUCTURE as pointer to CommonData gets cast to ReceiveData */
@@ -141,6 +145,12 @@ struct _ReceiveData
 
     StreamSet outputStreams;
     WSMAN_STREAM_ID_SET wsmanOutputStreams;
+
+    MI_Boolean timeoutInUse;
+    MI_Uint64 timeoutMilliseconds;
+    Thread timeoutThread;
+    Sem timeoutSemaphore;
+    ptrdiff_t shutdownThread;
 };
 
 struct _SignalData
@@ -1040,6 +1050,35 @@ MI_Boolean AddChild(CommonData **childHeadPointer, CommonData *childData)
 
     return MI_TRUE;
 }
+MI_Boolean DetachOperationFromParent(CommonData *commonData)
+{
+    CommonData *parent = commonData->parentData;
+    CommonData **parentsChildren;
+
+    if (!parent)
+    {
+    	/* We have been orphaned so nothing to do */
+    	return MI_TRUE;
+    }
+    else if (parent->requestType == CommonData_Type_Command)
+        parentsChildren = &((CommandData*)parent)->childNext;
+    else
+        parentsChildren = &((ShellData*)parent)->childNext;
+
+    while (*parentsChildren)
+    {
+        if ((*parentsChildren) == commonData)
+        {
+            /* found it, remove it from the list */
+            (*parentsChildren) = commonData->siblingData;
+            return MI_TRUE;
+        }
+        parentsChildren = &(*parentsChildren)->siblingData;
+    }
+
+    return MI_FALSE;
+}
+
 
 typedef struct _CommandParams
 {
@@ -1182,7 +1221,7 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
 				command,
 				&commandData->wsmanArgSet))
     {
-    	/* TODO: Remove self from parent */
+        DetachOperationFromParent(&commandData->common);
     	GOTO_ERROR(MI_RESULT_FAILED);
     }
 
@@ -1427,7 +1466,7 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
 						streamName,
 						&sendData->inboundData))
             {
-            	/* TODO: Remove child */
+                DetachOperationFromParent(&sendData->common);
             	GOTO_ERROR(MI_RESULT_FAILED);
             }
         }
@@ -1449,7 +1488,7 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
 						streamName,
 						&sendData->inboundData))
             {
-            	/* TODO: Remove child */
+                DetachOperationFromParent(&sendData->common);
             	GOTO_ERROR(MI_RESULT_FAILED);
             }
         }
@@ -1519,6 +1558,43 @@ MI_Boolean CallReceive(
 
 	return MI_FALSE;
 }
+
+static MI_Result  _CreateReceiveTimeoutThread(ReceiveData *receiveData)
+{
+    /* The WSMAN_OperationTimeout operation option (datetime) means we need to send a response back
+     * before that time or the client will fail the operation. If a Receive respose is set we can cancel
+     * the timeout, but if there is no response a dummy, empty 'Running' response needs to be sent.
+     */
+    MI_Type timeoutType;
+    MI_Value timeout;
+
+    if ((MI_Context_GetCustomOption(receiveData->common.miRequestContext, MI_T("WSMan_OperationTimeout"), &timeoutType, &timeout) == MI_RESULT_OK) &&
+        (timeoutType == MI_DATETIME))
+    {
+        DatetimeToUsec(&timeout.datetime, &receiveData->timeoutMilliseconds);
+        receiveData->timeoutInUse = MI_TRUE;
+    }
+    if (receiveData->timeoutInUse)
+    {
+
+        if (Sem_Init(&receiveData->timeoutSemaphore, 0 /* TODO */, 0)!= 0)
+        {
+            //FAILED
+            receiveData->timeoutInUse = MI_FALSE;
+            return MI_RESULT_FAILED;
+        }
+        if (Thread_CreateJoinable(&receiveData->timeoutThread, ReceiveTimeoutThread, NULL /* threadDestructor */, receiveData)!= 0)
+        {
+            //FAILED
+            receiveData->timeoutInUse = MI_FALSE;
+            Sem_Destroy(&receiveData->timeoutSemaphore);
+            return MI_RESULT_FAILED;
+        }
+            
+     }
+     return MI_RESULT_OK;
+}
+
 /* Shell_Invoke_Receive
  * This gets called to queue up a receive of output from the provider when there is enough
  * data to send.
@@ -1573,13 +1649,20 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     }
 
 
+    /* The WSMAN_OperationTimeout operation option (datetime) means we need to send a response back
+     * before that time or the client will fail the operation. If a Receive respose is set we can cancel
+     * the timeout, but if there is no response a dummy, empty 'Running' response needs to be sent.
+     */
+
+
     if (receiveData)
     {
         /* We already have a Receive queued up with the plug-in so cache the context and wake it up in case it is waiting for it */
         MI_Context *tmpContext = (MI_Context*) Atomic_Swap((ptrdiff_t*) &receiveData->common.miRequestContext, (ptrdiff_t) context);
         DEBUG_ASSERT(tmpContext == NULL);
         PrintDataFunctionStart(&receiveData->common, "Shell_Invoke_Receive*");
-        CondLock_Broadcast((ptrdiff_t)&receiveData->common.miRequestContext);
+        Sem_Post(&receiveData->timeoutSemaphore, 1);   /* Wake up thread to reset timer */
+        CondLock_Broadcast((ptrdiff_t)&receiveData->common.miRequestContext); /* Broadcast in case we have thread waiting for context */
         return;
     }
 
@@ -1599,7 +1682,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     receiveData = Batch_GetClear(batch, sizeof(ReceiveData));
     if (receiveData == NULL)
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED); /* Broadcast in case we have thread waiting for context */
     }
     receiveData->common.batch = batch;
 
@@ -1619,6 +1702,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
         GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
+
     receiveData->wsmanOutputStreams.streamIDsCount = receiveData->outputStreams.streamNamesCount;
     receiveData->wsmanOutputStreams.streamIDs = (const MI_Char16**) receiveData->outputStreams.streamNames;
 
@@ -1627,6 +1711,10 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     receiveData->common.requestType = CommonData_Type_Receive;
 
     PrintDataFunctionStart(&receiveData->common, "Shell_Invoke_Receive");
+    if (_CreateReceiveTimeoutThread(receiveData)!= MI_RESULT_OK)
+    {
+        //TODO!
+    }
     if (commandData)
     {
         receiveData->common.parentData = (CommonData*)commandData;
@@ -1644,7 +1732,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
 					commandData->pluginCommandContext,
 					&receiveData->wsmanOutputStreams))
         {
-        	/* TODO: Remove child */
+            DetachOperationFromParent(&receiveData->common);
         	GOTO_ERROR(MI_RESULT_FAILED);
         }
     }
@@ -1665,7 +1753,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
 					NULL,
 					&receiveData->wsmanOutputStreams))
         {
-        	/* TODO: Remove child */
+            DetachOperationFromParent(&receiveData->common);
         	GOTO_ERROR(MI_RESULT_FAILED);
         }
     }
@@ -1840,7 +1928,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
                 providerCommandContext,
                 signalCode))
         {
-            /* TODO: Remove child */
+            DetachOperationFromParent(&signalData->common);
             GOTO_ERROR(MI_RESULT_FAILED);
         }
 
@@ -1958,12 +2046,14 @@ MI_Uint32 _WSManPluginReceiveResult(
 {
     MI_Result miResult;
     CommandState commandStateInst;
-    Shell_Receive *receive = NULL;
+    MI_Instance *receive = NULL;
     Stream receiveStream;
     DecodeBuffer decodeBuffer, decodedBuffer;
     MI_Char *streamName = NULL;
     MI_Char *commandState = NULL;
     Batch *tempBatch;
+    MI_Char *commandId = NULL;
+    MI_Value miValue;
 
     memset(&decodeBuffer, 0, sizeof(decodeBuffer));
     memset(&decodedBuffer, 0, sizeof(decodedBuffer));
@@ -1989,7 +2079,8 @@ MI_Uint32 _WSManPluginReceiveResult(
 
     
     /* Clone the result object for Receive because we will reuse it for each receive response */
-    miResult = Instance_Clone(commonData->miOperationInstance, (MI_Instance**)&receive, NULL);
+//    miResult = Instance_Clone(commonData->miOperationInstance, (MI_Instance**)&receive, NULL);
+    miResult = Instance_NewDynamic(&receive, MI_T("Receive"), MI_FLAG_METHOD, tempBatch);
     if (miResult != MI_RESULT_OK)
     {
         GOTO_ERROR_EX(miResult, errorSkipInstanceDeletes);
@@ -1998,22 +2089,24 @@ MI_Uint32 _WSManPluginReceiveResult(
     miResult =  CommandState_Construct(&commandStateInst, receiveContext);
     if (miResult != MI_RESULT_OK)
     {
-        Shell_Receive_Delete(receive);
         GOTO_ERROR_EX(miResult, errorSkipInstanceDeletes);
     }
     miResult = Stream_Construct(&receiveStream, receiveContext);
     if (miResult != MI_RESULT_OK)
     {
         Stream_Destruct(&receiveStream);
-        Shell_Receive_Delete(receive);
         GOTO_ERROR_EX(miResult, errorSkipInstanceDeletes);
     }
 
     /* Set the command ID for the instances that need it */
-    if (receive->commandId.exists)
+    if (MI_Instance_GetElement(commonData->miOperationInstance, MI_T("commandId"), &miValue, NULL, NULL, NULL) == MI_RESULT_OK)
     {
-        CommandState_SetPtr_commandId(&commandStateInst, receive->commandId.value);
-        Stream_SetPtr_commandId(&receiveStream, receive->commandId.value);
+        commandId = miValue.string;
+    }
+    if (commandId)
+    {
+        CommandState_SetPtr_commandId(&commandStateInst, commandId);
+        Stream_SetPtr_commandId(&receiveStream, commandId);
     }
 
     if (streamResult)
@@ -2062,6 +2155,30 @@ MI_Uint32 _WSManPluginReceiveResult(
         * to the receive context.
         */
         Stream_SetPtr_data(&receiveStream, decodedBuffer.buffer);
+
+        /* Stream holds the results of the inbound/outbound stream. A result can have more
+        * than one stream, either for the same stream or different ones.
+        */
+        if (flags & WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA)
+            Stream_Set_endOfStream(&receiveStream, MI_TRUE);
+        else
+            Stream_Set_endOfStream(&receiveStream, MI_FALSE);
+
+        if (streamName)
+        {
+            Stream_SetPtr_streamName(&receiveStream, streamName);
+        }
+
+        /* Add the stream embedded instance to the receive result.  */
+        {
+            MI_Value miValue;
+            miValue.instance = &receiveStream.__instance;
+            miResult = MI_Instance_AddElement(receive, MI_T("Stream"), &miValue, MI_INSTANCE, MI_FLAG_BORROW | MI_FLAG_OUT | MI_FLAG_PARAMETER);
+            if (miResult != MI_RESULT_OK)
+            {
+                GOTO_ERROR(miResult);
+            }
+        }
     }
     
     /* CommandState tells the client if we are done or not with this stream.
@@ -2082,40 +2199,26 @@ MI_Uint32 _WSManPluginReceiveResult(
         CommandState_SetPtr_state(&commandStateInst, WSMAN_COMMAND_STATE_RUNNING);
     }
 
-    /* Stream holds the results of the inbound/outbound stream. A result can have more
-    * than one stream, either for the same stream or different ones.
-    */
-    if (flags & WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA)
-        Stream_Set_endOfStream(&receiveStream, MI_TRUE);
-    else
-        Stream_Set_endOfStream(&receiveStream, MI_FALSE);
-
-    if (streamName)
-    {
-        Stream_SetPtr_streamName(&receiveStream, streamName);
-    }
 
     /* The result of the Receive contains the command results and a set of streams.
     * We only support one stream at a time for now.
     */
-    Shell_Receive_Set_MIReturn(receive, MI_RESULT_OK);
-    Shell_Receive_SetPtr_CommandState(receive, &commandStateInst);
+    miValue.uint32 = MI_RESULT_OK;
+    miResult = MI_Instance_AddElement(receive, MI_T("MIReturn"), &miValue, MI_UINT32, MI_FLAG_OUT | MI_FLAG_PARAMETER);
+    miValue.instance = &commandStateInst.__instance;
+    miResult = MI_Instance_AddElement(receive, MI_T("CommandState"), &miValue, MI_INSTANCE, MI_FLAG_BORROW | MI_FLAG_OUT | MI_FLAG_PARAMETER);
 
-
-    /* Add the stream embedded instance to the receive result.  */
-    Shell_Receive_SetPtr_Stream(receive, &receiveStream);
 
     /* Post the result back to the client. We can delete the base-64 encoded buffer after
     * posting it.
     */
     PrintDataFunctionTag(commonData, "_WSManPluginReceiveResult", "PostInstance");
-    Shell_Receive_Post(receive, receiveContext);
+    MI_Context_PostInstance(receiveContext, receive);
 
 error:
     /* Clean up the various result objects */
     CommandState_Destruct(&commandStateInst);
     Stream_Destruct(&receiveStream);
-    Shell_Receive_Delete(receive);
 
 errorSkipInstanceDeletes:
     PrintDataFunctionTag(commonData, "_WSManPluginReceiveResult", "PostResult");
@@ -2140,7 +2243,7 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginReceiveResult(
     _In_ MI_Uint32 exitCode
     )
 {
-    CommonData *commonData = (CommonData*)requestDetails;
+    ReceiveData *receiveData = (ReceiveData*)requestDetails;
     MI_Context *miContext;
     MI_Result miResult = MI_RESULT_FAILED;
 
@@ -2148,19 +2251,65 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginReceiveResult(
     /* Wait for a Receive request to come in before we post the result back */
     do
     {
-    } while (CondLock_Wait((ptrdiff_t)&commonData->miRequestContext,
-                           (ptrdiff_t*)&commonData->miRequestContext,
+    } while (CondLock_Wait((ptrdiff_t)&receiveData->common.miRequestContext,
+                           (ptrdiff_t*)&receiveData->common.miRequestContext,
                            0, 
                            CONDLOCK_DEFAULT_SPINCOUNT) == 0);
 
-    PrintDataFunctionStart(commonData, "WSManPluginReceiveResult");
+    PrintDataFunctionStart(&receiveData->common, "WSManPluginReceiveResult");
 
-    miContext = (MI_Context *) Atomic_Swap((ptrdiff_t*)&commonData->miRequestContext, (ptrdiff_t) NULL);
+    miContext = (MI_Context *) Atomic_Swap((ptrdiff_t*)&receiveData->common.miRequestContext, (ptrdiff_t) NULL);
     if (miContext)
-        miResult = _WSManPluginReceiveResult(miContext, commonData, flags, streamName, streamResult, commandState, exitCode);
+    {
+        Sem_Post(&receiveData->timeoutSemaphore, 1);
+        miResult = _WSManPluginReceiveResult(miContext, &receiveData->common, flags, streamName, streamResult, commandState, exitCode);
+    }
 
-    PrintDataFunctionEnd(commonData, "WSManPluginReceiveResult", miResult);
+    PrintDataFunctionEnd(&receiveData->common, "WSManPluginReceiveResult", miResult);
 
+    return miResult;
+}
+
+PAL_Uint32 THREAD_API ReceiveTimeoutThread(void* param)
+{
+    ReceiveData *receiveData = (ReceiveData*) param;
+    MI_Result miResult = MI_RESULT_OK;
+
+    PrintDataFunctionTag(&receiveData->common, "ReceiveTimeoutThread", "Thread starting");
+    while (!receiveData->shutdownThread)
+    {
+        int semWaitRet;
+        
+        PrintDataFunctionTag(&receiveData->common, "ReceiveTimeoutThread", "Waiting....");
+        semWaitRet = Sem_TimedWait(&receiveData->timeoutSemaphore, 30*1000);
+        //semWaitRet = Sem_TimedWait(&receiveData->timeoutSemaphore, receiveData->timeoutMilliseconds);
+
+        if (semWaitRet == 1)
+        {
+            MI_Context *miContext;
+            /* It timed out so probably need to post a result */
+            PrintDataFunctionTag(&receiveData->common, "ReceiveTimeoutThread", "Thread timed out");
+
+            miContext = (MI_Context *) Atomic_Swap((ptrdiff_t*)&receiveData->common.miRequestContext, (ptrdiff_t) NULL);
+            if (miContext)
+            {
+                PrintDataFunctionTag(&receiveData->common, "ReceiveTimeoutThread", "Sending timeout response");
+                miResult = _WSManPluginReceiveResult(miContext, &receiveData->common, 0, NULL, NULL, NULL, 0);
+            }
+        }
+        else if (semWaitRet == -1)
+        {
+            miResult = MI_RESULT_FAILED;
+            break;
+        }
+        else
+        {
+            PrintDataFunctionTag(&receiveData->common, "ReceiveTimeoutThread", "Thread got signalled");
+            /* 0 means we were woken up so nothing to do except check to see if we need to go back to sleep or exit  */
+        }
+    }
+
+    PrintDataFunctionTag(&receiveData->common, "ReceiveTimeoutThread", "Thread exiting");
     return miResult;
 }
 
@@ -2219,34 +2368,6 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginGetConfiguration (
     return (MI_Uint32)MI_RESULT_FAILED;
 }
 
-MI_Boolean DetachOperationFromParent(CommonData *commonData)
-{
-    CommonData *parent = commonData->parentData;
-    CommonData **parentsChildren;
-
-    if (!parent)
-    {
-    	/* We have been orphaned so nothing to do */
-    	return MI_TRUE;
-    }
-    else if (parent->requestType == CommonData_Type_Command)
-        parentsChildren = &((CommandData*)parent)->childNext;
-    else
-        parentsChildren = &((ShellData*)parent)->childNext;
-
-    while (*parentsChildren)
-    {
-        if ((*parentsChildren) == commonData)
-        {
-            /* found it, remove it from the list */
-            (*parentsChildren) = commonData->siblingData;
-            return MI_TRUE;
-        }
-        parentsChildren = &(*parentsChildren)->siblingData;
-    }
-
-    return MI_FALSE;
-}
 
 /*
 * Reports the completion of an operation by all operation entry points except for the WSMAN_PLUGIN_STARTUP and WSMAN_PLUGIN_SHUTDOWN methods.
@@ -2329,6 +2450,9 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
     }
     case CommonData_Type_Receive:
     {
+        ReceiveData *receiveData = (ReceiveData*) commonData;
+        MI_Uint32 threadResult;
+
     	/* TODO: This is the termination of the receive. No more will happen for either the command or shell, depending on which is is aimed at */
         /* We may or may not have a pending Receive protocol packet for this depending on if we have already send a command completion message or not */
         if (miContext)
@@ -2341,6 +2465,11 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
             /* We have a pending request that needs to be terminated */
             _WSManPluginReceiveResult(miContext, commonData, WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA, NULL, NULL, commandState, errorCode);
         }
+        receiveData->shutdownThread = 1;
+        Sem_Post(&receiveData->timeoutSemaphore, 1);
+        Thread_Join(&receiveData->timeoutThread, &threadResult);
+        Sem_Destroy(&receiveData->timeoutSemaphore);
+        Thread_Destroy(&receiveData->timeoutThread);
 
         /* Clean up the Receive data as there is nothing else going to happen */
         DetachOperationFromParent(commonData);

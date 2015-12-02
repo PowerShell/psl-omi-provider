@@ -371,7 +371,7 @@ error:
     MI_Context_PostResult(context, miResult);
 }
 
-/* Shell_tttttt is called after all operations have completed, or they should
+/* Shell_Unload is called after all operations have completed, or they should
  * be completed. This function is called right before the provider is unloaded.
  * We clean up our shell context object at this point as no more operations will
  * be using it.

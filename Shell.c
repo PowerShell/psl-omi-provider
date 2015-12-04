@@ -1762,10 +1762,12 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     return;
 
 error:
-    PrintDataFunctionTag(&receiveData->common, "Shell_Invoke_Receive", "PostResult");
+    if (receiveData)
+        PrintDataFunctionTag(&receiveData->common, "Shell_Invoke_Receive", "PostResult");
     MI_Context_PostResult(context, miResult);
     
-    PrintDataFunctionEnd(&receiveData->common, "Shell_Invoke_Receive", miResult);
+    if (receiveData)
+        PrintDataFunctionEnd(&receiveData->common, "Shell_Invoke_Receive", miResult);
     if (batch)
     {
         Batch_Delete(batch);

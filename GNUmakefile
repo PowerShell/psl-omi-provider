@@ -11,7 +11,7 @@ SOURCES = Shell.c module.c schema.c xpress.c BufferManipulation.c
 
 INCLUDES = $(TOP) $(TOP)/common $(PSNATIVEHOST)
 
-LIBRARIES = miapi omi_error wsman xmlserializer protocol sock provmgr wql base pal pshost stdc++ icuuc
+LIBRARIES = miapi omi_error wsman xmlserializer protocol sock provmgr wql base pal pshost stdc++ boost_filesystem boost_system
 
 include $(TOP)/mak/rules.mak
 

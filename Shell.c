@@ -245,13 +245,13 @@ static void PrintDataFunctionStartStr(CommonData *data, const char *function, co
     printf("%s: START commonData=%p, type=%s, ShellID = %s, CommandID = %s, miContext=%p, miInstance=%p, %s=%s\n", 
             function, data, CommonData_Type_String(data->requestType), shellId, commandId, data->miRequestContext, data->miOperationInstance, name, val);
 }
-static void PrintDataFunctionStartNum(CommonData *data, const char *function, const char *name, MI_Uint32 val)
+static void PrintDataFunctionStartNumStr(CommonData *data, const char *function, const char *name, MI_Uint32 val, const char *name2, const char *val2)
 {
     const char *shellId = GetShellId(data);
     const char *commandId = GetCommandId(data);
 
-    printf("%s: START commonData=%p, type=%s, ShellID = %s, CommandID = %s, miContext=%p, miInstance=%p, %s=%u\n", 
-            function, data, CommonData_Type_String(data->requestType), shellId, commandId, data->miRequestContext, data->miOperationInstance, name, val);
+    printf("%s: START commonData=%p, type=%s, ShellID = %s, CommandID = %s, miContext=%p, miInstance=%p, %s=%u, %s, %s\n", 
+            function, data, CommonData_Type_String(data->requestType), shellId, commandId, data->miRequestContext, data->miOperationInstance, name, val, name2, val2);
 }
 
 static void PrintDataFunctionStartStr2(CommonData *data, const char *function, const char *name1, const char *val1, const char *name2, const char *val2)
@@ -2378,15 +2378,20 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
     _In_ MI_Uint32 flags,
     _In_ MI_Uint32 errorCode,
-    _In_opt_ const MI_Char16 * extendedInformation
+    _In_opt_ const MI_Char16 * _extendedInformation
     )
 {
     CommonData *commonData = (CommonData*) requestDetails;
     MI_Result miResult = MI_RESULT_OK;
     MI_Context *miContext;
     MI_Instance *miInstance;
+    char *extendedInformation = NULL;
 
-    PrintDataFunctionStartNum(commonData, "WSManPluginOperationComplete", "errorCode", errorCode);
+    if (_extendedInformation)
+    {
+        Utf16LeToUtf8(commonData->batch, _extendedInformation, &extendedInformation);
+    }
+    PrintDataFunctionStartNumStr(commonData, "WSManPluginOperationComplete", "errorCode", errorCode, "extendedInfo", extendedInformation);
 
     miContext = (MI_Context*) Atomic_Swap((ptrdiff_t*)&commonData->miRequestContext, (ptrdiff_t) NULL);
     miInstance = (MI_Instance*) Atomic_Swap((ptrdiff_t*) &commonData->miOperationInstance, (ptrdiff_t) NULL);

@@ -79,6 +79,9 @@ struct _CommonData
 
     WSManPluginShutdownCallback shutdownCallback;
     void *shutdownContext;
+
+    /* used to protect hierarchy of objects so children hold refcount to immediate parent */
+    ptrdiff_t refcount;
 } ;
 
 struct _ShellData
@@ -160,6 +163,8 @@ struct _SignalData
 
 };
 
+void CommonData_Release(CommonData *commonData);
+
 ShellData *GetShellFromOperation(CommonData *commonData)
 {
 	if (commonData == NULL)
@@ -233,8 +238,8 @@ static void PrintDataFunctionStart(CommonData *data, const char *function)
     const char *shellId = GetShellId(data);
     const char *commandId = GetCommandId(data);
 
-    printf("%s: START commonData=%p, type=%s, ShellID = %s, CommandID = %s, miContext=%p, miInstance=%p\n", 
-            function, data, CommonData_Type_String(data->requestType), shellId, commandId, data->miRequestContext, data->miOperationInstance);
+    printf("%s: START commonData=%p, type=%s, ShellID = %s, CommandID = %s, miContext=%p, miInstance=%p, refcount=%p\n", 
+            function, data, CommonData_Type_String(data->requestType), shellId, commandId, data->miRequestContext, data->miOperationInstance, (void*)data->refcount);
 }
 
 static void PrintDataFunctionStartStr(CommonData *data, const char *function, const char *name, const char *val)
@@ -901,6 +906,7 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
     	GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
+    shellData->common.refcount = 1;
     shellData->common.parentData = NULL;    /* We are the top-level shell object */
     shellData->common.requestType = CommonData_Type_Shell;
     shellData->common.miRequestContext = context;
@@ -1028,9 +1034,9 @@ MI_Boolean ExtractCommandArgs(CommonData *commonData, Shell_Command* shellInstan
     return MI_TRUE;
 }
 
-MI_Boolean AddChild(CommonData **childHeadPointer, CommonData *childData)
+MI_Boolean AddChildToShell(ShellData *shellParent, CommonData *childData)
 {
-    CommonData *currentChild = *childHeadPointer;
+    CommonData *currentChild = shellParent->childNext;
 
     while (currentChild)
     {
@@ -1045,8 +1051,32 @@ MI_Boolean AddChild(CommonData **childHeadPointer, CommonData *childData)
     }
 
     /* Not found this type so we can add it */
-    childData->siblingData = *childHeadPointer;
-    *childHeadPointer = childData;
+    childData->siblingData = shellParent->childNext;
+    shellParent->childNext = childData;
+    Atomic_Inc(&shellParent->common.refcount);
+
+    return MI_TRUE;
+}
+MI_Boolean AddChildToCommand(CommandData *commandParent, CommonData *childData)
+{
+    CommonData *currentChild = commandParent->childNext;
+
+    while (currentChild)
+    {
+        if ((currentChild->requestType != CommonData_Type_Command) &&
+        		(currentChild->requestType == childData->requestType))
+        {
+            /* Already have one of those */
+            return MI_FALSE;
+        }
+
+        currentChild = currentChild->siblingData;
+    }
+
+    /* Not found this type so we can add it */
+    childData->siblingData = commandParent->childNext;
+    commandParent->childNext = childData;
+    Atomic_Inc(&commandParent->common.refcount);
 
     return MI_TRUE;
 }
@@ -1057,7 +1087,7 @@ MI_Boolean DetachOperationFromParent(CommonData *commonData)
 
     if (!parent)
     {
-    	/* We have been orphaned so nothing to do */
+    	/* We have been orphaned or we are the shell */
     	return MI_TRUE;
     }
     else if (parent->requestType == CommonData_Type_Command)
@@ -1071,6 +1101,7 @@ MI_Boolean DetachOperationFromParent(CommonData *commonData)
         {
             /* found it, remove it from the list */
             (*parentsChildren) = commonData->siblingData;
+            CommonData_Release(parent);
             return MI_TRUE;
         }
         parentsChildren = &(*parentsChildren)->siblingData;
@@ -1202,12 +1233,13 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
     	GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
+    commandData->common.refcount = 1;
     commandData->common.parentData = (CommonData*)shellData;
     commandData->common.requestType = CommonData_Type_Command;
     commandData->common.miRequestContext = context;
     commandData->common.miOperationInstance = miOperationInstance;
 
-    if (!AddChild(&shellData->childNext, (CommonData*) commandData))
+    if (!AddChildToShell(shellData, (CommonData*) commandData))
     {
         GOTO_ERROR(MI_RESULT_ALREADY_EXISTS); /* Only one command allowed at a time */
     }
@@ -1442,6 +1474,7 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
         sendData->inboundData.binaryData.data = (MI_Uint8*)decodeBuffer.buffer;
         sendData->inboundData.binaryData.dataLength = decodeBuffer.bufferUsed;
 
+        sendData->common.refcount = 1;
         sendData->common.miRequestContext = context;
         sendData->common.miOperationInstance = clonedIn;
         sendData->common.requestType = CommonData_Type_Send;
@@ -1452,7 +1485,7 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
         {
             sendData->common.parentData = (CommonData*)commandData;
 
-            if (!AddChild(&commandData->childNext, (CommonData*)sendData))
+            if (!AddChildToCommand(commandData, (CommonData*)sendData))
             {
                 GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
             }
@@ -1474,7 +1507,7 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
         {
             sendData->common.parentData = (CommonData*) shellData;
 
-            if (!AddChild(&shellData->childNext, (CommonData*)sendData))
+            if (!AddChildToShell(shellData, (CommonData*)sendData))
             {
                 GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
             }
@@ -1706,6 +1739,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     receiveData->wsmanOutputStreams.streamIDsCount = receiveData->outputStreams.streamNamesCount;
     receiveData->wsmanOutputStreams.streamIDs = (const MI_Char16**) receiveData->outputStreams.streamNames;
 
+    receiveData->common.refcount = 1;
     receiveData->common.miRequestContext = context;
     receiveData->common.miOperationInstance = clonedIn;
     receiveData->common.requestType = CommonData_Type_Receive;
@@ -1719,7 +1753,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     {
         receiveData->common.parentData = (CommonData*)commandData;
 
-        if (!AddChild(&commandData->childNext, (CommonData*)receiveData))
+        if (!AddChildToCommand(commandData, (CommonData*)receiveData))
         {
             GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
         }
@@ -1740,7 +1774,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     {
         receiveData->common.parentData = (CommonData*)shellData;
 
-        if (!AddChild(&shellData->childNext, (CommonData*)receiveData))
+        if (!AddChildToShell(shellData, (CommonData*)receiveData))
         {
             GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
         }
@@ -1891,6 +1925,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
 			GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
 		}
     }
+    signalData->common.refcount = 1;
     signalData->common.miRequestContext = context;
     signalData->common.miOperationInstance = clonedIn;
     signalData->common.requestType = CommonData_Type_Signal;
@@ -1905,7 +1940,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
             
             providerCommandContext = commandData->pluginCommandContext;
 
-            if (!AddChild(&commandData->childNext, (CommonData*)signalData))
+            if (!AddChildToCommand(commandData, (CommonData*)signalData))
             {
                 GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
             }
@@ -1914,7 +1949,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
         {
             signalData->common.parentData = (CommonData*)shellData;
 
-            if (!AddChild(&shellData->childNext, (CommonData*)signalData))
+            if (!AddChildToShell(shellData, (CommonData*)signalData))
             {
                 GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
             }
@@ -2370,7 +2405,15 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginGetConfiguration (
     return (MI_Uint32)MI_RESULT_FAILED;
 }
 
-
+void CommonData_Release(CommonData *commonData)
+{
+    PrintDataFunctionStart(commonData, "CommonData_Release");
+    if (Atomic_Dec(&commonData->refcount) == 0)
+    {
+        PrintDataFunctionTag(commonData, "CommonData_Release", "Deleting");
+        Batch_Delete(commonData->batch);
+    }
+}
 /*
 * Reports the completion of an operation by all operation entry points except for the WSMAN_PLUGIN_STARTUP and WSMAN_PLUGIN_SHUTDOWN methods.
 */
@@ -2406,7 +2449,6 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
 
         ShellData *shellData = (ShellData *)commonData;
         ShellData **pointerToPatch = &shellData->shell->shellList;
-        CommonData *child;
 
         while (*pointerToPatch && (*pointerToPatch != shellData))
         {
@@ -2414,14 +2456,6 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
         }
         if (*pointerToPatch)
             *pointerToPatch = (ShellData *)shellData->common.siblingData;
-
-        /* Orphan any children we still have */
-        child = shellData->childNext;
-        while (child)
-        {
-        	child->parentData = NULL;
-        	child = child->siblingData;
-        }
 
         if (miContext)
         {
@@ -2432,21 +2466,9 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
     }
     case CommonData_Type_Command:
     {
-    	CommandData *commandData = GetCommandFromOperation(commonData);
-        CommonData *child;
-
         /* TODO: This command is complete. No more calls for this command should happen */
         /* TODO: Are there any active child objects? */
 
-        DetachOperationFromParent(commonData);
-
-        /* Orphan any children we still have */
-        child = commandData->childNext;
-        while (child)
-        {
-        	child->parentData = NULL;
-        	child = child->siblingData;
-        }
         if (miContext)
         {
             PrintDataFunctionTag(commonData, "WSManPluginOperationComplete", "PostResult");
@@ -2478,8 +2500,6 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
         Sem_Destroy(&receiveData->timeoutSemaphore);
         Thread_Destroy(&receiveData->timeoutThread);
 
-        /* Clean up the Receive data as there is nothing else going to happen */
-        DetachOperationFromParent(commonData);
         break;
     }
     /* Send/Receive only need to post back the operation instance with the MIReturn code set */
@@ -2499,9 +2519,6 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
 
         MI_Instance_Delete(miInstance);
 
-        /* Remove self from parent */
-        DetachOperationFromParent(commonData);
-
         /* Some extra data to clean up from send request */
         if (commonData->requestType == CommonData_Type_Send)
         {
@@ -2516,7 +2533,9 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
 error:
     PrintDataFunctionEnd(commonData, "WSManPluginOperationComplete", miResult);
 
-    Batch_Delete(commonData->batch);
+    DetachOperationFromParent(commonData);
+    commonData->parentData = NULL;
+    CommonData_Release(commonData);
     return miResult;
 }
 

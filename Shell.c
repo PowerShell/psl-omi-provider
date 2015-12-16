@@ -344,9 +344,9 @@ void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
 
     /* Create delegate to managed code InitPlugin method in PowerShell assembly */
     ret = createDelegate(
-    		(*self)->hostHandle,
-			(*self)->domainId,
-        "System.Management.Automation, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+        (*self)->hostHandle,
+        (*self)->domainId,
+        "System.Management.Automation, Version=3.0.0.0, Culture=neutral, PublicKeyToken=null",
         "System.Management.Automation.Remoting.WSManPluginManagedEntryWrapper",
         "InitPlugin",
         (void**)&entryPointDelegate);

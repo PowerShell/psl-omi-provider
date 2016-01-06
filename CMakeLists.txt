@@ -38,3 +38,6 @@ target_link_libraries(psrpomiprov pshost
 	crypto)
 target_include_directories(psrpomiprov PRIVATE ${OMI}/output/include ${OMI} ${OMI}/common)
 target_compile_options(psrpomiprov PRIVATE -fvisibility=hidden -fno-strict-aliasing)
+
+add_custom_command(TARGET psrpomiprov POST_BUILD
+	COMMAND ${OMI}/output/bin/omireg $<TARGET_FILE:psrpomiprov> -n interop)

@@ -30,6 +30,7 @@ typedef struct _Shell
     MI_Instance __instance;
     /* Shell properties */
     /*KEY*/ MI_ConstStringField Name;
+    MI_ConstStringField ShellId;
     MI_ConstStringField WorkingDirectory;
     EnvironmentVariable_ConstArrayRef Environment;
     MI_ConstStringField InputStreams;
@@ -159,7 +160,7 @@ MI_INLINE MI_Result MI_CALL Shell_Clear_Name(
         0);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Set_WorkingDirectory(
+MI_INLINE MI_Result MI_CALL Shell_Set_ShellId(
     Shell* self,
     const MI_Char* str)
 {
@@ -171,7 +172,7 @@ MI_INLINE MI_Result MI_CALL Shell_Set_WorkingDirectory(
         0);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_SetPtr_WorkingDirectory(
+MI_INLINE MI_Result MI_CALL Shell_SetPtr_ShellId(
     Shell* self,
     const MI_Char* str)
 {
@@ -183,12 +184,44 @@ MI_INLINE MI_Result MI_CALL Shell_SetPtr_WorkingDirectory(
         MI_FLAG_BORROW);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Clear_WorkingDirectory(
+MI_INLINE MI_Result MI_CALL Shell_Clear_ShellId(
     Shell* self)
 {
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
         1);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_WorkingDirectory(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        2,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_SetPtr_WorkingDirectory(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        2,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_WorkingDirectory(
+    Shell* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
+        2);
 }
 
 MI_INLINE MI_Result MI_CALL Shell_Set_Environment(
@@ -201,7 +234,7 @@ MI_INLINE MI_Result MI_CALL Shell_Set_Environment(
     arr.size = size;
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        2,
+        3,
         (MI_Value*)&arr,
         MI_INSTANCEA,
         0);
@@ -217,7 +250,7 @@ MI_INLINE MI_Result MI_CALL Shell_SetPtr_Environment(
     arr.size = size;
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        2,
+        3,
         (MI_Value*)&arr,
         MI_INSTANCEA,
         MI_FLAG_BORROW);
@@ -228,7 +261,7 @@ MI_INLINE MI_Result MI_CALL Shell_Clear_Environment(
 {
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
-        2);
+        3);
 }
 
 MI_INLINE MI_Result MI_CALL Shell_Set_InputStreams(
@@ -237,7 +270,7 @@ MI_INLINE MI_Result MI_CALL Shell_Set_InputStreams(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        3,
+        4,
         (MI_Value*)&str,
         MI_STRING,
         0);
@@ -249,7 +282,7 @@ MI_INLINE MI_Result MI_CALL Shell_SetPtr_InputStreams(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        3,
+        4,
         (MI_Value*)&str,
         MI_STRING,
         MI_FLAG_BORROW);
@@ -260,7 +293,7 @@ MI_INLINE MI_Result MI_CALL Shell_Clear_InputStreams(
 {
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
-        3);
+        4);
 }
 
 MI_INLINE MI_Result MI_CALL Shell_Set_OutputStreams(
@@ -269,7 +302,7 @@ MI_INLINE MI_Result MI_CALL Shell_Set_OutputStreams(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        4,
+        5,
         (MI_Value*)&str,
         MI_STRING,
         0);
@@ -281,7 +314,7 @@ MI_INLINE MI_Result MI_CALL Shell_SetPtr_OutputStreams(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        4,
+        5,
         (MI_Value*)&str,
         MI_STRING,
         MI_FLAG_BORROW);
@@ -292,7 +325,7 @@ MI_INLINE MI_Result MI_CALL Shell_Clear_OutputStreams(
 {
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
-        4);
+        5);
 }
 
 MI_INLINE MI_Result MI_CALL Shell_Set_IsCompressed(
@@ -317,7 +350,7 @@ MI_INLINE MI_Result MI_CALL Shell_Set_CreationXml(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        6,
+        7,
         (MI_Value*)&str,
         MI_STRING,
         0);
@@ -329,7 +362,7 @@ MI_INLINE MI_Result MI_CALL Shell_SetPtr_CreationXml(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        6,
+        7,
         (MI_Value*)&str,
         MI_STRING,
         MI_FLAG_BORROW);
@@ -340,7 +373,7 @@ MI_INLINE MI_Result MI_CALL Shell_Clear_CreationXml(
 {
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
-        6);
+        7);
 }
 
 /*

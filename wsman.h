@@ -221,7 +221,7 @@ typedef struct _WSMAN_SHELL_STARTUP_INFO
     WSMAN_STREAM_ID_SET *outputStreamSet;
     MI_Uint32 idleTimeoutMs;
     const MI_Char16 * workingDirectory;
-    WSMAN_ENVIRONMENT_VARIABLE_SET *variableSet;    
+    WSMAN_ENVIRONMENT_VARIABLE_SET *variableSet;
     const MI_Char16 * name;
 } WSMAN_SHELL_STARTUP_INFO;
 
@@ -262,8 +262,8 @@ void MI_CALL WSManPluginReleaseCommandContext(
 typedef void (MI_CALL *WSManPluginShutdownCallback)(_In_opt_ void *shutdownContext);
 
 void MI_CALL WSManPluginRegisterShutdownCallback(
-    _In_ WSMAN_PLUGIN_REQUEST *requestDetails, 
-    _In_ WSManPluginShutdownCallback shutdownCallback, 
+    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+    _In_ WSManPluginShutdownCallback shutdownCallback,
     _In_opt_ void *shutdownContext);
 
 typedef void (MI_CALL *ShutdownPluginFuncPtr)(_In_ void* pluginContext);
@@ -334,7 +334,7 @@ typedef void (MI_CALL *WSManPluginSignalFuncPtr)(
     _In_ MI_Char16 *code);
 
 typedef void (MI_CALL *WSManPluginShellCloseFuncPtr)(
-   _In_ void* pluginContext, 
+   _In_ void* pluginContext,
    _In_ void* shellContext);
 
 /* List of managed powershell functions we call into to carry out shell operations */

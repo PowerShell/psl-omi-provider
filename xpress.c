@@ -47,10 +47,10 @@ _rotr8(unsigned char _Value, unsigned char _Shift) {
 
 MI_Uint8 * min(MI_Uint8 * a, MI_Uint8 * b)
 {
-	if (a < b)
-		return a;
-	else
-		return b;
+    if (a < b)
+        return a;
+    else
+        return b;
 }
 
 
@@ -261,17 +261,17 @@ Return Value:
 
     AlignedWorkspace = ALIGN_UP_POINTER(WorkSpace, ULONG_PTR);
 
-	HuffStandardWorkspace = (PXPRESS_HUFF_WORKSPACE)AlignedWorkspace;
+    HuffStandardWorkspace = (PXPRESS_HUFF_WORKSPACE)AlignedWorkspace;
 
-	return CompressBufferXpressHuffStandard(UncompressedBuffer,
-											   UncompressedBufferSize,
-											   CompressedBuffer,
-											   CompressedBufferSize,
-											   FinalCompressedSize,
-											   HuffStandardWorkspace,
-											   Callback,
-											   CallbackContext,
-											   ProgressBytes);
+    return CompressBufferXpressHuffStandard(UncompressedBuffer,
+                                               UncompressedBufferSize,
+                                               CompressedBuffer,
+                                               CompressedBufferSize,
+                                               FinalCompressedSize,
+                                               HuffStandardWorkspace,
+                                               Callback,
+                                               CallbackContext,
+                                               ProgressBytes);
 }
 
 MI_Uint8 *
@@ -378,17 +378,17 @@ Return Value:
 --*/
 
 {
-	//
-	// Make the size big enough to let us align it to a pointer boundary.
-	//
+    //
+    // Make the size big enough to let us align it to a pointer boundary.
+    //
 
-	*CompressBufferWorkSpaceSize = sizeof(XPRESS_HUFF_WORKSPACE) +
-								   sizeof(ULONG_PTR) - 1;
+    *CompressBufferWorkSpaceSize = sizeof(XPRESS_HUFF_WORKSPACE) +
+                                   sizeof(ULONG_PTR) - 1;
 
-	*DecompressBufferWorkSpaceSize = sizeof(XPRESS_HUFF_DECODE_WORKSPACE) +
-									 sizeof(ULONG_PTR) - 1;
+    *DecompressBufferWorkSpaceSize = sizeof(XPRESS_HUFF_DECODE_WORKSPACE) +
+                                     sizeof(ULONG_PTR) - 1;
 
-	return STATUS_SUCCESS;
+    return STATUS_SUCCESS;
 
 }
 

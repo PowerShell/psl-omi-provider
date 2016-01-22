@@ -332,6 +332,23 @@ static MI_CONST MI_PropertyDecl Shell_Name_prop =
     NULL,
 };
 
+/* property Shell.ShellId */
+static MI_CONST MI_PropertyDecl Shell_ShellId_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x00736407, /* code */
+    MI_T("ShellId"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, ShellId), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
 /* property Shell.WorkingDirectory */
 static MI_CONST MI_PropertyDecl Shell_WorkingDirectory_prop =
 {
@@ -452,6 +469,7 @@ static MI_CONST MI_PropertyDecl Shell_CreationXml_prop =
 static MI_PropertyDecl MI_CONST* MI_CONST Shell_props[] =
 {
     &Shell_Name_prop,
+    &Shell_ShellId_prop,
     &Shell_WorkingDirectory_prop,
     &Shell_Environment_prop,
     &Shell_InputStreams_prop,

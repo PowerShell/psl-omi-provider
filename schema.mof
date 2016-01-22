@@ -3,7 +3,7 @@ class Stream
 {
     [description("optional - present if stream is associated with command otherwise associated with shell")]
     string commandId;
-    
+
     string streamName;
     string data;
     uint32 dataLength;
@@ -14,13 +14,13 @@ class CommandState
 {
     [description("optional")]
     string commandId;
-    
+
     [description(
         "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Done,
          http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Pending,
          http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Running")]
     string state;
-    
+
     [description("process exit code")]
     uint32 exitCode;
 };
@@ -35,6 +35,7 @@ class EnvironmentVariable
 class Shell
 {
     [key] string Name;
+    string ShellId;
     string WorkingDirectory;
     [embeddedinstance("EnvironmentVariable")] string Environment[];
     string InputStreams; /* space delimited string */
@@ -61,13 +62,13 @@ class Shell
 
     Uint32 Signal(
         string commandId,
-        
+
         [description(
             "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/signal/Terminate,
             http://schemas.microsoft.com/wbem/wsman/1/windows/shell/signal/Break,
             http://schemas.microsoft.com/wbem/wsman/1/windows/shell/signal/Pause,
             http://schemas.microsoft.com/wbem/wsman/1/windows/shell/signal/Resume,
-            http://schemas.microsoft.com/wbem/wsman/1/windows/shell/signal/Exit")] 
+            http://schemas.microsoft.com/wbem/wsman/1/windows/shell/signal/Exit")]
         string code
         );
 

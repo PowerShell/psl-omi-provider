@@ -14,6 +14,10 @@
 #include <base/instance.h>
 #include <base/helpers.h>
 #include "coreclrutil.h"
+#include <sys/types.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <base/logbase.h>
 
 /* TODO:
     * No provider (de-)initialization through WSManPluginStartup and WSManPluginShutdown
@@ -21,11 +25,12 @@
 */
 
 
+
 /* Number of characters reserved for command ID and shell ID -- max number of digits for hex 64-bit number with null terminator */
 #define ID_LENGTH 17
 
-#define GOTO_ERROR(result) { printf("ERROR %u, %s, %u\n", result, __FILE__, __LINE__); miResult = result; goto error; }
-#define GOTO_ERROR_EX(result, label) { miResult = result; goto label; }
+#define GOTO_ERROR(message, result) { __LOGE(("%s (result=%u)", message, result)); miResult = result; goto error; }
+#define GOTO_ERROR_EX(message, result, label) {__LOGE(("%s (result=%u)", message, result));  miResult = result; goto label; }
 
 #define POWERSHELL_INIT_STRING  "<InitializationParameters><Param Name=\"PSVersion\" Value=\"5.0\"></Param></InitializationParameters>"
 
@@ -167,10 +172,10 @@ void CommonData_Release(CommonData *commonData);
 
 ShellData *GetShellFromOperation(CommonData *commonData)
 {
-	if (commonData == NULL)
-		return NULL; /* probably orphaned */
+    if (commonData == NULL)
+        return NULL; /* probably orphaned */
 
-	if (commonData->requestType == CommonData_Type_Shell)
+    if (commonData->requestType == CommonData_Type_Shell)
         return (ShellData*)commonData;
 
     return GetShellFromOperation(commonData->parentData);
@@ -189,7 +194,7 @@ CommandData *GetCommandFromOperation(CommonData *commonData)
 
 static const char* CommonData_Type_String(CommonData_Type type)
 {
-    static const char* _strings[] = 
+    static const char* _strings[] =
     {
         "SHELL",
         "COMMAND",
@@ -233,13 +238,14 @@ static const char* GetCommandId(CommonData *data)
     return commandId;
 }
 
+
 static void PrintDataFunctionStart(CommonData *data, const char *function)
 {
     const char *shellId = GetShellId(data);
     const char *commandId = GetCommandId(data);
 
-    printf("%s: START commonData=%p, type=%s, ShellID = %s, CommandID = %s, miContext=%p, miInstance=%p, refcount=%p\n", 
-            function, data, CommonData_Type_String(data->requestType), shellId, commandId, data->miRequestContext, data->miOperationInstance, (void*)data->refcount);
+    __LOGD(("%s: START commonData=%p, type=%s, ShellID = %s, CommandID = %s, miContext=%p, miInstance=%p, refcount=%p",
+            function, data, CommonData_Type_String(data->requestType), shellId, commandId, data->miRequestContext, data->miOperationInstance, (void*)data->refcount));
 }
 
 static void PrintDataFunctionStartStr(CommonData *data, const char *function, const char *name, const char *val)
@@ -247,16 +253,16 @@ static void PrintDataFunctionStartStr(CommonData *data, const char *function, co
     const char *shellId = GetShellId(data);
     const char *commandId = GetCommandId(data);
 
-    printf("%s: START commonData=%p, type=%s, ShellID = %s, CommandID = %s, miContext=%p, miInstance=%p, %s=%s\n", 
-            function, data, CommonData_Type_String(data->requestType), shellId, commandId, data->miRequestContext, data->miOperationInstance, name, val);
+    __LOGD(("%s: START commonData=%p, type=%s, ShellID = %s, CommandID = %s, miContext=%p, miInstance=%p, %s=%s",
+            function, data, CommonData_Type_String(data->requestType), shellId, commandId, data->miRequestContext, data->miOperationInstance, name, val));
 }
 static void PrintDataFunctionStartNumStr(CommonData *data, const char *function, const char *name, MI_Uint32 val, const char *name2, const char *val2)
 {
     const char *shellId = GetShellId(data);
     const char *commandId = GetCommandId(data);
 
-    printf("%s: START commonData=%p, type=%s, ShellID = %s, CommandID = %s, miContext=%p, miInstance=%p, %s=%u, %s, %s\n", 
-            function, data, CommonData_Type_String(data->requestType), shellId, commandId, data->miRequestContext, data->miOperationInstance, name, val, name2, val2);
+    __LOGD(("%s: START commonData=%p, type=%s, ShellID = %s, CommandID = %s, miContext=%p, miInstance=%p, %s=%u, %s, %s",
+            function, data, CommonData_Type_String(data->requestType), shellId, commandId, data->miRequestContext, data->miOperationInstance, name, val, name2, val2));
 }
 
 static void PrintDataFunctionStartStr2(CommonData *data, const char *function, const char *name1, const char *val1, const char *name2, const char *val2)
@@ -264,23 +270,23 @@ static void PrintDataFunctionStartStr2(CommonData *data, const char *function, c
     const char *shellId = GetShellId(data);
     const char *commandId = GetCommandId(data);
 
-    printf("%s: START commonData=%p, type=%s, ShellID = %s, CommandID = %s, miContext=%p, miInstance=%p, %s=%s, %s=%s\n", 
-            function, data, CommonData_Type_String(data->requestType), shellId, commandId, data->miRequestContext, data->miOperationInstance, name1, val1, name2, val2);
+    __LOGD(("%s: START commonData=%p, type=%s, ShellID = %s, CommandID = %s, miContext=%p, miInstance=%p, %s=%s, %s=%s",
+            function, data, CommonData_Type_String(data->requestType), shellId, commandId, data->miRequestContext, data->miOperationInstance, name1, val1, name2, val2));
 }
 static void PrintDataFunctionTag(CommonData *data, const char *function, const char *tagName)
 {
     const char *shellId = GetShellId(data);
     const char *commandId = GetCommandId(data);
 
-    printf("%s: %s commonData=%p, type=%s, ShellID = %s, CommandID = %s\n",
-            function, tagName, data, CommonData_Type_String(data->requestType), shellId, commandId);
+    __LOGD(("%s: %s commonData=%p, type=%s, ShellID = %s, CommandID = %s",
+            function, tagName, data, CommonData_Type_String(data->requestType), shellId, commandId));
 }
 static void PrintDataFunctionEnd(CommonData *data, const char *function, MI_Result miResult)
 {
     const char *shellId = GetShellId(data);
     const char *commandId = GetCommandId(data);
-    printf("%s: END commonData=%p, type=%s, ShellID = %s, CommandID = %s, miResult=%u (%s)\n", 
-            function, data, CommonData_Type_String(data->requestType), shellId, commandId, miResult, Result_ToString(miResult));
+    __LOGD(("%s: END commonData=%p, type=%s, ShellID = %s, CommandID = %s, miResult=%u (%s)",
+            function, data, CommonData_Type_String(data->requestType), shellId, commandId, miResult, Result_ToString(miResult)));
 }
 
 /* The master shell object that the provider passes back as context for all provider
@@ -302,11 +308,20 @@ ShellData * FindShellFromSelf(struct _Shell_Self *shell, const MI_Char *shellId)
 {
     ShellData *shellData = shell->shellList;
 
+    __LOGD(("FindShellFromSelf - looking for shell %s", shellId));
+
     if (shellId == NULL)
         return NULL;
 
-    while (shellData && (Tcscmp(shellId, shellData->shellId) != 0))
+    while (shellData)
     {
+        __LOGD(("FindShellFromSelf - currently found %s", shellData->shellId));
+
+        if (Tcscmp(shellId, shellData->shellId) == 0)
+        {
+            __LOGD(("FindShellFromSelf -- found what we were looking for"));
+            break;
+        }
         shellData = (ShellData*)shellData->common.siblingData;
     }
 
@@ -321,22 +336,24 @@ ShellData * FindShellFromSelf(struct _Shell_Self *shell, const MI_Char *shellId)
 void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
         MI_Context* context)
 {
-	MI_Uint32 miResult = MI_RESULT_OK;
-	int ret;
+    MI_Uint32 miResult = MI_RESULT_OK;
+    int ret;
 
-	printf("Shell_Load\n");
+    Log_Open("/tmp/shell.log");
+    Log_SetLevel(OMI_DEBUG);
+    __LOGD(("Shell_Load"));
 
     *self = calloc(1, sizeof(Shell_Self));
     if (*self == NULL)
     {
-    	GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     /* Initialize the CLR */
     ret = startCoreCLR("ps_omi_host", &(*self)->hostHandle, &(*self)->domainId);
     if (ret != 0)
     {
-    	GOTO_ERROR(MI_RESULT_FAILED);
+        GOTO_ERROR("Failed to start CLR", MI_RESULT_FAILED);
     }
 
     /* TODO: call into the managed function to get the shell delegates */
@@ -352,22 +369,22 @@ void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
         (void**)&entryPointDelegate);
     if (ret != 0)
     {
-    	GOTO_ERROR(MI_RESULT_FAILED);
+        GOTO_ERROR("Failed to create powershell delegate InitPlugin", MI_RESULT_FAILED);
     }
 
 
     /* Call managed delegate InitPlugin method */
     if (entryPointDelegate)
     {
-    	miResult = entryPointDelegate(&(*self)->managedPointers);
-    	if (miResult)
-    	{
-    		GOTO_ERROR(miResult);
-    	}
+        miResult = entryPointDelegate(&(*self)->managedPointers);
+        if (miResult)
+        {
+            GOTO_ERROR("Powershell InitPlugin failed", miResult);
+        }
     }
 
 error:
-    printf("Shell_Load PostResult %p, %u\n", context, miResult);
+    __LOGE(("Shell_Load PostResult %p, %u", context, miResult));
     MI_Context_PostResult(context, miResult);
 }
 
@@ -380,26 +397,29 @@ void MI_CALL Shell_Unload(Shell_Self* self, MI_Context* context)
 {
     int ret;
 
-	printf("Shell_Unload\n");
+    __LOGD(("Shell_Unload"));
+
+
     /* TODO: Do we have any shells still active? */
-    
+
     /* NOTE: Expectation is that WSManPluginReportCompletion should be called, but it is not looking like that is always happening */
 
-	/* Call managed code Shutdown function */
-	if (self->managedPointers.shutdownPluginFuncPtr)
-		self->managedPointers.shutdownPluginFuncPtr(self);
+    /* Call managed code Shutdown function */
+    if (self->managedPointers.shutdownPluginFuncPtr)
+        self->managedPointers.shutdownPluginFuncPtr(self);
 
-	/* TODO: Shut down CLR */
+    /* TODO: Shut down CLR */
     ret = stopCoreCLR(self->hostHandle, self->domainId);
     if (ret != 0)
     {
-    	printf("Stopping CLR failed\n");;
+        __LOGE(("Stopping CLR failed"));
     }
-    
+
 
 
     free(self);
-    printf("Shell_Load PostResult %p, %u\n", context, MI_RESULT_OK);
+    __LOGD(("Shell_Load PostResult %p, %u", context, MI_RESULT_OK));
+    Log_Close();
     MI_Context_PostResult(context, MI_RESULT_OK);
 }
 
@@ -411,24 +431,24 @@ void MI_CALL Shell_EnumerateInstances(Shell_Self* self, MI_Context* context,
         const MI_PropertySet* propertySet, MI_Boolean keysOnly,
         const MI_Filter* filter)
 {
-	/* Enumerate through the list of shells and post the results back */
-	ShellData *shellData = self->shellList;
-	MI_Result miResult = MI_RESULT_OK;
+    /* Enumerate through the list of shells and post the results back */
+    ShellData *shellData = self->shellList;
+    MI_Result miResult = MI_RESULT_OK;
 
-	printf("Shell_EnumerateInstances\n");
-	while (shellData)
-	{
-        printf("Shell_EnumerateInstances PostInstance %p, %p\n", context, shellData->common.miOperationInstance);
-		miResult = MI_Context_PostInstance(context, shellData->common.miOperationInstance);
-		if (miResult != MI_RESULT_OK)
-		{
-			printf("Shell_EnumerateInstances failed to post instance\n");
-			break;
-		}
+    __LOGD(("Shell_EnumerateInstances"));
+    while (shellData)
+    {
+        __LOGD(("Shell_EnumerateInstances PostInstance %p, %p", context, shellData->common.miOperationInstance));
+        miResult = MI_Context_PostInstance(context, shellData->common.miOperationInstance);
+        if (miResult != MI_RESULT_OK)
+        {
+            __LOGE(("Shell_EnumerateInstances failed to post instance"));
+            break;
+        }
 
         shellData = (ShellData*) shellData->common.siblingData;
-	}
-    printf("Shell_EnumerateInstances PostResult %p, %u\n", context, miResult);
+    }
+    __LOGD(("Shell_EnumerateInstances PostResult %p, %u", context, miResult));
     MI_Context_PostResult(context, miResult);
 }
 
@@ -444,14 +464,14 @@ void MI_CALL Shell_GetInstance(Shell_Self* self, MI_Context* context,
 
     if (shellData)
     {
-        printf("Shell_GetInstances PostInstance %p, %p\n", context, shellData->common.miOperationInstance);
+        __LOGD(("Shell_GetInstances PostInstance %p, %p", context, shellData->common.miOperationInstance));
         miResult = MI_Context_PostInstance(context, shellData->common.miOperationInstance);
-		if (miResult != MI_RESULT_OK)
-		{
-			printf("Shell_GetInstances failed to post instance\n");
-		}
+        if (miResult != MI_RESULT_OK)
+        {
+            __LOGE(("Shell_GetInstances failed to post instance"));
+        }
     }
-    printf("Shell_GetInstance PostResult %p, %u\n", context, miResult);
+    __LOGD(("Shell_GetInstance PostResult %p, %u", context, miResult));
     MI_Context_PostResult(context, miResult);
 }
 
@@ -465,66 +485,66 @@ void MI_CALL Shell_GetInstance(Shell_Self* self, MI_Context* context,
  */
 static MI_Boolean ExtractStreamSet(CommonData *commonData, const MI_Char *streams, StreamSet *streamSet)
 {
-	MI_Char *cursor = (MI_Char*) streams;
-	MI_Uint32 i;
+    MI_Char *cursor = (MI_Char*) streams;
+    MI_Uint32 i;
 
-	/* Count how many stream names we have so we can allocate the array */
-	while (cursor && *cursor)
-	{
+    /* Count how many stream names we have so we can allocate the array */
+    while (cursor && *cursor)
+    {
         streamSet->streamNamesCount++;
-		cursor = Tcschr(cursor, MI_T(' '));
-		if (cursor && *cursor)
-		{
-			cursor++;
-		}
-	}
+        cursor = Tcschr(cursor, MI_T(' '));
+        if (cursor && *cursor)
+        {
+            cursor++;
+        }
+    }
 
-	/* Allocate the buffer for the array and all strings inside the array */
+    /* Allocate the buffer for the array and all strings inside the array */
     streamSet->streamNames = Batch_Get(commonData->batch,
-			  (sizeof(MI_Char*) * streamSet->streamNamesCount)); /* array length */
-	if (streamSet->streamNames == NULL)
-		return MI_FALSE;
+              (sizeof(MI_Char*) * streamSet->streamNamesCount)); /* array length */
+    if (streamSet->streamNames == NULL)
+        return MI_FALSE;
 
-	/* Point cursor to start of stream names again */
-	cursor = (MI_Char*) streams;
+    /* Point cursor to start of stream names again */
+    cursor = (MI_Char*) streams;
 
-	/* Loop through the streams fixing up the array pointers and replace spaces with null terminator */
-	for (i = 0; i != streamSet->streamNamesCount; i++)
-	{
-		/* remember the start of this stream */
+    /* Loop through the streams fixing up the array pointers and replace spaces with null terminator */
+    for (i = 0; i != streamSet->streamNamesCount; i++)
+    {
+        /* remember the start of this stream */
         streams = cursor;
 
-		/* Find the next space or end of string */
-		cursor = Tcschr(cursor, MI_T(' '));
-		if (cursor)
-		{
-			/* We found a space to replace with null terminator */
-			*cursor = MI_T('\0');
+        /* Find the next space or end of string */
+        cursor = Tcschr(cursor, MI_T(' '));
+        if (cursor)
+        {
+            /* We found a space to replace with null terminator */
+            *cursor = MI_T('\0');
 
 
-	        /* Skip to start of next stream name */
-			cursor++;
-		}
+            /* Skip to start of next stream name */
+            cursor++;
+        }
 
-		/* Fix up the pointer to the stream name */
-		if (!Utf8ToUtf16Le(commonData->batch, streams, &streamSet->streamNames[i]))
-		{
-			return MI_FALSE;
-		}
-	}
-	return MI_TRUE;
+        /* Fix up the pointer to the stream name */
+        if (!Utf8ToUtf16Le(commonData->batch, streams, &streamSet->streamNames[i]))
+        {
+            return MI_FALSE;
+        }
+    }
+    return MI_TRUE;
 }
 
 MI_Boolean ExtractStartupInfo(ShellData *shellData, const Shell *shellInstance)
 {
     memset(&shellData->wsmanStartupInfo, 0, sizeof(shellData->wsmanStartupInfo));
-    
+
     if (shellInstance->Name.exists)
     {
-		if (!Utf8ToUtf16Le(shellData->common.batch, shellInstance->Name.value, (MI_Char16**)&shellData->wsmanStartupInfo.name))
-		{
-			return MI_FALSE;
-		}
+        if (!Utf8ToUtf16Le(shellData->common.batch, shellInstance->Name.value, (MI_Char16**)&shellData->wsmanStartupInfo.name))
+        {
+            return MI_FALSE;
+        }
     }
 
     if (shellInstance->WorkingDirectory.exists)
@@ -567,11 +587,11 @@ MI_Boolean ExtractStartupInfo(ShellData *shellData, const Shell *shellInstance)
         shellData->wsmanStartupInfo.variableSet->varsCount = shellInstance->Environment.value.size;
         for (i = 0; i != shellInstance->Environment.value.size; i++)
         {
-    		if (!Utf8ToUtf16Le(shellData->common.batch, shellInstance->Environment.value.data[i]->Name.value, (MI_Char16**)&shellData->wsmanStartupInfo.variableSet->vars[i].name) ||
-    			!Utf8ToUtf16Le(shellData->common.batch, shellInstance->Environment.value.data[i]->Value.value, (MI_Char16**)&shellData->wsmanStartupInfo.variableSet->vars[i].value))
-    		{
-    			return MI_FALSE;
-    		}
+            if (!Utf8ToUtf16Le(shellData->common.batch, shellInstance->Environment.value.data[i]->Name.value, (MI_Char16**)&shellData->wsmanStartupInfo.variableSet->vars[i].name) ||
+                !Utf8ToUtf16Le(shellData->common.batch, shellInstance->Environment.value.data[i]->Value.value, (MI_Char16**)&shellData->wsmanStartupInfo.variableSet->vars[i].value))
+            {
+                return MI_FALSE;
+            }
         }
     }
 
@@ -610,11 +630,11 @@ MI_Boolean ExtractOperationInfo(MI_Context *context, CommonData *commonData)
             continue;
         }
 
-		if (!Utf8ToUtf16Le(commonData->batch, name, (MI_Char16**)&commonData->operationInfo.optionSet.options[commonData->operationInfo.optionSet.optionsCount].name) ||
-			!Utf8ToUtf16Le(commonData->batch, value.string, (MI_Char16**)&commonData->operationInfo.optionSet.options[commonData->operationInfo.optionSet.optionsCount].value))
-		{
-			return MI_FALSE;
-		}
+        if (!Utf8ToUtf16Le(commonData->batch, name, (MI_Char16**)&commonData->operationInfo.optionSet.options[commonData->operationInfo.optionSet.optionsCount].name) ||
+            !Utf8ToUtf16Le(commonData->batch, value.string, (MI_Char16**)&commonData->operationInfo.optionSet.options[commonData->operationInfo.optionSet.optionsCount].value))
+        {
+            return MI_FALSE;
+        }
         commonData->operationInfo.optionSet.optionsCount++;
     }
 
@@ -624,53 +644,53 @@ MI_Boolean ExtractOperationInfo(MI_Context *context, CommonData *commonData)
 MI_Boolean ExtractPluginRequest(MI_Context *context, CommonData *commonData)
 {
     const MI_Char *value;
-    
+
     if (MI_Context_GetStringOption(context, MI_T("WSMAN_ResourceURI"), &value) == MI_RESULT_OK)
     {
-    	if (!Utf8ToUtf16Le(commonData->batch, value, (MI_Char16**)&commonData->pluginRequest.resourceUri))
-    	{
-    		return MI_FALSE;
-    	}
+        if (!Utf8ToUtf16Le(commonData->batch, value, (MI_Char16**)&commonData->pluginRequest.resourceUri))
+        {
+            return MI_FALSE;
+        }
     }
     if (MI_Context_GetStringOption(context, MI_T("WSMAN_Locale"), &value) == MI_RESULT_OK)
     {
-    	if (!Utf8ToUtf16Le(commonData->batch, value, (MI_Char16**)&commonData->pluginRequest.locale))
-    	{
-    		return MI_FALSE;
-    	}
+        if (!Utf8ToUtf16Le(commonData->batch, value, (MI_Char16**)&commonData->pluginRequest.locale))
+        {
+            return MI_FALSE;
+        }
     }
     if (MI_Context_GetStringOption(context, MI_T("WSMAN_DataLocale"), &value) == MI_RESULT_OK)
     {
-    	if (!Utf8ToUtf16Le(commonData->batch, value, (MI_Char16**)&commonData->pluginRequest.dataLocale))
-    	{
-    		return MI_FALSE;
-    	}
+        if (!Utf8ToUtf16Le(commonData->batch, value, (MI_Char16**)&commonData->pluginRequest.dataLocale))
+        {
+            return MI_FALSE;
+        }
     }
 
     commonData->pluginRequest.senderDetails = &commonData->senderDetails;
 
     if (MI_Context_GetStringOption(context, MI_T("HTTP_URL"), &value) == MI_RESULT_OK)
     {
-    	if (!Utf8ToUtf16Le(commonData->batch, value, (MI_Char16**)&commonData->senderDetails.httpURL))
-    	{
-    		return MI_FALSE;
-    	}
+        if (!Utf8ToUtf16Le(commonData->batch, value, (MI_Char16**)&commonData->senderDetails.httpURL))
+        {
+            return MI_FALSE;
+        }
     }
-    
+
     if (MI_Context_GetStringOption(context, MI_T("HTTP_USERNAME"), &value) == MI_RESULT_OK)
     {
-    	if (!Utf8ToUtf16Le(commonData->batch, value, (MI_Char16**)&commonData->senderDetails.senderName))
-    	{
-    		return MI_FALSE;
-    	}
+        if (!Utf8ToUtf16Le(commonData->batch, value, (MI_Char16**)&commonData->senderDetails.senderName))
+        {
+            return MI_FALSE;
+        }
     }
 
     if (MI_Context_GetStringOption(context, MI_T("HTTP_AUTHORIZATION"), &value) == MI_RESULT_OK)
     {
-    	if (!Utf8ToUtf16Le(commonData->batch, value, (MI_Char16**)&commonData->senderDetails.authenticationMechanism))
-    	{
-    		return MI_FALSE;
-    	}
+        if (!Utf8ToUtf16Le(commonData->batch, value, (MI_Char16**)&commonData->senderDetails.authenticationMechanism))
+        {
+            return MI_FALSE;
+        }
     }
 
     return ExtractOperationInfo(context, commonData);
@@ -681,7 +701,7 @@ MI_Boolean ExtractPluginRequest(MI_Context *context, CommonData *commonData)
 MI_Boolean ExtractExtraInfo(ShellData *shellData, const Shell* newInstance)
 {
     WSMAN_DATA *pExtraInfo = NULL;
-    
+
     size_t toBytesTotal;
     size_t toBytesLeft;
     char *toBuffer;
@@ -699,7 +719,7 @@ MI_Boolean ExtractExtraInfo(ShellData *shellData, const Shell* newInstance)
     iconvData = iconv_open("UTF-16LE", "UTF-8");
     if (iconvData == (iconv_t)-1)
     {
-    	goto cleanup;
+        goto cleanup;
     }
 
     toBytesTotal = (sizeof(CREATION_XML_START) - 1 + creationXmlLength + sizeof(CREATION_XML_END) - 1 ) * 2; /* Assume buffer is twice as big. */
@@ -707,7 +727,7 @@ MI_Boolean ExtractExtraInfo(ShellData *shellData, const Shell* newInstance)
 
     toBuffer = Batch_Get(shellData->common.batch, toBytesTotal);
     if (toBuffer == NULL)
-    	goto cleanup;
+        goto cleanup;
     toBufferCurrent = toBuffer;
 
 
@@ -716,14 +736,14 @@ MI_Boolean ExtractExtraInfo(ShellData *shellData, const Shell* newInstance)
     iconv_return = iconv(iconvData, &fromBuffer, &fromBytesLeft, &toBufferCurrent, &toBytesLeft);
     if (iconv_return == (size_t) -1)
     {
-    	goto cleanup;
+        goto cleanup;
     }
     fromBytesLeft = creationXmlLength;
     fromBuffer = (char*)newInstance->CreationXml.value;
     iconv_return = iconv(iconvData, &fromBuffer, &fromBytesLeft, &toBufferCurrent, &toBytesLeft);
     if (iconv_return == (size_t)-1)
     {
-    	goto cleanup;
+        goto cleanup;
     }
 
     fromBytesLeft = sizeof(CREATION_XML_END) - 1; /* We want the null terminator this time */
@@ -731,19 +751,20 @@ MI_Boolean ExtractExtraInfo(ShellData *shellData, const Shell* newInstance)
     iconv_return = iconv(iconvData, &fromBuffer, &fromBytesLeft, &toBufferCurrent, &toBytesLeft);
     if (iconv_return == (size_t)-1)
     {
-    	goto cleanup;
+        goto cleanup;
     }
 
     pExtraInfo = &shellData->extraInfo;
     pExtraInfo->type = WSMAN_DATA_TYPE_TEXT;
-    pExtraInfo->text.bufferLength = (toBytesTotal - toBytesLeft)/2; /* Adjust for any unused buffer... length is also string length, not byte length -- another assumption being made about buffer being twice as long */
+    /* Adjust for any unused buffer... length is also string length, not byte length -- another assumption being made about buffer being twice as long */
+    pExtraInfo->text.bufferLength = (toBytesTotal - toBytesLeft)/2;
     pExtraInfo->text.buffer = (const MI_Char16*) toBuffer;
 
     returnValue = MI_TRUE;
 
 cleanup:
-	if (iconvData != (iconv_t)-1)
-		iconv_close(iconvData);
+    if (iconvData != (iconv_t)-1)
+        iconv_close(iconvData);
 
     return returnValue;
 }
@@ -760,42 +781,42 @@ typedef struct _CreateShellParams
 
 PAL_Uint32  _CallCreateShell(void *_params)
 {
-	CreateShellParams *params = (CreateShellParams*) _params;
+    CreateShellParams *params = (CreateShellParams*) _params;
 
-	params->self->managedPointers.wsManPluginShellFuncPtr(
-			params->self,
-			params->requestDetails,
-			params->flags,
-			params->extraInfo,
-			params->startupInfo,
-			params->inboundShellInformation);
-	free(params);
-	return 0;
+    params->self->managedPointers.wsManPluginShellFuncPtr(
+            params->self,
+            params->requestDetails,
+            params->flags,
+            params->extraInfo,
+            params->startupInfo,
+            params->inboundShellInformation);
+    free(params);
+    return 0;
 }
 MI_Boolean CallCreateShell(
-	    _In_ Shell_Self* self,
-	    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-	    _In_ MI_Uint32 flags,
-	    _In_ MI_Char16 *extraInfo,
-	    _In_opt_ WSMAN_SHELL_STARTUP_INFO *startupInfo,
-	    _In_opt_ WSMAN_DATA *inboundShellInformation)
+        _In_ Shell_Self* self,
+        _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+        _In_ MI_Uint32 flags,
+        _In_ MI_Char16 *extraInfo,
+        _In_opt_ WSMAN_SHELL_STARTUP_INFO *startupInfo,
+        _In_opt_ WSMAN_DATA *inboundShellInformation)
 {
-	CreateShellParams *params = malloc(sizeof(CreateShellParams));
-	if (params)
-	{
-		params->self = self;
-		params->requestDetails = requestDetails;
-		params->flags = flags;
-		params->extraInfo = extraInfo;
-		params->startupInfo = startupInfo;
-		params->inboundShellInformation = inboundShellInformation;
-		if (Thread_CreateDetached(_CallCreateShell, NULL, params) == 0)
-			return MI_TRUE;
+    CreateShellParams *params = malloc(sizeof(CreateShellParams));
+    if (params)
+    {
+        params->self = self;
+        params->requestDetails = requestDetails;
+        params->flags = flags;
+        params->extraInfo = extraInfo;
+        params->startupInfo = startupInfo;
+        params->inboundShellInformation = inboundShellInformation;
+        if (Thread_CreateDetached(_CallCreateShell, NULL, params) == 0)
+            return MI_TRUE;
 
-		free(params);
-	}
+        free(params);
+    }
 
-	return MI_FALSE;
+    return MI_FALSE;
 }
 /* Shell_CreateInstance
  * Called by the client to create a shell. The shell is given an ID by us and sent back.
@@ -813,11 +834,13 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
     Batch *batch;
     MI_Char16 *initString;
 
+    __LOGD(("Shell_CreateInstance Name=%s, ShellId=%s", newInstance->Name.value, newInstance->ShellId.value));
+
     /* Allocate our shell data out of a batch so we can allocate most of it from a single page and free it easily */
     batch = Batch_New(BATCH_MAX_PAGES);
     if (batch == NULL)
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     /* Create an internal representation of the shell object that can can use to
@@ -828,32 +851,45 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
     shellData = Batch_GetClear(batch, sizeof(*shellData));
     if (shellData == NULL)
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
     shellData->common.batch = batch;
-
-    /* Set the shell ID to be the pointer within the bigger buffer */
-    shellData->shellId = Batch_Get(batch, sizeof(MI_Char)*ID_LENGTH);
-    if (shellData->shellId == NULL)
-    {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
-    }
-
-    if (Stprintf(shellData->shellId, ID_LENGTH, MI_T("%llx"), (MI_Uint64) shellData) < 0)
-    {
-        GOTO_ERROR(MI_RESULT_FAILED);
-    }
 
     /* Create an instance of the shell that we can send for the result of this Create as well as a get/enum operation*/
     /* Note: Instance is allocated from the batch so will be deleted when the shell batch is destroyed */
     if (Instance_Clone(&newInstance->__instance, &miOperationInstance, batch) != MI_RESULT_OK)
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
-    if ((miResult = Shell_SetPtr_Name((Shell*)miOperationInstance, shellData->shellId)) != MI_RESULT_OK)
+    if (newInstance->Name.value == NULL)
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        /* Set the shell ID to be the pointer within the bigger buffer */
+        shellData->shellId = Batch_Get(batch, sizeof(MI_Char)*ID_LENGTH);
+        if (shellData->shellId == NULL)
+        {
+            GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        }
+
+        if (Stprintf(shellData->shellId, ID_LENGTH, MI_T("%llx"), (MI_Uint64) shellData) < 0)
+        {
+            GOTO_ERROR("out of memory", MI_RESULT_FAILED);
+        }
+        if ((miResult = Shell_SetPtr_Name((Shell*)miOperationInstance, shellData->shellId)) != MI_RESULT_OK)
+        {
+            GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        }
+    }
+    else
+    {
+        MI_Value value;
+        MI_Type type;
+        if ((MI_Instance_GetElement(miOperationInstance, MI_T("Name"), &value, &type, NULL, NULL) != MI_RESULT_OK) ||
+                (type != MI_STRING))
+        {
+            GOTO_ERROR("Failed to find shell name", MI_RESULT_FAILED);
+        }
+        shellData->shellId = value.string;
     }
 
     /* Extract the outbound stream names that are space delimited into an
@@ -861,49 +897,49 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
      */
     if (!ExtractStreamSet(&shellData->common, newInstance->InputStreams.value, &shellData->inputStreams))
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("ExtractStreamSet failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
     if (!ExtractStreamSet(&shellData->common, newInstance->OutputStreams.value, &shellData->outputStreams))
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("ExtractStreamSet failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     if (!ExtractStartupInfo(shellData, newInstance))
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("ExtractStartipInfo failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     if (!ExtractPluginRequest(context, &shellData->common))
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("ExtractPluginRequest failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     if (newInstance->CreationXml.value)
     {
         if (!ExtractExtraInfo(shellData, newInstance))
         {
-            GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+            GOTO_ERROR("ExtractExtraInfo failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
         }
         pExtraInfo = &shellData->extraInfo;
     }
 
     {
-    	MI_Value value;
-    	MI_Type type;
-    	MI_Uint32 flags;
-    	MI_Uint32 index;
+        MI_Value value;
+        MI_Type type;
+        MI_Uint32 flags;
+        MI_Uint32 index;
 
-		if ((MI_Instance_GetElement(&newInstance->__instance, MI_T("IsCompressed"), &value, &type, &flags, &index) == 0) &&
-				(type == MI_BOOLEAN) &&
-				value.boolean)
-		{
-			shellData->isCompressed = MI_TRUE;
-		}
+        if ((MI_Instance_GetElement(&newInstance->__instance, MI_T("IsCompressed"), &value, &type, &flags, &index) == 0) &&
+                (type == MI_BOOLEAN) &&
+                value.boolean)
+        {
+            shellData->isCompressed = MI_TRUE;
+        }
     }
 
     if (!Utf8ToUtf16Le(shellData->common.batch, POWERSHELL_INIT_STRING, &initString))
     {
-    	GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("Utf8ToUtf16Le failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     shellData->common.refcount = 1;
@@ -925,10 +961,10 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
     PrintDataFunctionStart(&shellData->common, "Shell_CreateInstance");
     if (!CallCreateShell(self, &shellData->common.pluginRequest, 0, initString, &shellData->wsmanStartupInfo, pExtraInfo))
     {
-    	/* Need to detatch ourself */
-    	/* TODO: This is not thread safe... another shell could come in and mess this up */
-    	self->shellList = (ShellData*) shellData->common.siblingData;
-    	GOTO_ERROR(MI_RESULT_FAILED);
+        /* Need to detatch ourself */
+        /* TODO: This is not thread safe... another shell could come in and mess this up */
+        self->shellList = (ShellData*) shellData->common.siblingData;
+        GOTO_ERROR("CallCreateShell failed", MI_RESULT_FAILED);
     }
 
     return;
@@ -948,7 +984,7 @@ void MI_CALL Shell_ModifyInstance(Shell_Self* self, MI_Context* context,
         const MI_Char* nameSpace, const MI_Char* className,
         const Shell* modifiedInstance, const MI_PropertySet* propertySet)
 {
-    printf("Shell_ModifyInstance -- PostResult=%p, %u (not supported)\n", context, MI_RESULT_NOT_SUPPORTED);
+    __LOGE(("Shell_ModifyInstance -- PostResult=%p, %u (not supported)", context, MI_RESULT_NOT_SUPPORTED));
     MI_Context_PostResult(context, MI_RESULT_NOT_SUPPORTED);
 }
 
@@ -987,11 +1023,13 @@ void MI_CALL Shell_DeleteInstance(Shell_Self* self, MI_Context* context,
     ShellData *shellData;
     MI_Result miResult = MI_RESULT_NOT_FOUND;
 
+    __LOGD(("Shell_DeleteInstance Name=%s, ShellId=%s", instanceName->Name.value, instanceName->ShellId.value));
     shellData = FindShellFromSelf(self, instanceName->Name.value);
 
     if (shellData)
     {
-        printf("Shell_DeleteInstance namespace=%s, className=%s, shellId=%s\n", nameSpace, className, instanceName->Name.value);
+        __LOGD(("Shell_DeleteInstance namespace=%s, className=%s, shellId=%s", nameSpace, className, instanceName->Name.value));
+
         /* Notify shell to shut itself down. We don't delete things
            here because the shell itself will tell us when it is finished
            */
@@ -1003,10 +1041,10 @@ void MI_CALL Shell_DeleteInstance(Shell_Self* self, MI_Context* context,
     }
     else
     {
-        printf("Shell_DeleteInstance namespace=%s, className=%s, shellId=%s, FAILED, result=%u\n", nameSpace, className, instanceName->Name.value, miResult);
+        __LOGD(("Shell_DeleteInstance namespace=%s, className=%s, shellId=%s, FAILED, result=%u", nameSpace, className, instanceName->Name.value, miResult));
     }
 
-    printf("Shell_DeleteInstance -- PostResult=%p, %u\n", context, miResult);
+    __LOGD(("Shell_DeleteInstance -- PostResult=%p, %u", context, miResult));
     MI_Context_PostResult(context, miResult);
 }
 
@@ -1024,10 +1062,10 @@ MI_Boolean ExtractCommandArgs(CommonData *commonData, Shell_Command* shellInstan
 
         for (i = 0; i != shellInstance->arguments.value.size; i++)
         {
-        	if (!Utf8ToUtf16Le(commonData->batch, shellInstance->arguments.value.data[i], (MI_Char16**)&wsmanArgSet->args[i]))
-        	{
-        		return MI_FALSE;
-        	}
+            if (!Utf8ToUtf16Le(commonData->batch, shellInstance->arguments.value.data[i], (MI_Char16**)&wsmanArgSet->args[i]))
+            {
+                return MI_FALSE;
+            }
         }
         wsmanArgSet->argsCount = shellInstance->arguments.value.size;
     }
@@ -1041,7 +1079,7 @@ MI_Boolean AddChildToShell(ShellData *shellParent, CommonData *childData)
     while (currentChild)
     {
         if ((currentChild->requestType != CommonData_Type_Command) &&
-        		(currentChild->requestType == childData->requestType))
+                (currentChild->requestType == childData->requestType))
         {
             /* Already have one of those */
             return MI_FALSE;
@@ -1064,7 +1102,7 @@ MI_Boolean AddChildToCommand(CommandData *commandParent, CommonData *childData)
     while (currentChild)
     {
         if ((currentChild->requestType != CommonData_Type_Command) &&
-        		(currentChild->requestType == childData->requestType))
+                (currentChild->requestType == childData->requestType))
         {
             /* Already have one of those */
             return MI_FALSE;
@@ -1087,8 +1125,8 @@ MI_Boolean DetachOperationFromParent(CommonData *commonData)
 
     if (!parent)
     {
-    	/* We have been orphaned or we are the shell */
-    	return MI_TRUE;
+        /* We have been orphaned or we are the shell */
+        return MI_TRUE;
     }
     else if (parent->requestType == CommonData_Type_Command)
         parentsChildren = &((CommandData*)parent)->childNext;
@@ -1123,42 +1161,42 @@ typedef struct _CommandParams
 
 PAL_Uint32  _CallCommand(void *_params)
 {
-	CommandParams *params = (CommandParams*) _params;
+    CommandParams *params = (CommandParams*) _params;
 
-	params->self->managedPointers.wsManPluginCommandFuncPtr(
-			params->self,
-			params->requestDetails,
-			params->flags,
-			params->shellContext,
-			params->commandLine,
-			params->arguments);
-	free(params);
-	return 0;
+    params->self->managedPointers.wsManPluginCommandFuncPtr(
+            params->self,
+            params->requestDetails,
+            params->flags,
+            params->shellContext,
+            params->commandLine,
+            params->arguments);
+    free(params);
+    return 0;
 }
 MI_Boolean CallCommand(
-	    _In_ Shell_Self* self,
-	    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-	    _In_ MI_Uint32 flags,
-	    _In_ void* shellContext,
-	    _In_ MI_Char16 *commandLine,
-	    _In_opt_ WSMAN_COMMAND_ARG_SET *arguments)
+        _In_ Shell_Self* self,
+        _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+        _In_ MI_Uint32 flags,
+        _In_ void* shellContext,
+        _In_ MI_Char16 *commandLine,
+        _In_opt_ WSMAN_COMMAND_ARG_SET *arguments)
 {
-	CommandParams *params = malloc(sizeof(CommandParams));
-	if (params)
-	{
-		params->self = self;
-		params->requestDetails = requestDetails;
-		params->flags = flags;
-		params->shellContext = shellContext;
-		params->commandLine = commandLine;
-		params->arguments = arguments;
-		if (Thread_CreateDetached(_CallCommand, NULL, params) == 0)
-			return MI_TRUE;
+    CommandParams *params = malloc(sizeof(CommandParams));
+    if (params)
+    {
+        params->self = self;
+        params->requestDetails = requestDetails;
+        params->flags = flags;
+        params->shellContext = shellContext;
+        params->commandLine = commandLine;
+        params->arguments = arguments;
+        if (Thread_CreateDetached(_CallCommand, NULL, params) == 0)
+            return MI_TRUE;
 
-		free(params);
-	}
+        free(params);
+    }
 
-	return MI_FALSE;
+    return MI_FALSE;
 }
 /* Initiate a command on a given shell. The command has parameters and the likes
  * and when created inbound/outbound streams are sent/received via the Send/Receive
@@ -1177,26 +1215,27 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
     Batch *batch = NULL;
     MI_Char16 *command = NULL;
 
+    __LOGD(("Shell_Invoke_Command Name=%s, ShellId=%s", instanceName->Name.value, instanceName->ShellId.value));
 
     shellData = FindShellFromSelf(self, instanceName->Name.value);
 
     if (!shellData)
     {
-        GOTO_ERROR(MI_RESULT_NOT_FOUND);
+        GOTO_ERROR("Failed to find shell for command", MI_RESULT_NOT_FOUND);
     }
 
     /* Allocate our shell data out of a batch so we can allocate most of it from a single page and free it easily */
     batch = Batch_New(BATCH_MAX_PAGES);
     if (batch == NULL)
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     /* Create internal command structure.  */
     commandData = Batch_GetClear(batch, sizeof(CommandData));
     if (!commandData)
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     commandData->common.batch = batch;
@@ -1204,7 +1243,7 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
     commandData->commandId = Batch_Get(batch, sizeof(MI_Char)*ID_LENGTH);
     if (!commandData->commandId)
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     Stprintf(commandData->commandId, ID_LENGTH, MI_T("%llx"), (MI_Uint64)commandData);
@@ -1213,24 +1252,24 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
     miResult = Instance_Clone(&in->__instance, &miOperationInstance, batch);
     if (miResult != MI_RESULT_OK)
     {
-    	GOTO_ERROR(miResult);
+        GOTO_ERROR("out of memory", miResult);
     }
 
     Shell_Command_SetPtr_CommandId((Shell_Command*) miOperationInstance, commandData->commandId);
-    
+
     if (!ExtractCommandArgs(&commandData->common, (Shell_Command*)miOperationInstance, &commandData->wsmanArgSet))
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("ExtractCommandArgs failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     if (!ExtractPluginRequest(context, &shellData->common))
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("ExtractPluginRequest failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     if (!Utf8ToUtf16Le(batch, ((Shell_Command*)miOperationInstance)->command.value, &command))
     {
-    	GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("Utf8ToUtf16Le failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     commandData->common.refcount = 1;
@@ -1241,20 +1280,20 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
 
     if (!AddChildToShell(shellData, (CommonData*) commandData))
     {
-        GOTO_ERROR(MI_RESULT_ALREADY_EXISTS); /* Only one command allowed at a time */
+        GOTO_ERROR("AddChildToShell failed", MI_RESULT_ALREADY_EXISTS); /* Only one command allowed at a time */
     }
     PrintDataFunctionStart(&commandData->common, "Shell_Invoke_Command");
 
     if (!CallCommand(
-    			self,
-				&commandData->common.pluginRequest,
-				0,
-				shellData->pluginShellContext,
-				command,
-				&commandData->wsmanArgSet))
+                self,
+                &commandData->common.pluginRequest,
+                0,
+                shellData->pluginShellContext,
+                command,
+                &commandData->wsmanArgSet))
     {
         DetachOperationFromParent(&commandData->common);
-    	GOTO_ERROR(MI_RESULT_FAILED);
+        GOTO_ERROR("CallCommand failed", MI_RESULT_FAILED);
     }
 
     /* Success path will send the response back from the callback from this API*/
@@ -1310,45 +1349,45 @@ typedef struct _SendParams
 
 PAL_Uint32  _CallSend(void *_params)
 {
-	SendParams *params = (SendParams*) _params;
+    SendParams *params = (SendParams*) _params;
 
-	params->self->managedPointers.wsManPluginSendFuncPtr(
-			params->self,
-			params->requestDetails,
-			params->flags,
-			params->shellContext,
-			params->commandContext,
-			params->stream,
-			params->inboundData);
-	free(params);
-	return 0;
+    params->self->managedPointers.wsManPluginSendFuncPtr(
+            params->self,
+            params->requestDetails,
+            params->flags,
+            params->shellContext,
+            params->commandContext,
+            params->stream,
+            params->inboundData);
+    free(params);
+    return 0;
 }
 MI_Boolean CallSend(
-	    _In_ Shell_Self* self,
-	    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-	    _In_ MI_Uint32 flags,
-	    _In_ void* shellContext,
-	    _In_opt_ void* commandContext,
-	    _In_ MI_Char16 *stream,
-	    _In_ WSMAN_DATA *inboundData)
+        _In_ Shell_Self* self,
+        _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+        _In_ MI_Uint32 flags,
+        _In_ void* shellContext,
+        _In_opt_ void* commandContext,
+        _In_ MI_Char16 *stream,
+        _In_ WSMAN_DATA *inboundData)
 {
-	SendParams *params = malloc(sizeof(SendParams));
-	if (params)
-	{
-		params->self = self;
-		params->requestDetails = requestDetails;
-		params->flags = flags;
-		params->shellContext = shellContext;
-		params->commandContext = commandContext;
-		params->stream = stream;
-		params->inboundData = inboundData;
-		if (Thread_CreateDetached(_CallSend, NULL, params) == 0)
-			return MI_TRUE;
+    SendParams *params = malloc(sizeof(SendParams));
+    if (params)
+    {
+        params->self = self;
+        params->requestDetails = requestDetails;
+        params->flags = flags;
+        params->shellContext = shellContext;
+        params->commandContext = commandContext;
+        params->stream = stream;
+        params->inboundData = inboundData;
+        if (Thread_CreateDetached(_CallSend, NULL, params) == 0)
+            return MI_TRUE;
 
-		free(params);
-	}
+        free(params);
+    }
 
-	return MI_FALSE;
+    return MI_FALSE;
 }
 /* Shell_Invoke_Send
  *
@@ -1372,14 +1411,16 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
     DecodeBuffer decodeBuffer, decodedBuffer;
     MI_Instance *clonedIn = NULL;
     MI_Char16 *streamName;
-    
-    memset(&decodeBuffer, 0, sizeof(decodeBuffer));
-	memset(&decodedBuffer, 0, sizeof(decodedBuffer));
 
-	/* Was the shell ID the one we already know about? */
+    memset(&decodeBuffer, 0, sizeof(decodeBuffer));
+    memset(&decodedBuffer, 0, sizeof(decodedBuffer));
+
+    __LOGD(("Shell_Invoke_Send Name=%s, ShellId=%s", instanceName->Name.value, instanceName->ShellId.value));
+
+    /* Was the shell ID the one we already know about? */
     if (!shellData)
     {
-        GOTO_ERROR(MI_RESULT_NOT_FOUND);
+        GOTO_ERROR("Failed to find shell", MI_RESULT_NOT_FOUND);
     }
 
     /* Check to make sure the command ID is correct if this send is aimed at the command */
@@ -1388,27 +1429,27 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
         commandData = FindCommandFromShell(shellData, in->streamData.value->commandId.value);
         if (commandData == NULL)
         {
-            GOTO_ERROR(MI_RESULT_NOT_FOUND);
+            GOTO_ERROR("Failed to find command on shell", MI_RESULT_NOT_FOUND);
         }
     }
 
     batch = Batch_New(BATCH_MAX_PAGES);
     if (batch == NULL)
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     sendData = Batch_GetClear(batch, sizeof(SendData));
     if (sendData == NULL)
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
     sendData->common.batch = batch;
 
     miResult = Instance_Clone(&in->__instance, &clonedIn, batch);
     if (miResult != MI_RESULT_OK)
     {
-        GOTO_ERROR(miResult);
+        GOTO_ERROR("out of memory", miResult);
     }
 
     /* We may not actually have any data but we may be completing the data. Make sure
@@ -1426,7 +1467,7 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
         if (miResult != MI_RESULT_OK)
         {
             /* decodeBuffer.buffer does not need deleting */
-            GOTO_ERROR(miResult);
+            GOTO_ERROR("Failed to base64 decode send buffer", miResult);
         }
 
         /* decodeBuffer.buffer does not need freeing as it was from method in parameters. */
@@ -1444,7 +1485,7 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
             {
                 free(decodeBuffer.buffer);
                 decodeBuffer.buffer = NULL;
-                GOTO_ERROR(miResult);
+                GOTO_ERROR("Failed to decompress send buffer", miResult);
             }
 
             /* Free the previously allocated buffer and switch the
@@ -1461,12 +1502,12 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
 
     if (!ExtractPluginRequest(context, &shellData->common))
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("ExtractPluginRequest failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     if (!Utf8ToUtf16Le(batch, in->streamData.value->streamName.value, &streamName))
     {
-    	GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("Utf8ToUtf16Le failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     {
@@ -1480,27 +1521,27 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
         sendData->common.requestType = CommonData_Type_Send;
 
         PrintDataFunctionStartStr(&sendData->common, "Shell_Invoke_Send", "streamName", in->streamData.value->streamName.value);
-        
+
         if (commandData)
         {
             sendData->common.parentData = (CommonData*)commandData;
 
             if (!AddChildToCommand(commandData, (CommonData*)sendData))
             {
-                GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
+                GOTO_ERROR("Already have a child send request", MI_RESULT_ALREADY_EXISTS);
             }
 
             if (!CallSend(
-            			self,
-						&sendData->common.pluginRequest,
-						pluginFlags,
-						shellData->pluginShellContext,
-						commandData->pluginCommandContext,
-						streamName,
-						&sendData->inboundData))
+                        self,
+                        &sendData->common.pluginRequest,
+                        pluginFlags,
+                        shellData->pluginShellContext,
+                        commandData->pluginCommandContext,
+                        streamName,
+                        &sendData->inboundData))
             {
                 DetachOperationFromParent(&sendData->common);
-            	GOTO_ERROR(MI_RESULT_FAILED);
+                GOTO_ERROR("CallSend failed", MI_RESULT_FAILED);
             }
         }
         else
@@ -1509,20 +1550,20 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
 
             if (!AddChildToShell(shellData, (CommonData*)sendData))
             {
-                GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
+                GOTO_ERROR("Already have a child send request", MI_RESULT_ALREADY_EXISTS);
             }
 
             if (!CallSend(
-            			self,
-						&sendData->common.pluginRequest,
-						pluginFlags,
-						shellData->pluginShellContext,
-						NULL,
-						streamName,
-						&sendData->inboundData))
+                        self,
+                        &sendData->common.pluginRequest,
+                        pluginFlags,
+                        shellData->pluginShellContext,
+                        NULL,
+                        streamName,
+                        &sendData->inboundData))
             {
                 DetachOperationFromParent(&sendData->common);
-            	GOTO_ERROR(MI_RESULT_FAILED);
+                GOTO_ERROR("CallSend failed", MI_RESULT_FAILED);
             }
         }
     }
@@ -1531,12 +1572,12 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
 
 error:
     PrintDataFunctionTag(&sendData->common, "Shell_Invoke_Send", "PostResult");
-	MI_Context_PostResult(context, miResult);
+    MI_Context_PostResult(context, miResult);
 
     PrintDataFunctionEnd(&sendData->common, "Shell_Invoke_Send", miResult);
 
     if (decodedBuffer.buffer)
-	    free(decodedBuffer.buffer);
+        free(decodedBuffer.buffer);
 
     if (batch)
         Batch_Delete(batch);
@@ -1554,42 +1595,42 @@ typedef struct _ReceiveParams
 
 PAL_Uint32  _CallReceive(void *_params)
 {
-	ReceiveParams *params = (ReceiveParams*) _params;
+    ReceiveParams *params = (ReceiveParams*) _params;
 
-	params->self->managedPointers.wsManPluginReceiveFuncPtr(
-			params->self,
-			params->requestDetails,
-			params->flags,
-			params->shellContext,
-			params->commandContext,
-			params->streamSet);
-	free(params);
-	return 0;
+    params->self->managedPointers.wsManPluginReceiveFuncPtr(
+            params->self,
+            params->requestDetails,
+            params->flags,
+            params->shellContext,
+            params->commandContext,
+            params->streamSet);
+    free(params);
+    return 0;
 }
 MI_Boolean CallReceive(
-	    _In_ Shell_Self* self,
-	    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-	    _In_ MI_Uint32 flags,
-	    _In_ void* shellContext,
-	    _In_opt_ void* commandContext,
-	    _In_opt_ WSMAN_STREAM_ID_SET* streamSet)
+        _In_ Shell_Self* self,
+        _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+        _In_ MI_Uint32 flags,
+        _In_ void* shellContext,
+        _In_opt_ void* commandContext,
+        _In_opt_ WSMAN_STREAM_ID_SET* streamSet)
 {
-	ReceiveParams *params = malloc(sizeof(ReceiveParams));
-	if (params)
-	{
-		params->self = self;
-		params->requestDetails = requestDetails;
-		params->flags = flags;
-		params->shellContext = shellContext;
-		params->commandContext = commandContext;
-		params->streamSet = streamSet;
-		if (Thread_CreateDetached(_CallReceive, NULL, params) == 0)
-			return MI_TRUE;
+    ReceiveParams *params = malloc(sizeof(ReceiveParams));
+    if (params)
+    {
+        params->self = self;
+        params->requestDetails = requestDetails;
+        params->flags = flags;
+        params->shellContext = shellContext;
+        params->commandContext = commandContext;
+        params->streamSet = streamSet;
+        if (Thread_CreateDetached(_CallReceive, NULL, params) == 0)
+            return MI_TRUE;
 
-		free(params);
-	}
+        free(params);
+    }
 
-	return MI_FALSE;
+    return MI_FALSE;
 }
 
 static MI_Result  _CreateReceiveTimeoutThread(ReceiveData *receiveData)
@@ -1623,7 +1664,7 @@ static MI_Result  _CreateReceiveTimeoutThread(ReceiveData *receiveData)
             Sem_Destroy(&receiveData->timeoutSemaphore);
             return MI_RESULT_FAILED;
         }
-            
+
      }
      return MI_RESULT_OK;
 }
@@ -1647,9 +1688,11 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     Batch *batch = NULL;
     MI_Instance *clonedIn = NULL;
 
+    __LOGD(("Shell_Invoke_Receive Name=%s, ShellId=%s", instanceName->Name.value, instanceName->ShellId.value));
+
     if (!shellData)
     {
-        GOTO_ERROR(MI_RESULT_NOT_FOUND);
+        GOTO_ERROR("Failed to find shell", MI_RESULT_NOT_FOUND);
     }
     /* If we have a command ID make sure it is the correct one */
     if (in->commandId.exists)
@@ -1657,7 +1700,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
         commandData = FindCommandFromShell(shellData, in->commandId.value);
         if (commandData == NULL)
         {
-            GOTO_ERROR(MI_RESULT_NOT_FOUND);
+            GOTO_ERROR("Failed to find command", MI_RESULT_NOT_FOUND);
         }
 
         /* Find an existing receiveData is one exists */
@@ -1703,36 +1746,36 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     batch = Batch_New(BATCH_MAX_PAGES);
     if (batch == NULL)
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     miResult = Instance_Clone(&in->__instance, &clonedIn, batch);
     if (miResult != MI_RESULT_OK)
     {
-        GOTO_ERROR(miResult);
+        GOTO_ERROR("out of memory", miResult);
     }
 
     receiveData = Batch_GetClear(batch, sizeof(ReceiveData));
     if (receiveData == NULL)
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED); /* Broadcast in case we have thread waiting for context */
+        GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED); /* Broadcast in case we have thread waiting for context */
     }
     receiveData->common.batch = batch;
 
     miResult = Instance_Clone(&in->__instance, &clonedIn, batch);
     if (miResult != MI_RESULT_OK)
     {
-        GOTO_ERROR(miResult);
+        GOTO_ERROR("out of memory", miResult);
     }
 
     if (!ExtractStreamSet(&receiveData->common, ((Shell_Receive*)clonedIn)->streamSet.value, &receiveData->outputStreams))
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("ExtractStreamSet failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     if (!ExtractPluginRequest(context, &shellData->common))
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("ExtractPluginRequest failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
 
@@ -1747,7 +1790,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     PrintDataFunctionStart(&receiveData->common, "Shell_Invoke_Receive");
     if (_CreateReceiveTimeoutThread(receiveData)!= MI_RESULT_OK)
     {
-        //TODO!
+        GOTO_ERROR("Failed to create Receive timeout thread", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
     if (commandData)
     {
@@ -1755,19 +1798,19 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
 
         if (!AddChildToCommand(commandData, (CommonData*)receiveData))
         {
-            GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
+            GOTO_ERROR("Failed to add receive operation to command", MI_RESULT_ALREADY_EXISTS);
         }
 
         if (!CallReceive(
-        			self,
-					&receiveData->common.pluginRequest,
-					0,
-					shellData->pluginShellContext,
-					commandData->pluginCommandContext,
-					&receiveData->wsmanOutputStreams))
+                    self,
+                    &receiveData->common.pluginRequest,
+                    0,
+                    shellData->pluginShellContext,
+                    commandData->pluginCommandContext,
+                    &receiveData->wsmanOutputStreams))
         {
             DetachOperationFromParent(&receiveData->common);
-        	GOTO_ERROR(MI_RESULT_FAILED);
+            GOTO_ERROR("CallReceive failed", MI_RESULT_FAILED);
         }
     }
     else
@@ -1776,19 +1819,19 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
 
         if (!AddChildToShell(shellData, (CommonData*)receiveData))
         {
-            GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
+            GOTO_ERROR("Adding child receive request failed", MI_RESULT_ALREADY_EXISTS);
         }
 
         if (!CallReceive(
-        			self,
-					&receiveData->common.pluginRequest,
-					0,
-					shellData->pluginShellContext,
-					NULL,
-					&receiveData->wsmanOutputStreams))
+                    self,
+                    &receiveData->common.pluginRequest,
+                    0,
+                    shellData->pluginShellContext,
+                    NULL,
+                    &receiveData->wsmanOutputStreams))
         {
             DetachOperationFromParent(&receiveData->common);
-        	GOTO_ERROR(MI_RESULT_FAILED);
+            GOTO_ERROR("Adding child receive request failed", MI_RESULT_FAILED);
         }
     }
 
@@ -1799,7 +1842,7 @@ error:
     if (receiveData)
         PrintDataFunctionTag(&receiveData->common, "Shell_Invoke_Receive", "PostResult");
     MI_Context_PostResult(context, miResult);
-    
+
     if (receiveData)
         PrintDataFunctionEnd(&receiveData->common, "Shell_Invoke_Receive", miResult);
     if (batch)
@@ -1820,41 +1863,41 @@ typedef struct _SignalParams
 
 PAL_Uint32  _CallSignal(void *_params)
 {
-	SignalParams *params = (SignalParams*) _params;
-	params->self->managedPointers.wsManPluginSignalFuncPtr(
-			params->self,
-			params->requestDetails,
-			params->flags,
-			params->shellContext,
-			params->commandContext,
-			params->code);
-	free(params);
-	return 0;
+    SignalParams *params = (SignalParams*) _params;
+    params->self->managedPointers.wsManPluginSignalFuncPtr(
+            params->self,
+            params->requestDetails,
+            params->flags,
+            params->shellContext,
+            params->commandContext,
+            params->code);
+    free(params);
+    return 0;
 }
 MI_Boolean CallSignal(
-	    _In_ Shell_Self* self,
-	    _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
-	    _In_ MI_Uint32 flags,
-	    _In_ void* shellContext,
-	    _In_opt_ void* commandContext,
-	    _In_ MI_Char16 *code)
+        _In_ Shell_Self* self,
+        _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+        _In_ MI_Uint32 flags,
+        _In_ void* shellContext,
+        _In_opt_ void* commandContext,
+        _In_ MI_Char16 *code)
 {
-	SignalParams *params = malloc(sizeof(SignalParams));
-	if (params)
-	{
-		params->self = self;
-		params->requestDetails = requestDetails;
-		params->flags = flags;
-		params->shellContext = shellContext;
-		params->commandContext = commandContext;
-		params->code = code;
-		if (Thread_CreateDetached(_CallSignal, NULL, params) == 0)
-			return MI_TRUE;
+    SignalParams *params = malloc(sizeof(SignalParams));
+    if (params)
+    {
+        params->self = self;
+        params->requestDetails = requestDetails;
+        params->flags = flags;
+        params->shellContext = shellContext;
+        params->commandContext = commandContext;
+        params->code = code;
+        if (Thread_CreateDetached(_CallSignal, NULL, params) == 0)
+            return MI_TRUE;
 
-		free(params);
-	}
+        free(params);
+    }
 
-	return MI_FALSE;
+    return MI_FALSE;
 }
 /* Shell_Invoke_Signal
  * This function is called for a few reasons like hitting Ctrl+C. It is
@@ -1876,13 +1919,15 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
     MI_Instance *clonedIn = NULL;
     MI_Char16 *signalCode = NULL;
 
+    __LOGD(("Shell_Invoke_Signal Name=%s, ShellId=%s", instanceName->Name.value, instanceName->ShellId.value));
+
     if (!shellData)
     {
-        GOTO_ERROR(MI_RESULT_NOT_FOUND);
+        GOTO_ERROR("Failed to find shell", MI_RESULT_NOT_FOUND);
     }
     if (!in->code.exists)
     {
-        GOTO_ERROR(MI_RESULT_NOT_SUPPORTED);
+        GOTO_ERROR("Missing the signal code", MI_RESULT_NOT_SUPPORTED);
     }
     /* If we have a command ID make sure it is the correct one */
     if (in->commandId.exists)
@@ -1890,40 +1935,40 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
         commandData = FindCommandFromShell(shellData, in->commandId.value);
         if (commandData == NULL)
         {
-            GOTO_ERROR(MI_RESULT_NOT_FOUND);
+            GOTO_ERROR("Failed to find command", MI_RESULT_NOT_FOUND);
         }
     }
 
     batch = Batch_New(BATCH_MAX_PAGES);
     if (batch == NULL)
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     signalData = Batch_GetClear(batch, sizeof(SignalData));
     if (signalData == NULL)
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("Out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
     signalData->common.batch = batch;
 
     miResult = Instance_Clone(&in->__instance, &clonedIn, batch);
     if (miResult != MI_RESULT_OK)
     {
-        GOTO_ERROR(miResult);
+        GOTO_ERROR("out of memory", miResult);
     }
 
     if (!ExtractPluginRequest(context, &signalData->common))
     {
-        GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        GOTO_ERROR("ExtractPluginRequest failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
     if (((Shell_Signal*)clonedIn)->code.value)
     {
-		if (!Utf8ToUtf16Le(batch, ((Shell_Signal*)clonedIn)->code.value, &signalCode))
-		{
-			GOTO_ERROR(MI_RESULT_SERVER_LIMITS_EXCEEDED);
-		}
+        if (!Utf8ToUtf16Le(batch, ((Shell_Signal*)clonedIn)->code.value, &signalCode))
+        {
+            GOTO_ERROR("Utf8ToUtf16Le failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        }
     }
     signalData->common.refcount = 1;
     signalData->common.miRequestContext = context;
@@ -1937,12 +1982,12 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
         if (commandData)
         {
             signalData->common.parentData = (CommonData*)commandData;
-            
+
             providerCommandContext = commandData->pluginCommandContext;
 
             if (!AddChildToCommand(commandData, (CommonData*)signalData))
             {
-                GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
+                GOTO_ERROR("Failed to add signal operation, already exists?", MI_RESULT_ALREADY_EXISTS);
             }
         }
         else
@@ -1951,7 +1996,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
 
             if (!AddChildToShell(shellData, (CommonData*)signalData))
             {
-                GOTO_ERROR(MI_RESULT_ALREADY_EXISTS);
+                GOTO_ERROR("Failed to add signal operation, already exists?", MI_RESULT_ALREADY_EXISTS);
             }
         }
 
@@ -1966,7 +2011,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
                 signalCode))
         {
             DetachOperationFromParent(&signalData->common);
-            GOTO_ERROR(MI_RESULT_FAILED);
+            GOTO_ERROR("CallSignal failed", MI_RESULT_FAILED);
         }
 
     }
@@ -1977,7 +2022,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
 error:
 
     PrintDataFunctionTag(&signalData->common, "Shell_Invoke_Signal", "PostResult");
-	MI_Context_PostResult(context, miResult);
+    MI_Context_PostResult(context, miResult);
     PrintDataFunctionEnd(&signalData->common, "Shell_Invoke_Signal", miResult);
 
     if (batch)
@@ -1992,7 +2037,7 @@ void MI_CALL Shell_Invoke_Connect(Shell_Self* self, MI_Context* context,
         const MI_Char* methodName, const Shell* instanceName,
         const Shell_Connect* in)
 {
-    printf("Shell_Invoke_Connect PostResult %p, %u (not supported)\n", context, MI_RESULT_NOT_SUPPORTED);
+    __LOGE(("Shell_Invoke_Connect PostResult %p, %u (not supported)", context, MI_RESULT_NOT_SUPPORTED));
     MI_Context_PostResult(context, MI_RESULT_NOT_SUPPORTED);
 }
 
@@ -2022,7 +2067,7 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginReportContext(
     }
     else
     {
-        GOTO_ERROR(MI_RESULT_INVALID_PARAMETER);
+        GOTO_ERROR("WSManPluginReportContext passed invalid parameter", MI_RESULT_INVALID_PARAMETER);
     }
 
     /* Post our shell or command object back to the client */
@@ -2033,7 +2078,7 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginReportContext(
 
 error:
     PrintDataFunctionEnd(commonData, "WSManPluginReportContext", miResult);
-	return miResult;
+    return miResult;
 }
 
 /* Max recursion is for a child operation of a command which is 2 recursions to hit the shell */
@@ -2049,7 +2094,7 @@ MI_Boolean IsStreamCompressed(CommonData *commonData)
 
 static const char *ReceiveResultsFlags(MI_Uint32 flag)
 {
-    static const char *flagStrings[] = 
+    static const char *flagStrings[] =
     {
         "zero",
         "NO_MORE_DATA",
@@ -2100,39 +2145,39 @@ MI_Uint32 _WSManPluginReceiveResult(
 
     tempBatch = Batch_New(BATCH_MAX_PAGES);
     if (tempBatch == NULL)
-    	return MI_RESULT_SERVER_LIMITS_EXCEEDED;
+        return MI_RESULT_SERVER_LIMITS_EXCEEDED;
 
     if (_streamName && !Utf16LeToUtf8(tempBatch, _streamName, &streamName))
     {
-    	GOTO_ERROR_EX(MI_RESULT_SERVER_LIMITS_EXCEEDED, errorSkipInstanceDeletes);
+        GOTO_ERROR_EX("Utf16LeToUtf8 failed", MI_RESULT_SERVER_LIMITS_EXCEEDED, errorSkipInstanceDeletes);
     }
     if (_commandState && !Utf16LeToUtf8(tempBatch, _commandState, &commandState))
     {
-    	GOTO_ERROR_EX(MI_RESULT_SERVER_LIMITS_EXCEEDED, errorSkipInstanceDeletes);
+        GOTO_ERROR_EX("Utf16LeToUtf8 failed", MI_RESULT_SERVER_LIMITS_EXCEEDED, errorSkipInstanceDeletes);
     }
     /* TODO: Which stream if stream is NULL? */
 
     PrintDataFunctionStartStr2(commonData, "_WSManPluginReceiveResult", "commandState", commandState, "flags", ReceiveResultsFlags(flags));
 
-    
+
     /* Clone the result object for Receive because we will reuse it for each receive response */
 //    miResult = Instance_Clone(commonData->miOperationInstance, (MI_Instance**)&receive, NULL);
     miResult = Instance_NewDynamic(&receive, MI_T("Receive"), MI_FLAG_METHOD, tempBatch);
     if (miResult != MI_RESULT_OK)
     {
-        GOTO_ERROR_EX(miResult, errorSkipInstanceDeletes);
+        GOTO_ERROR_EX("out of memory", miResult, errorSkipInstanceDeletes);
     }
 
     miResult =  CommandState_Construct(&commandStateInst, receiveContext);
     if (miResult != MI_RESULT_OK)
     {
-        GOTO_ERROR_EX(miResult, errorSkipInstanceDeletes);
+        GOTO_ERROR_EX("out of memory", miResult, errorSkipInstanceDeletes);
     }
     miResult = Stream_Construct(&receiveStream, receiveContext);
     if (miResult != MI_RESULT_OK)
     {
         Stream_Destruct(&receiveStream);
-        GOTO_ERROR_EX(miResult, errorSkipInstanceDeletes);
+        GOTO_ERROR_EX("out of memory", miResult, errorSkipInstanceDeletes);
     }
 
     /* Set the command ID for the instances that need it */
@@ -2161,7 +2206,7 @@ MI_Uint32 _WSManPluginReceiveResult(
             if (miResult != MI_RESULT_OK)
             {
                 decodeBuffer.buffer = NULL;
-                GOTO_ERROR(miResult);
+                GOTO_ERROR("CompressBuffer failed", miResult);
             }
 
             /* switch the decodedBuffer back to decodeBuffer for further processing.
@@ -2181,12 +2226,12 @@ MI_Uint32 _WSManPluginReceiveResult(
 
         if (miResult != MI_RESULT_OK)
         {
-            GOTO_ERROR(miResult);
+            GOTO_ERROR("Base64EncodeBuffer failed", miResult);
         }
 
         /* Set the null terminator on the end of the buffer as this is supposed to be a string*/
         memset(decodedBuffer.buffer + decodedBuffer.bufferUsed, 0, sizeof(MI_Char));
-        
+
         /* Add the final string to the stream. This is just a pointer to it and
         * is not getting copied so we need to delete the buffer after we have posted the instance
         * to the receive context.
@@ -2213,11 +2258,11 @@ MI_Uint32 _WSManPluginReceiveResult(
             miResult = MI_Instance_AddElement(receive, MI_T("Stream"), &miValue, MI_INSTANCE, MI_FLAG_BORROW | MI_FLAG_OUT | MI_FLAG_PARAMETER);
             if (miResult != MI_RESULT_OK)
             {
-                GOTO_ERROR(miResult);
+                GOTO_ERROR("MI_Instance_AddElement failed", miResult);
             }
         }
     }
-    
+
     /* CommandState tells the client if we are done or not with this stream.
     */
 
@@ -2242,8 +2287,16 @@ MI_Uint32 _WSManPluginReceiveResult(
     */
     miValue.uint32 = MI_RESULT_OK;
     miResult = MI_Instance_AddElement(receive, MI_T("MIReturn"), &miValue, MI_UINT32, MI_FLAG_OUT | MI_FLAG_PARAMETER);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("MI_Instance_AddElement failed", miResult);
+    }
     miValue.instance = &commandStateInst.__instance;
     miResult = MI_Instance_AddElement(receive, MI_T("CommandState"), &miValue, MI_INSTANCE, MI_FLAG_BORROW | MI_FLAG_OUT | MI_FLAG_PARAMETER);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("MI_Instance_AddElement failed", miResult);
+    }
 
 
     /* Post the result back to the client. We can delete the base-64 encoded buffer after
@@ -2261,10 +2314,10 @@ errorSkipInstanceDeletes:
     PrintDataFunctionTag(commonData, "_WSManPluginReceiveResult", "PostResult");
     MI_Context_PostResult(receiveContext, miResult);
     if (tempBatch)
-    	Batch_Delete(tempBatch);
+        Batch_Delete(tempBatch);
 
     if (decodedBuffer.buffer)
-    	free(decodedBuffer.buffer);
+        free(decodedBuffer.buffer);
 
     PrintDataFunctionEnd(commonData, "_WSManPluginReceiveResult", miResult);
     return (MI_Uint32) miResult;
@@ -2290,7 +2343,7 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginReceiveResult(
     {
     } while (CondLock_Wait((ptrdiff_t)&receiveData->common.miRequestContext,
                            (ptrdiff_t*)&receiveData->common.miRequestContext,
-                           0, 
+                           0,
                            CONDLOCK_DEFAULT_SPINCOUNT) == 0);
 
     PrintDataFunctionStart(&receiveData->common, "WSManPluginReceiveResult");
@@ -2316,7 +2369,7 @@ PAL_Uint32 THREAD_API ReceiveTimeoutThread(void* param)
     while (!receiveData->shutdownThread)
     {
         int semWaitRet;
-        
+
         PrintDataFunctionTag(&receiveData->common, "ReceiveTimeoutThread", "Waiting....");
         semWaitRet = Sem_TimedWait(&receiveData->timeoutSemaphore, 30*1000);
         //semWaitRet = Sem_TimedWait(&receiveData->timeoutSemaphore, receiveData->timeoutMilliseconds);
@@ -2352,7 +2405,7 @@ PAL_Uint32 THREAD_API ReceiveTimeoutThread(void* param)
 
 static const char *OperationParamToString(MI_Uint32 flag)
 {
-    static const char *flagStrings[] = 
+    static const char *flagStrings[] =
     {
         "zero - error",
         "MAX_ENVELOPE_SIZE - unsupported",
@@ -2360,16 +2413,16 @@ static const char *OperationParamToString(MI_Uint32 flag)
         "REMAINING_RESULT_SIZE - unsupported",
         "LARGEST_RESULT_SIZE - unsupported",
         "GET_REQUESTED_LOCALE",
-        "GET_REQUESTED_DATA_LOCALE" 
+        "GET_REQUESTED_DATA_LOCALE"
     };
     if (flag < 7)
         return flagStrings[flag];
     else
         return "<invalid>";
 }
-/* PowerShell only uses WSMAN_PLUGIN_PARAMS_GET_REQUESTED_LOCALE and WSMAN_PLUGIN_PARAMS_GET_REQUESTED_DATA_LOCALE 
+/* PowerShell only uses WSMAN_PLUGIN_PARAMS_GET_REQUESTED_LOCALE and WSMAN_PLUGIN_PARAMS_GET_REQUESTED_DATA_LOCALE
  * which are optional wsman packet headers.
- * Other things that could be retrieved are things like operation timeout. 
+ * Other things that could be retrieved are things like operation timeout.
  * This data should be retrieved from the operation context through the operation options method.
  */
 MI_EXPORT  MI_Uint32 MI_CALL WSManPluginGetOperationParameters (
@@ -2378,20 +2431,20 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginGetOperationParameters (
     _Out_ WSMAN_DATA *data
     )
 {
-	CommonData *commonData = (CommonData*) requestDetails;
+    CommonData *commonData = (CommonData*) requestDetails;
 
     PrintDataFunctionStartStr(commonData, "WSManPluginGetOperationParameters", "flags", OperationParamToString(flags));
 
-	if ((flags == WSMAN_PLUGIN_PARAMS_GET_REQUESTED_LOCALE) ||
-			(flags == WSMAN_PLUGIN_PARAMS_GET_REQUESTED_DATA_LOCALE))
-	{
-		if (!Utf8ToUtf16Le(commonData->batch, "en-us", (MI_Char16**)&data->text.buffer))
-			return MI_RESULT_FAILED;
-		data->text.bufferLength = 5;
-		data->type = WSMAN_DATA_TYPE_TEXT;
-		return MI_RESULT_OK;
-	}
-	return (MI_Uint32) MI_RESULT_FAILED;
+    if ((flags == WSMAN_PLUGIN_PARAMS_GET_REQUESTED_LOCALE) ||
+            (flags == WSMAN_PLUGIN_PARAMS_GET_REQUESTED_DATA_LOCALE))
+    {
+        if (!Utf8ToUtf16Le(commonData->batch, "en-us", (MI_Char16**)&data->text.buffer))
+            return MI_RESULT_FAILED;
+        data->text.bufferLength = 5;
+        data->type = WSMAN_DATA_TYPE_TEXT;
+        return MI_RESULT_OK;
+    }
+    return (MI_Uint32) MI_RESULT_FAILED;
 }
 
 /* Gets information about the host the provider is hosted in */
@@ -2401,7 +2454,7 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginGetConfiguration (
   _Out_  WSMAN_DATA *data
 )
 {
-	printf("WSManPluginGetConfiguration");
+    __LOGD(("WSManPluginGetConfiguration"));
     return (MI_Uint32)MI_RESULT_FAILED;
 }
 
@@ -2482,15 +2535,15 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
         ReceiveData *receiveData = (ReceiveData*) commonData;
         MI_Uint32 threadResult;
 
-    	/* TODO: This is the termination of the receive. No more will happen for either the command or shell, depending on which is is aimed at */
+        /* TODO: This is the termination of the receive. No more will happen for either the command or shell, depending on which is is aimed at */
         /* We may or may not have a pending Receive protocol packet for this depending on if we have already send a command completion message or not */
         if (miContext)
         {
-        	MI_Char16 *commandState;
-        	if (!Utf8ToUtf16Le(commonData->batch, WSMAN_COMMAND_STATE_DONE, &commandState))
-        	{
-        		GOTO_ERROR(MI_RESULT_FAILED);
-        	}
+            MI_Char16 *commandState;
+            if (!Utf8ToUtf16Le(commonData->batch, WSMAN_COMMAND_STATE_DONE, &commandState))
+            {
+                GOTO_ERROR("Utf8ToUtf16Le failed", MI_RESULT_FAILED);
+            }
             /* We have a pending request that needs to be terminated */
             _WSManPluginReceiveResult(miContext, commonData, WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA, NULL, NULL, commandState, errorCode);
         }
@@ -2511,7 +2564,7 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
         /* Methods only have the return code set in the instance so set that and post back. */
         miValue.uint32 = errorCode;
         MI_Instance_SetElement(miInstance,MI_T("MIReturn"),&miValue,MI_UINT32,0);
-        
+
         PrintDataFunctionTag(commonData, "WSManPluginOperationComplete", "PostInstance");
         miResult = MI_Context_PostInstance(miContext, miInstance);
         PrintDataFunctionTag(commonData, "WSManPluginOperationComplete", "PostResult");
@@ -2545,15 +2598,15 @@ MI_EXPORT MI_Uint32 MI_CALL WSManPluginReportCompletion(
   _In_      MI_Uint32 flags
   )
 {
-	printf("WSManPluginReportCompletion\n");
+    __LOGD(("WSManPluginReportCompletion"));
     return (MI_Uint32)MI_RESULT_OK;
 }
 
 /* Free up information inside requestDetails if possible */
 MI_EXPORT  MI_Uint32 MI_CALL WSManPluginFreeRequestDetails(_In_ WSMAN_PLUGIN_REQUEST *requestDetails)
 {
-	printf("WSManPluginFreeRequestDetails\n");
-	return MI_RESULT_OK;
+    __LOGD(("WSManPluginFreeRequestDetails"));
+    return MI_RESULT_OK;
 }
 
 
@@ -2565,5 +2618,5 @@ MI_EXPORT  void MI_CALL WSManPluginRegisterShutdownCallback(
     CommonData *commonData = (CommonData*)requestDetails;
     commonData->shutdownCallback = shutdownCallback;
     commonData->shutdownContext = shutdownContext;
-    printf("WSManPluginRegisterShutdownCallback");
+    __LOGD(("WSManPluginRegisterShutdownCallback"));
 }

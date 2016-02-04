@@ -35,7 +35,11 @@ typedef struct _Shell
     EnvironmentVariable_ConstArrayRef Environment;
     MI_ConstStringField InputStreams;
     MI_ConstStringField OutputStreams;
-    MI_ConstBooleanField IsCompressed;
+    MI_ConstStringField CompressionMode;
+    MI_ConstStringField ResourceUri;
+    MI_ConstStringField Owner;
+    MI_ConstStringField Locale;
+    MI_ConstStringField DataLocale;
     MI_ConstStringField CreationXml;
 }
 Shell;
@@ -328,23 +332,39 @@ MI_INLINE MI_Result MI_CALL Shell_Clear_OutputStreams(
         5);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Set_IsCompressed(
+MI_INLINE MI_Result MI_CALL Shell_Set_CompressionMode(
     Shell* self,
-    MI_Boolean x)
+    const MI_Char* str)
 {
-    ((MI_BooleanField*)&self->IsCompressed)->value = x;
-    ((MI_BooleanField*)&self->IsCompressed)->exists = 1;
-    return MI_RESULT_OK;
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        6,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Clear_IsCompressed(
+MI_INLINE MI_Result MI_CALL Shell_SetPtr_CompressionMode(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        6,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_CompressionMode(
     Shell* self)
 {
-    memset((void*)&self->IsCompressed, 0, sizeof(self->IsCompressed));
-    return MI_RESULT_OK;
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
+        6);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Set_CreationXml(
+MI_INLINE MI_Result MI_CALL Shell_Set_ResourceUri(
     Shell* self,
     const MI_Char* str)
 {
@@ -356,7 +376,7 @@ MI_INLINE MI_Result MI_CALL Shell_Set_CreationXml(
         0);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_SetPtr_CreationXml(
+MI_INLINE MI_Result MI_CALL Shell_SetPtr_ResourceUri(
     Shell* self,
     const MI_Char* str)
 {
@@ -368,12 +388,140 @@ MI_INLINE MI_Result MI_CALL Shell_SetPtr_CreationXml(
         MI_FLAG_BORROW);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Clear_CreationXml(
+MI_INLINE MI_Result MI_CALL Shell_Clear_ResourceUri(
     Shell* self)
 {
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
         7);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_Owner(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        8,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_SetPtr_Owner(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        8,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_Owner(
+    Shell* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
+        8);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_Locale(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        9,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_SetPtr_Locale(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        9,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_Locale(
+    Shell* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
+        9);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_DataLocale(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        10,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_SetPtr_DataLocale(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        10,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_DataLocale(
+    Shell* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
+        10);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_CreationXml(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        11,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_SetPtr_CreationXml(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        11,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_CreationXml(
+    Shell* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
+        11);
 }
 
 /*

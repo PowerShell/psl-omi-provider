@@ -929,9 +929,9 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
         MI_Uint32 flags;
         MI_Uint32 index;
 
-        if ((MI_Instance_GetElement(&newInstance->__instance, MI_T("IsCompressed"), &value, &type, &flags, &index) == 0) &&
-                (type == MI_BOOLEAN) &&
-                value.boolean)
+        if ((MI_Instance_GetElement(&newInstance->__instance, MI_T("CompressionMode"), &value, &type, &flags, &index) == 0) &&
+                (type == MI_STRING) &&
+                value.string)
         {
             shellData->isCompressed = MI_TRUE;
         }

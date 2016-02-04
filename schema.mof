@@ -40,8 +40,12 @@ class Shell
     [embeddedinstance("EnvironmentVariable")] string Environment[];
     string InputStreams; /* space delimited string */
     string OutputStreams; /* space delimited string */
-    boolean IsCompressed; /* internal data that is not part of the actual shell schema */
-    string CreationXml; /* Specific to PowerShell */
+    string CompressionMode;
+    string ResourceUri;
+    string Owner;
+    string Locale;
+    string DataLocale;
+    string CreationXml;
 
     Uint32 Command(
         string command,
@@ -79,4 +83,10 @@ class Shell
         string inboundConnectionInfo
         );
 
+};
+
+class Command
+{
+    [key] string ShellId;
+    [key] string CommandId;
 };

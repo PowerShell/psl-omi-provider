@@ -9,6 +9,7 @@
 #include <ctype.h>
 #include <MI.h>
 #include "Shell.h"
+#include "Command.h"
 #include "Stream.h"
 #include "CommandState.h"
 #include "EnvironmentVariable.h"
@@ -432,18 +433,86 @@ static MI_CONST MI_PropertyDecl Shell_OutputStreams_prop =
     NULL,
 };
 
-/* property Shell.IsCompressed */
-static MI_CONST MI_PropertyDecl Shell_IsCompressed_prop =
+/* property Shell.CompressionMode */
+static MI_CONST MI_PropertyDecl Shell_CompressionMode_prop =
 {
     MI_FLAG_PROPERTY, /* flags */
-    0x0069640C, /* code */
-    MI_T("IsCompressed"), /* name */
+    0x0063650F, /* code */
+    MI_T("CompressionMode"), /* name */
     NULL, /* qualifiers */
     0, /* numQualifiers */
-    MI_BOOLEAN, /* type */
+    MI_STRING, /* type */
     NULL, /* className */
     0, /* subscript */
-    offsetof(Shell, IsCompressed), /* offset */
+    offsetof(Shell, CompressionMode), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
+/* property Shell.ResourceUri */
+static MI_CONST MI_PropertyDecl Shell_ResourceUri_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x0072690B, /* code */
+    MI_T("ResourceUri"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, ResourceUri), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
+/* property Shell.Owner */
+static MI_CONST MI_PropertyDecl Shell_Owner_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x006F7205, /* code */
+    MI_T("Owner"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, Owner), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
+/* property Shell.Locale */
+static MI_CONST MI_PropertyDecl Shell_Locale_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x006C6506, /* code */
+    MI_T("Locale"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, Locale), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
+/* property Shell.DataLocale */
+static MI_CONST MI_PropertyDecl Shell_DataLocale_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x0064650A, /* code */
+    MI_T("DataLocale"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, DataLocale), /* offset */
     MI_T("Shell"), /* origin */
     MI_T("Shell"), /* propagator */
     NULL,
@@ -474,7 +543,11 @@ static MI_PropertyDecl MI_CONST* MI_CONST Shell_props[] =
     &Shell_Environment_prop,
     &Shell_InputStreams_prop,
     &Shell_OutputStreams_prop,
-    &Shell_IsCompressed_prop,
+    &Shell_CompressionMode_prop,
+    &Shell_ResourceUri_prop,
+    &Shell_Owner_prop,
+    &Shell_Locale_prop,
+    &Shell_DataLocale_prop,
     &Shell_CreationXml_prop,
 };
 
@@ -953,6 +1026,92 @@ MI_CONST MI_ClassDecl Shell_rtti =
 /*
 **==============================================================================
 **
+** Command
+**
+**==============================================================================
+*/
+
+/* property Command.ShellId */
+static MI_CONST MI_PropertyDecl Command_ShellId_prop =
+{
+    MI_FLAG_PROPERTY|MI_FLAG_KEY, /* flags */
+    0x00736407, /* code */
+    MI_T("ShellId"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Command, ShellId), /* offset */
+    MI_T("Command"), /* origin */
+    MI_T("Command"), /* propagator */
+    NULL,
+};
+
+/* property Command.CommandId */
+static MI_CONST MI_PropertyDecl Command_CommandId_prop =
+{
+    MI_FLAG_PROPERTY|MI_FLAG_KEY, /* flags */
+    0x00636409, /* code */
+    MI_T("CommandId"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Command, CommandId), /* offset */
+    MI_T("Command"), /* origin */
+    MI_T("Command"), /* propagator */
+    NULL,
+};
+
+static MI_PropertyDecl MI_CONST* MI_CONST Command_props[] =
+{
+    &Command_ShellId_prop,
+    &Command_CommandId_prop,
+};
+
+static MI_CONST MI_ProviderFT Command_funcs =
+{
+  (MI_ProviderFT_Load)Command_Load,
+  (MI_ProviderFT_Unload)Command_Unload,
+  (MI_ProviderFT_GetInstance)Command_GetInstance,
+  (MI_ProviderFT_EnumerateInstances)Command_EnumerateInstances,
+  (MI_ProviderFT_CreateInstance)Command_CreateInstance,
+  (MI_ProviderFT_ModifyInstance)Command_ModifyInstance,
+  (MI_ProviderFT_DeleteInstance)Command_DeleteInstance,
+  (MI_ProviderFT_AssociatorInstances)NULL,
+  (MI_ProviderFT_ReferenceInstances)NULL,
+  (MI_ProviderFT_EnableIndications)NULL,
+  (MI_ProviderFT_DisableIndications)NULL,
+  (MI_ProviderFT_Subscribe)NULL,
+  (MI_ProviderFT_Unsubscribe)NULL,
+  (MI_ProviderFT_Invoke)NULL,
+};
+
+/* class Command */
+MI_CONST MI_ClassDecl Command_rtti =
+{
+    MI_FLAG_CLASS, /* flags */
+    0x00636407, /* code */
+    MI_T("Command"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    Command_props, /* properties */
+    MI_COUNT(Command_props), /* numProperties */
+    sizeof(Command), /* size */
+    NULL, /* superClass */
+    NULL, /* superClassDecl */
+    NULL, /* methods */
+    0, /* numMethods */
+    &schemaDecl, /* schema */
+    &Command_funcs, /* functions */
+    NULL, /* owningClass */
+};
+
+/*
+**==============================================================================
+**
 ** __mi_server
 **
 **==============================================================================
@@ -969,6 +1128,7 @@ MI_Server* __mi_server;
 
 static MI_ClassDecl MI_CONST* MI_CONST classes[] =
 {
+    &Command_rtti,
     &CommandState_rtti,
     &EnvironmentVariable_rtti,
     &Shell_rtti,

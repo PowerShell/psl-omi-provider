@@ -16,6 +16,7 @@ target_compile_options(pshost PRIVATE -std=c++11)
 
 add_library(psrpomiprov SHARED
 	Shell.c
+	Command.c
 	module.c
 	schema.c
 	xpress.c
@@ -43,4 +44,4 @@ add_custom_command(TARGET psrpomiprov POST_BUILD
 	COMMAND ${OMI}/output/bin/omireg $<TARGET_FILE:psrpomiprov> -n interop --hosting @requestor-shell@)
 
 add_custom_target(gen DEPENDS schema.mof
-	COMMAND ${OMI}/output/bin/omigen -C ${OMI}/share/networkschema/CIM_Schema.mof schema.mof Shell -e Stream -e CommandState -e EnvironmentVariable)
+	COMMAND ${OMI}/output/bin/omigen -C ${OMI}/share/networkschema/CIM_Schema.mof schema.mof Shell Command -e Stream -e CommandState -e EnvironmentVariable)

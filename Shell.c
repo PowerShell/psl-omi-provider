@@ -13,10 +13,6 @@
 #include <base/result.h>
 #include <base/instance.h>
 #include <base/helpers.h>
-#include "coreclrutil.h"
-#include <sys/types.h>
-#include <unistd.h>
-#include <stdio.h>
 #include <base/logbase.h>
 
 /* TODO:
@@ -24,7 +20,9 @@
     * No re-connect
 */
 
-
+#define SHELL_ENABLE_LOGGING 1
+#define SHELL_LOGGING_DIRECTORY "/tmp/shell.log"
+#define SHELL_LOGGING_LEVEL OMI_DEBUG
 
 /* Number of characters reserved for command ID and shell ID -- max number of digits for hex 64-bit number with null terminator */
 #define ID_LENGTH 17
@@ -339,8 +337,10 @@ void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
     MI_Uint32 miResult = MI_RESULT_OK;
     int ret;
 
-    Log_Open("/tmp/shell.log");
-    Log_SetLevel(OMI_DEBUG);
+#ifdef SHELL_ENABLE_LOGGING
+    Log_Open(SHELL_LOGGING_DIRECTORY);
+    Log_SetLevel(SHELL_LOGGING_LEVEL);
+#endif
     __LOGD(("Shell_Load"));
 
     *self = calloc(1, sizeof(Shell_Self));
@@ -419,7 +419,9 @@ void MI_CALL Shell_Unload(Shell_Self* self, MI_Context* context)
 
     free(self);
     __LOGD(("Shell_Load PostResult %p, %u", context, MI_RESULT_OK));
+#ifdef SHELL_ENABLE_LOGGING
     Log_Close();
+#endif
     MI_Context_PostResult(context, MI_RESULT_OK);
 }
 

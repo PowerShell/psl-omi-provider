@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 2.8.4)
 project(PSRP_PROVIDER)
 
+# Export commands for auto-completion engines
+set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
+
 add_compile_options(-Wall -Werror -fPIC)
 
 set(OMI ../omi/Unix)

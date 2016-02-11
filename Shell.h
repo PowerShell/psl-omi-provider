@@ -20,7 +20,7 @@
 ** Shell [Shell]
 **
 ** Keys:
-**    Name
+**    ShellId
 **
 **==============================================================================
 */
@@ -29,8 +29,8 @@ typedef struct _Shell
 {
     MI_Instance __instance;
     /* Shell properties */
-    /*KEY*/ MI_ConstStringField Name;
-    MI_ConstStringField ShellId;
+    MI_ConstStringField Name;
+    /*KEY*/ MI_ConstStringField ShellId;
     MI_ConstStringField WorkingDirectory;
     EnvironmentVariable_ConstArrayRef Environment;
     MI_ConstStringField InputStreams;

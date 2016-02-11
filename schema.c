@@ -319,7 +319,7 @@ MI_CONST MI_ClassDecl CommandState_rtti =
 /* property Shell.Name */
 static MI_CONST MI_PropertyDecl Shell_Name_prop =
 {
-    MI_FLAG_PROPERTY|MI_FLAG_KEY, /* flags */
+    MI_FLAG_PROPERTY, /* flags */
     0x006E6504, /* code */
     MI_T("Name"), /* name */
     NULL, /* qualifiers */
@@ -336,7 +336,7 @@ static MI_CONST MI_PropertyDecl Shell_Name_prop =
 /* property Shell.ShellId */
 static MI_CONST MI_PropertyDecl Shell_ShellId_prop =
 {
-    MI_FLAG_PROPERTY, /* flags */
+    MI_FLAG_PROPERTY|MI_FLAG_KEY, /* flags */
     0x00736407, /* code */
     MI_T("ShellId"), /* name */
     NULL, /* qualifiers */

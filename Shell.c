@@ -462,7 +462,7 @@ void MI_CALL Shell_GetInstance(Shell_Self* self, MI_Context* context,
         const Shell* instanceName, const MI_PropertySet* propertySet)
 {
     MI_Result miResult = MI_RESULT_NOT_FOUND;
-    ShellData *shellData = FindShellFromSelf(self, instanceName->Name.value);
+    ShellData *shellData = FindShellFromSelf(self, instanceName->ShellId.value);
 
     if (shellData)
     {
@@ -864,7 +864,7 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
         GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
-    if (newInstance->Name.value == NULL)
+    if (newInstance->ShellId.value == NULL)
     {
         /* Set the shell ID to be the pointer within the bigger buffer */
         shellData->shellId = Batch_Get(batch, sizeof(MI_Char)*ID_LENGTH);
@@ -877,7 +877,7 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
         {
             GOTO_ERROR("out of memory", MI_RESULT_FAILED);
         }
-        if ((miResult = Shell_SetPtr_Name((Shell*)miOperationInstance, shellData->shellId)) != MI_RESULT_OK)
+        if ((miResult = Shell_SetPtr_ShellId((Shell*)miOperationInstance, shellData->shellId)) != MI_RESULT_OK)
         {
             GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
         }
@@ -886,7 +886,7 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
     {
         MI_Value value;
         MI_Type type;
-        if ((MI_Instance_GetElement(miOperationInstance, MI_T("Name"), &value, &type, NULL, NULL) != MI_RESULT_OK) ||
+        if ((MI_Instance_GetElement(miOperationInstance, MI_T("ShellId"), &value, &type, NULL, NULL) != MI_RESULT_OK) ||
                 (type != MI_STRING))
         {
             GOTO_ERROR("Failed to find shell name", MI_RESULT_FAILED);
@@ -1026,7 +1026,7 @@ void MI_CALL Shell_DeleteInstance(Shell_Self* self, MI_Context* context,
     MI_Result miResult = MI_RESULT_NOT_FOUND;
 
     __LOGD(("Shell_DeleteInstance Name=%s, ShellId=%s", instanceName->Name.value, instanceName->ShellId.value));
-    shellData = FindShellFromSelf(self, instanceName->Name.value);
+    shellData = FindShellFromSelf(self, instanceName->ShellId.value);
 
     if (shellData)
     {
@@ -1219,7 +1219,7 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
 
     __LOGD(("Shell_Invoke_Command Name=%s, ShellId=%s", instanceName->Name.value, instanceName->ShellId.value));
 
-    shellData = FindShellFromSelf(self, instanceName->Name.value);
+    shellData = FindShellFromSelf(self, instanceName->ShellId.value);
 
     if (!shellData)
     {
@@ -1406,7 +1406,7 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
 {
     MI_Result miResult = MI_RESULT_OK;
     MI_Uint32 pluginFlags = 0;
-    ShellData *shellData = FindShellFromSelf(self, instanceName->Name.value);
+    ShellData *shellData = FindShellFromSelf(self, instanceName->ShellId.value);
     CommandData *commandData = NULL;
     SendData *sendData = NULL;
     Batch *batch = NULL;
@@ -1684,7 +1684,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
         const Shell_Receive* in)
 {
     MI_Result miResult = MI_RESULT_OK;
-    ShellData *shellData = FindShellFromSelf(self, instanceName->Name.value);
+    ShellData *shellData = FindShellFromSelf(self, instanceName->ShellId.value);
     CommandData *commandData = NULL;
     ReceiveData *receiveData = NULL;
     Batch *batch = NULL;
@@ -1914,7 +1914,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
         const Shell_Signal* in)
 {
     MI_Result miResult = MI_RESULT_OK;
-    ShellData *shellData = FindShellFromSelf(self, instanceName->Name.value);
+    ShellData *shellData = FindShellFromSelf(self, instanceName->ShellId.value);
     CommandData *commandData = NULL;
     SignalData *signalData = NULL;
     Batch *batch = NULL;

@@ -34,8 +34,8 @@ class EnvironmentVariable
 
 class Shell
 {
-    [key] string Name;
-    string ShellId;
+    string Name;
+    [key] string ShellId;
     string WorkingDirectory;
     [embeddedinstance("EnvironmentVariable")] string Environment[];
     string InputStreams; /* space delimited string */

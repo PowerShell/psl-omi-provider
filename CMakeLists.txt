@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8.4)
 project(PSRP_PROVIDER)
 
+set(CMAKE_BUILD_TYPE Debug)
+
 # Export commands for auto-completion engines
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 
@@ -44,7 +46,8 @@ target_include_directories(psrpomiprov PRIVATE ${OMI}/output/include ${OMI} ${OM
 target_compile_options(psrpomiprov PRIVATE -fvisibility=hidden -fno-strict-aliasing)
 
 add_custom_command(TARGET psrpomiprov POST_BUILD
-	COMMAND ${OMI}/output/bin/omireg $<TARGET_FILE:psrpomiprov> -n interop --hosting @requestor-shell@)
+	COMMAND ${OMI}/output/bin/omireg $<TARGET_FILE:psrpomiprov> -n interop)
+#	COMMAND ${OMI}/output/bin/omireg $<TARGET_FILE:psrpomiprov> -n interop --hosting @requestor-shell@)
 
 add_custom_target(gen DEPENDS schema.mof
 	COMMAND ${OMI}/output/bin/omigen -C ${OMI}/share/networkschema/CIM_Schema.mof schema.mof Shell Command -e Stream -e CommandState -e EnvironmentVariable)

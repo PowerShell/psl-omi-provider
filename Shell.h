@@ -10,8 +10,8 @@
 #define _Shell_h
 
 #include <MI.h>
-#include "EnvironmentVariable.h"
 #include "Stream.h"
+#include "DesiredStream.h"
 #include "CommandState.h"
 
 /*
@@ -29,17 +29,25 @@ typedef struct _Shell
 {
     MI_Instance __instance;
     /* Shell properties */
-    MI_ConstStringField Name;
     /*KEY*/ MI_ConstStringField ShellId;
-    MI_ConstStringField WorkingDirectory;
-    EnvironmentVariable_ConstArrayRef Environment;
-    MI_ConstStringField InputStreams;
-    MI_ConstStringField OutputStreams;
-    MI_ConstStringField CompressionMode;
+    MI_ConstStringField Name;
     MI_ConstStringField ResourceUri;
     MI_ConstStringField Owner;
+    MI_ConstStringField ClientIP;
+    MI_ConstUint32Field ProcessId;
+    MI_ConstDatetimeField IdleTimeout;
+    MI_ConstStringField InputStreams;
+    MI_ConstStringField OutputStreams;
+    MI_ConstDatetimeField MaxIdleTimeout;
     MI_ConstStringField Locale;
     MI_ConstStringField DataLocale;
+    MI_ConstStringField CompressionMode;
+    MI_ConstStringField ProfileLoaded;
+    MI_ConstStringField Encoding;
+    MI_ConstStringField BufferMode;
+    MI_ConstStringField State;
+    MI_ConstDatetimeField ShellRunTime;
+    MI_ConstDatetimeField ShellInactivity;
     MI_ConstStringField CreationXml;
 }
 Shell;
@@ -132,45 +140,13 @@ MI_INLINE MI_Result MI_CALL Shell_Post(
     return MI_PostInstance(context, &self->__instance);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Set_Name(
-    Shell* self,
-    const MI_Char* str)
-{
-    return self->__instance.ft->SetElementAt(
-        (MI_Instance*)&self->__instance,
-        0,
-        (MI_Value*)&str,
-        MI_STRING,
-        0);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_SetPtr_Name(
-    Shell* self,
-    const MI_Char* str)
-{
-    return self->__instance.ft->SetElementAt(
-        (MI_Instance*)&self->__instance,
-        0,
-        (MI_Value*)&str,
-        MI_STRING,
-        MI_FLAG_BORROW);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_Clear_Name(
-    Shell* self)
-{
-    return self->__instance.ft->ClearElementAt(
-        (MI_Instance*)&self->__instance,
-        0);
-}
-
 MI_INLINE MI_Result MI_CALL Shell_Set_ShellId(
     Shell* self,
     const MI_Char* str)
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        1,
+        0,
         (MI_Value*)&str,
         MI_STRING,
         0);
@@ -182,7 +158,7 @@ MI_INLINE MI_Result MI_CALL Shell_SetPtr_ShellId(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        1,
+        0,
         (MI_Value*)&str,
         MI_STRING,
         MI_FLAG_BORROW);
@@ -193,175 +169,39 @@ MI_INLINE MI_Result MI_CALL Shell_Clear_ShellId(
 {
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_Name(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        1,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_SetPtr_Name(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        1,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_Name(
+    Shell* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
         1);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_Set_WorkingDirectory(
-    Shell* self,
-    const MI_Char* str)
-{
-    return self->__instance.ft->SetElementAt(
-        (MI_Instance*)&self->__instance,
-        2,
-        (MI_Value*)&str,
-        MI_STRING,
-        0);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_SetPtr_WorkingDirectory(
-    Shell* self,
-    const MI_Char* str)
-{
-    return self->__instance.ft->SetElementAt(
-        (MI_Instance*)&self->__instance,
-        2,
-        (MI_Value*)&str,
-        MI_STRING,
-        MI_FLAG_BORROW);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_Clear_WorkingDirectory(
-    Shell* self)
-{
-    return self->__instance.ft->ClearElementAt(
-        (MI_Instance*)&self->__instance,
-        2);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_Set_Environment(
-    Shell* self,
-    const EnvironmentVariable * const * data,
-    MI_Uint32 size)
-{
-    MI_Array arr;
-    arr.data = (void*)data;
-    arr.size = size;
-    return self->__instance.ft->SetElementAt(
-        (MI_Instance*)&self->__instance,
-        3,
-        (MI_Value*)&arr,
-        MI_INSTANCEA,
-        0);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_SetPtr_Environment(
-    Shell* self,
-    const EnvironmentVariable * const * data,
-    MI_Uint32 size)
-{
-    MI_Array arr;
-    arr.data = (void*)data;
-    arr.size = size;
-    return self->__instance.ft->SetElementAt(
-        (MI_Instance*)&self->__instance,
-        3,
-        (MI_Value*)&arr,
-        MI_INSTANCEA,
-        MI_FLAG_BORROW);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_Clear_Environment(
-    Shell* self)
-{
-    return self->__instance.ft->ClearElementAt(
-        (MI_Instance*)&self->__instance,
-        3);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_Set_InputStreams(
-    Shell* self,
-    const MI_Char* str)
-{
-    return self->__instance.ft->SetElementAt(
-        (MI_Instance*)&self->__instance,
-        4,
-        (MI_Value*)&str,
-        MI_STRING,
-        0);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_SetPtr_InputStreams(
-    Shell* self,
-    const MI_Char* str)
-{
-    return self->__instance.ft->SetElementAt(
-        (MI_Instance*)&self->__instance,
-        4,
-        (MI_Value*)&str,
-        MI_STRING,
-        MI_FLAG_BORROW);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_Clear_InputStreams(
-    Shell* self)
-{
-    return self->__instance.ft->ClearElementAt(
-        (MI_Instance*)&self->__instance,
-        4);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_Set_OutputStreams(
-    Shell* self,
-    const MI_Char* str)
-{
-    return self->__instance.ft->SetElementAt(
-        (MI_Instance*)&self->__instance,
-        5,
-        (MI_Value*)&str,
-        MI_STRING,
-        0);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_SetPtr_OutputStreams(
-    Shell* self,
-    const MI_Char* str)
-{
-    return self->__instance.ft->SetElementAt(
-        (MI_Instance*)&self->__instance,
-        5,
-        (MI_Value*)&str,
-        MI_STRING,
-        MI_FLAG_BORROW);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_Clear_OutputStreams(
-    Shell* self)
-{
-    return self->__instance.ft->ClearElementAt(
-        (MI_Instance*)&self->__instance,
-        5);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_Set_CompressionMode(
-    Shell* self,
-    const MI_Char* str)
-{
-    return self->__instance.ft->SetElementAt(
-        (MI_Instance*)&self->__instance,
-        6,
-        (MI_Value*)&str,
-        MI_STRING,
-        0);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_SetPtr_CompressionMode(
-    Shell* self,
-    const MI_Char* str)
-{
-    return self->__instance.ft->SetElementAt(
-        (MI_Instance*)&self->__instance,
-        6,
-        (MI_Value*)&str,
-        MI_STRING,
-        MI_FLAG_BORROW);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_Clear_CompressionMode(
-    Shell* self)
-{
-    return self->__instance.ft->ClearElementAt(
-        (MI_Instance*)&self->__instance,
-        6);
 }
 
 MI_INLINE MI_Result MI_CALL Shell_Set_ResourceUri(
@@ -370,7 +210,7 @@ MI_INLINE MI_Result MI_CALL Shell_Set_ResourceUri(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        7,
+        2,
         (MI_Value*)&str,
         MI_STRING,
         0);
@@ -382,7 +222,7 @@ MI_INLINE MI_Result MI_CALL Shell_SetPtr_ResourceUri(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        7,
+        2,
         (MI_Value*)&str,
         MI_STRING,
         MI_FLAG_BORROW);
@@ -393,7 +233,7 @@ MI_INLINE MI_Result MI_CALL Shell_Clear_ResourceUri(
 {
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
-        7);
+        2);
 }
 
 MI_INLINE MI_Result MI_CALL Shell_Set_Owner(
@@ -402,7 +242,7 @@ MI_INLINE MI_Result MI_CALL Shell_Set_Owner(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        8,
+        3,
         (MI_Value*)&str,
         MI_STRING,
         0);
@@ -414,7 +254,7 @@ MI_INLINE MI_Result MI_CALL Shell_SetPtr_Owner(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        8,
+        3,
         (MI_Value*)&str,
         MI_STRING,
         MI_FLAG_BORROW);
@@ -425,7 +265,151 @@ MI_INLINE MI_Result MI_CALL Shell_Clear_Owner(
 {
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
+        3);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_ClientIP(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        4,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_SetPtr_ClientIP(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        4,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_ClientIP(
+    Shell* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
+        4);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_ProcessId(
+    Shell* self,
+    MI_Uint32 x)
+{
+    ((MI_Uint32Field*)&self->ProcessId)->value = x;
+    ((MI_Uint32Field*)&self->ProcessId)->exists = 1;
+    return MI_RESULT_OK;
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_ProcessId(
+    Shell* self)
+{
+    memset((void*)&self->ProcessId, 0, sizeof(self->ProcessId));
+    return MI_RESULT_OK;
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_IdleTimeout(
+    Shell* self,
+    MI_Datetime x)
+{
+    ((MI_DatetimeField*)&self->IdleTimeout)->value = x;
+    ((MI_DatetimeField*)&self->IdleTimeout)->exists = 1;
+    return MI_RESULT_OK;
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_IdleTimeout(
+    Shell* self)
+{
+    memset((void*)&self->IdleTimeout, 0, sizeof(self->IdleTimeout));
+    return MI_RESULT_OK;
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_InputStreams(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        7,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_SetPtr_InputStreams(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        7,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_InputStreams(
+    Shell* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
+        7);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_OutputStreams(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        8,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_SetPtr_OutputStreams(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        8,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_OutputStreams(
+    Shell* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
         8);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_MaxIdleTimeout(
+    Shell* self,
+    MI_Datetime x)
+{
+    ((MI_DatetimeField*)&self->MaxIdleTimeout)->value = x;
+    ((MI_DatetimeField*)&self->MaxIdleTimeout)->exists = 1;
+    return MI_RESULT_OK;
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_MaxIdleTimeout(
+    Shell* self)
+{
+    memset((void*)&self->MaxIdleTimeout, 0, sizeof(self->MaxIdleTimeout));
+    return MI_RESULT_OK;
 }
 
 MI_INLINE MI_Result MI_CALL Shell_Set_Locale(
@@ -434,7 +418,7 @@ MI_INLINE MI_Result MI_CALL Shell_Set_Locale(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        9,
+        10,
         (MI_Value*)&str,
         MI_STRING,
         0);
@@ -446,7 +430,7 @@ MI_INLINE MI_Result MI_CALL Shell_SetPtr_Locale(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        9,
+        10,
         (MI_Value*)&str,
         MI_STRING,
         MI_FLAG_BORROW);
@@ -457,7 +441,7 @@ MI_INLINE MI_Result MI_CALL Shell_Clear_Locale(
 {
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
-        9);
+        10);
 }
 
 MI_INLINE MI_Result MI_CALL Shell_Set_DataLocale(
@@ -466,7 +450,7 @@ MI_INLINE MI_Result MI_CALL Shell_Set_DataLocale(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        10,
+        11,
         (MI_Value*)&str,
         MI_STRING,
         0);
@@ -478,7 +462,7 @@ MI_INLINE MI_Result MI_CALL Shell_SetPtr_DataLocale(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        10,
+        11,
         (MI_Value*)&str,
         MI_STRING,
         MI_FLAG_BORROW);
@@ -489,7 +473,199 @@ MI_INLINE MI_Result MI_CALL Shell_Clear_DataLocale(
 {
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
-        10);
+        11);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_CompressionMode(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        12,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_SetPtr_CompressionMode(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        12,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_CompressionMode(
+    Shell* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
+        12);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_ProfileLoaded(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        13,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_SetPtr_ProfileLoaded(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        13,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_ProfileLoaded(
+    Shell* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
+        13);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_Encoding(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        14,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_SetPtr_Encoding(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        14,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_Encoding(
+    Shell* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
+        14);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_BufferMode(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        15,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_SetPtr_BufferMode(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        15,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_BufferMode(
+    Shell* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
+        15);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_State(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        16,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_SetPtr_State(
+    Shell* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        16,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_State(
+    Shell* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
+        16);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_ShellRunTime(
+    Shell* self,
+    MI_Datetime x)
+{
+    ((MI_DatetimeField*)&self->ShellRunTime)->value = x;
+    ((MI_DatetimeField*)&self->ShellRunTime)->exists = 1;
+    return MI_RESULT_OK;
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_ShellRunTime(
+    Shell* self)
+{
+    memset((void*)&self->ShellRunTime, 0, sizeof(self->ShellRunTime));
+    return MI_RESULT_OK;
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Set_ShellInactivity(
+    Shell* self,
+    MI_Datetime x)
+{
+    ((MI_DatetimeField*)&self->ShellInactivity)->value = x;
+    ((MI_DatetimeField*)&self->ShellInactivity)->exists = 1;
+    return MI_RESULT_OK;
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Clear_ShellInactivity(
+    Shell* self)
+{
+    memset((void*)&self->ShellInactivity, 0, sizeof(self->ShellInactivity));
+    return MI_RESULT_OK;
 }
 
 MI_INLINE MI_Result MI_CALL Shell_Set_CreationXml(
@@ -498,7 +674,7 @@ MI_INLINE MI_Result MI_CALL Shell_Set_CreationXml(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        11,
+        19,
         (MI_Value*)&str,
         MI_STRING,
         0);
@@ -510,7 +686,7 @@ MI_INLINE MI_Result MI_CALL Shell_SetPtr_CreationXml(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        11,
+        19,
         (MI_Value*)&str,
         MI_STRING,
         MI_FLAG_BORROW);
@@ -521,7 +697,7 @@ MI_INLINE MI_Result MI_CALL Shell_Clear_CreationXml(
 {
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
-        11);
+        19);
 }
 
 /*
@@ -812,8 +988,7 @@ typedef struct _Shell_Receive
 {
     MI_Instance __instance;
     /*OUT*/ MI_ConstUint32Field MIReturn;
-MI_ConstStringField commandId;
-MI_ConstStringField streamSet;
+DesiredStream_ConstRef DesiredStream;
     /*OUT*/ Stream_ConstRef Stream;
     /*OUT*/ CommandState_ConstRef CommandState;
 }
@@ -872,68 +1047,36 @@ MI_INLINE MI_Result MI_CALL Shell_Receive_Clear_MIReturn(
     return MI_RESULT_OK;
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Receive_Set_commandId(
+MI_INLINE MI_Result MI_CALL Shell_Receive_Set_DesiredStream(
     Shell_Receive* self,
-    const MI_Char* str)
+    const DesiredStream* x)
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
         1,
-        (MI_Value*)&str,
-        MI_STRING,
+        (MI_Value*)&x,
+        MI_INSTANCE,
         0);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Receive_SetPtr_commandId(
+MI_INLINE MI_Result MI_CALL Shell_Receive_SetPtr_DesiredStream(
     Shell_Receive* self,
-    const MI_Char* str)
+    const DesiredStream* x)
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
         1,
-        (MI_Value*)&str,
-        MI_STRING,
+        (MI_Value*)&x,
+        MI_INSTANCE,
         MI_FLAG_BORROW);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Receive_Clear_commandId(
+MI_INLINE MI_Result MI_CALL Shell_Receive_Clear_DesiredStream(
     Shell_Receive* self)
 {
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
         1);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_Receive_Set_streamSet(
-    Shell_Receive* self,
-    const MI_Char* str)
-{
-    return self->__instance.ft->SetElementAt(
-        (MI_Instance*)&self->__instance,
-        2,
-        (MI_Value*)&str,
-        MI_STRING,
-        0);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_Receive_SetPtr_streamSet(
-    Shell_Receive* self,
-    const MI_Char* str)
-{
-    return self->__instance.ft->SetElementAt(
-        (MI_Instance*)&self->__instance,
-        2,
-        (MI_Value*)&str,
-        MI_STRING,
-        MI_FLAG_BORROW);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_Receive_Clear_streamSet(
-    Shell_Receive* self)
-{
-    return self->__instance.ft->ClearElementAt(
-        (MI_Instance*)&self->__instance,
-        2);
 }
 
 MI_INLINE MI_Result MI_CALL Shell_Receive_Set_Stream(
@@ -942,7 +1085,7 @@ MI_INLINE MI_Result MI_CALL Shell_Receive_Set_Stream(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        3,
+        2,
         (MI_Value*)&x,
         MI_INSTANCE,
         0);
@@ -954,7 +1097,7 @@ MI_INLINE MI_Result MI_CALL Shell_Receive_SetPtr_Stream(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        3,
+        2,
         (MI_Value*)&x,
         MI_INSTANCE,
         MI_FLAG_BORROW);
@@ -965,7 +1108,7 @@ MI_INLINE MI_Result MI_CALL Shell_Receive_Clear_Stream(
 {
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
-        3);
+        2);
 }
 
 MI_INLINE MI_Result MI_CALL Shell_Receive_Set_CommandState(
@@ -974,7 +1117,7 @@ MI_INLINE MI_Result MI_CALL Shell_Receive_Set_CommandState(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        4,
+        3,
         (MI_Value*)&x,
         MI_INSTANCE,
         0);
@@ -986,7 +1129,7 @@ MI_INLINE MI_Result MI_CALL Shell_Receive_SetPtr_CommandState(
 {
     return self->__instance.ft->SetElementAt(
         (MI_Instance*)&self->__instance,
-        4,
+        3,
         (MI_Value*)&x,
         MI_INSTANCE,
         MI_FLAG_BORROW);
@@ -997,7 +1140,7 @@ MI_INLINE MI_Result MI_CALL Shell_Receive_Clear_CommandState(
 {
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
-        4);
+        3);
 }
 
 /*
@@ -1137,60 +1280,59 @@ MI_INLINE MI_Result MI_CALL Shell_Signal_Clear_code(
 /*
 **==============================================================================
 **
-** Shell.Connect()
+** Shell.Disconnect()
 **
 **==============================================================================
 */
 
-typedef struct _Shell_Connect
+typedef struct _Shell_Disconnect
 {
     MI_Instance __instance;
     /*OUT*/ MI_ConstUint32Field MIReturn;
-MI_ConstStringField shellId;
-MI_ConstStringField commandId;
-MI_ConstStringField inboundConnectionInfo;
+MI_ConstDatetimeField IdleTimeOut;
+MI_ConstStringField BufferMode;
 }
-Shell_Connect;
+Shell_Disconnect;
 
-MI_EXTERN_C MI_CONST MI_MethodDecl Shell_Connect_rtti;
+MI_EXTERN_C MI_CONST MI_MethodDecl Shell_Disconnect_rtti;
 
-MI_INLINE MI_Result MI_CALL Shell_Connect_Construct(
-    Shell_Connect* self,
+MI_INLINE MI_Result MI_CALL Shell_Disconnect_Construct(
+    Shell_Disconnect* self,
     MI_Context* context)
 {
-    return MI_ConstructParameters(context, &Shell_Connect_rtti,
+    return MI_ConstructParameters(context, &Shell_Disconnect_rtti,
         (MI_Instance*)&self->__instance);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Connect_Clone(
-    const Shell_Connect* self,
-    Shell_Connect** newInstance)
+MI_INLINE MI_Result MI_CALL Shell_Disconnect_Clone(
+    const Shell_Disconnect* self,
+    Shell_Disconnect** newInstance)
 {
     return MI_Instance_Clone(
         &self->__instance, (MI_Instance**)newInstance);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Connect_Destruct(
-    Shell_Connect* self)
+MI_INLINE MI_Result MI_CALL Shell_Disconnect_Destruct(
+    Shell_Disconnect* self)
 {
     return MI_Instance_Destruct(&self->__instance);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Connect_Delete(
-    Shell_Connect* self)
+MI_INLINE MI_Result MI_CALL Shell_Disconnect_Delete(
+    Shell_Disconnect* self)
 {
     return MI_Instance_Delete(&self->__instance);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Connect_Post(
-    const Shell_Connect* self,
+MI_INLINE MI_Result MI_CALL Shell_Disconnect_Post(
+    const Shell_Disconnect* self,
     MI_Context* context)
 {
     return MI_PostInstance(context, &self->__instance);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Connect_Set_MIReturn(
-    Shell_Connect* self,
+MI_INLINE MI_Result MI_CALL Shell_Disconnect_Set_MIReturn(
+    Shell_Disconnect* self,
     MI_Uint32 x)
 {
     ((MI_Uint32Field*)&self->MIReturn)->value = x;
@@ -1198,47 +1340,31 @@ MI_INLINE MI_Result MI_CALL Shell_Connect_Set_MIReturn(
     return MI_RESULT_OK;
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Connect_Clear_MIReturn(
-    Shell_Connect* self)
+MI_INLINE MI_Result MI_CALL Shell_Disconnect_Clear_MIReturn(
+    Shell_Disconnect* self)
 {
     memset((void*)&self->MIReturn, 0, sizeof(self->MIReturn));
     return MI_RESULT_OK;
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Connect_Set_shellId(
-    Shell_Connect* self,
-    const MI_Char* str)
+MI_INLINE MI_Result MI_CALL Shell_Disconnect_Set_IdleTimeOut(
+    Shell_Disconnect* self,
+    MI_Datetime x)
 {
-    return self->__instance.ft->SetElementAt(
-        (MI_Instance*)&self->__instance,
-        1,
-        (MI_Value*)&str,
-        MI_STRING,
-        0);
+    ((MI_DatetimeField*)&self->IdleTimeOut)->value = x;
+    ((MI_DatetimeField*)&self->IdleTimeOut)->exists = 1;
+    return MI_RESULT_OK;
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Connect_SetPtr_shellId(
-    Shell_Connect* self,
-    const MI_Char* str)
+MI_INLINE MI_Result MI_CALL Shell_Disconnect_Clear_IdleTimeOut(
+    Shell_Disconnect* self)
 {
-    return self->__instance.ft->SetElementAt(
-        (MI_Instance*)&self->__instance,
-        1,
-        (MI_Value*)&str,
-        MI_STRING,
-        MI_FLAG_BORROW);
+    memset((void*)&self->IdleTimeOut, 0, sizeof(self->IdleTimeOut));
+    return MI_RESULT_OK;
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Connect_Clear_shellId(
-    Shell_Connect* self)
-{
-    return self->__instance.ft->ClearElementAt(
-        (MI_Instance*)&self->__instance,
-        1);
-}
-
-MI_INLINE MI_Result MI_CALL Shell_Connect_Set_commandId(
-    Shell_Connect* self,
+MI_INLINE MI_Result MI_CALL Shell_Disconnect_Set_BufferMode(
+    Shell_Disconnect* self,
     const MI_Char* str)
 {
     return self->__instance.ft->SetElementAt(
@@ -1249,8 +1375,8 @@ MI_INLINE MI_Result MI_CALL Shell_Connect_Set_commandId(
         0);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Connect_SetPtr_commandId(
-    Shell_Connect* self,
+MI_INLINE MI_Result MI_CALL Shell_Disconnect_SetPtr_BufferMode(
+    Shell_Disconnect* self,
     const MI_Char* str)
 {
     return self->__instance.ft->SetElementAt(
@@ -1261,44 +1387,80 @@ MI_INLINE MI_Result MI_CALL Shell_Connect_SetPtr_commandId(
         MI_FLAG_BORROW);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Connect_Clear_commandId(
-    Shell_Connect* self)
+MI_INLINE MI_Result MI_CALL Shell_Disconnect_Clear_BufferMode(
+    Shell_Disconnect* self)
 {
     return self->__instance.ft->ClearElementAt(
         (MI_Instance*)&self->__instance,
         2);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Connect_Set_inboundConnectionInfo(
-    Shell_Connect* self,
-    const MI_Char* str)
+/*
+**==============================================================================
+**
+** Shell.Reconnect()
+**
+**==============================================================================
+*/
+
+typedef struct _Shell_Reconnect
 {
-    return self->__instance.ft->SetElementAt(
-        (MI_Instance*)&self->__instance,
-        3,
-        (MI_Value*)&str,
-        MI_STRING,
-        0);
+    MI_Instance __instance;
+    /*OUT*/ MI_ConstUint32Field MIReturn;
+}
+Shell_Reconnect;
+
+MI_EXTERN_C MI_CONST MI_MethodDecl Shell_Reconnect_rtti;
+
+MI_INLINE MI_Result MI_CALL Shell_Reconnect_Construct(
+    Shell_Reconnect* self,
+    MI_Context* context)
+{
+    return MI_ConstructParameters(context, &Shell_Reconnect_rtti,
+        (MI_Instance*)&self->__instance);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Connect_SetPtr_inboundConnectionInfo(
-    Shell_Connect* self,
-    const MI_Char* str)
+MI_INLINE MI_Result MI_CALL Shell_Reconnect_Clone(
+    const Shell_Reconnect* self,
+    Shell_Reconnect** newInstance)
 {
-    return self->__instance.ft->SetElementAt(
-        (MI_Instance*)&self->__instance,
-        3,
-        (MI_Value*)&str,
-        MI_STRING,
-        MI_FLAG_BORROW);
+    return MI_Instance_Clone(
+        &self->__instance, (MI_Instance**)newInstance);
 }
 
-MI_INLINE MI_Result MI_CALL Shell_Connect_Clear_inboundConnectionInfo(
-    Shell_Connect* self)
+MI_INLINE MI_Result MI_CALL Shell_Reconnect_Destruct(
+    Shell_Reconnect* self)
 {
-    return self->__instance.ft->ClearElementAt(
-        (MI_Instance*)&self->__instance,
-        3);
+    return MI_Instance_Destruct(&self->__instance);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Reconnect_Delete(
+    Shell_Reconnect* self)
+{
+    return MI_Instance_Delete(&self->__instance);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Reconnect_Post(
+    const Shell_Reconnect* self,
+    MI_Context* context)
+{
+    return MI_PostInstance(context, &self->__instance);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Reconnect_Set_MIReturn(
+    Shell_Reconnect* self,
+    MI_Uint32 x)
+{
+    ((MI_Uint32Field*)&self->MIReturn)->value = x;
+    ((MI_Uint32Field*)&self->MIReturn)->exists = 1;
+    return MI_RESULT_OK;
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Reconnect_Clear_MIReturn(
+    Shell_Reconnect* self)
+{
+    memset((void*)&self->MIReturn, 0, sizeof(self->MIReturn));
+    return MI_RESULT_OK;
 }
 
 /*
@@ -1396,14 +1558,23 @@ MI_EXTERN_C void MI_CALL Shell_Invoke_Signal(
     const Shell* instanceName,
     const Shell_Signal* in);
 
-MI_EXTERN_C void MI_CALL Shell_Invoke_Connect(
+MI_EXTERN_C void MI_CALL Shell_Invoke_Disconnect(
     Shell_Self* self,
     MI_Context* context,
     const MI_Char* nameSpace,
     const MI_Char* className,
     const MI_Char* methodName,
     const Shell* instanceName,
-    const Shell_Connect* in);
+    const Shell_Disconnect* in);
+
+MI_EXTERN_C void MI_CALL Shell_Invoke_Reconnect(
+    Shell_Self* self,
+    MI_Context* context,
+    const MI_Char* nameSpace,
+    const MI_Char* className,
+    const MI_Char* methodName,
+    const Shell* instanceName,
+    const Shell_Reconnect* in);
 
 
 #endif /* _Shell_h */

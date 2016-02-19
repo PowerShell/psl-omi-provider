@@ -10,9 +10,6 @@
 #include <MI.h>
 #include "Shell.h"
 #include "Command.h"
-#include "Stream.h"
-#include "CommandState.h"
-#include "EnvironmentVariable.h"
 
 /*
 **==============================================================================
@@ -31,74 +28,6 @@ extern MI_SchemaDecl schemaDecl;
 **
 **==============================================================================
 */
-
-/*
-**==============================================================================
-**
-** EnvironmentVariable
-**
-**==============================================================================
-*/
-
-/* property EnvironmentVariable.Name */
-static MI_CONST MI_PropertyDecl EnvironmentVariable_Name_prop =
-{
-    MI_FLAG_PROPERTY, /* flags */
-    0x006E6504, /* code */
-    MI_T("Name"), /* name */
-    NULL, /* qualifiers */
-    0, /* numQualifiers */
-    MI_STRING, /* type */
-    NULL, /* className */
-    0, /* subscript */
-    offsetof(EnvironmentVariable, Name), /* offset */
-    MI_T("EnvironmentVariable"), /* origin */
-    MI_T("EnvironmentVariable"), /* propagator */
-    NULL,
-};
-
-/* property EnvironmentVariable.Value */
-static MI_CONST MI_PropertyDecl EnvironmentVariable_Value_prop =
-{
-    MI_FLAG_PROPERTY, /* flags */
-    0x00766505, /* code */
-    MI_T("Value"), /* name */
-    NULL, /* qualifiers */
-    0, /* numQualifiers */
-    MI_STRING, /* type */
-    NULL, /* className */
-    0, /* subscript */
-    offsetof(EnvironmentVariable, Value), /* offset */
-    MI_T("EnvironmentVariable"), /* origin */
-    MI_T("EnvironmentVariable"), /* propagator */
-    NULL,
-};
-
-static MI_PropertyDecl MI_CONST* MI_CONST EnvironmentVariable_props[] =
-{
-    &EnvironmentVariable_Name_prop,
-    &EnvironmentVariable_Value_prop,
-};
-
-/* class EnvironmentVariable */
-MI_CONST MI_ClassDecl EnvironmentVariable_rtti =
-{
-    MI_FLAG_CLASS, /* flags */
-    0x00656513, /* code */
-    MI_T("EnvironmentVariable"), /* name */
-    NULL, /* qualifiers */
-    0, /* numQualifiers */
-    EnvironmentVariable_props, /* properties */
-    MI_COUNT(EnvironmentVariable_props), /* numProperties */
-    sizeof(EnvironmentVariable), /* size */
-    NULL, /* superClass */
-    NULL, /* superClassDecl */
-    NULL, /* methods */
-    0, /* numMethods */
-    &schemaDecl, /* schema */
-    NULL, /* functions */
-    NULL, /* owningClass */
-};
 
 /*
 **==============================================================================
@@ -225,6 +154,74 @@ MI_CONST MI_ClassDecl Stream_rtti =
 /*
 **==============================================================================
 **
+** DesiredStream
+**
+**==============================================================================
+*/
+
+/* property DesiredStream.commandId */
+static MI_CONST MI_PropertyDecl DesiredStream_commandId_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x00636409, /* code */
+    MI_T("commandId"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(DesiredStream, commandId), /* offset */
+    MI_T("DesiredStream"), /* origin */
+    MI_T("DesiredStream"), /* propagator */
+    NULL,
+};
+
+/* property DesiredStream.streamName */
+static MI_CONST MI_PropertyDecl DesiredStream_streamName_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x0073650A, /* code */
+    MI_T("streamName"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(DesiredStream, streamName), /* offset */
+    MI_T("DesiredStream"), /* origin */
+    MI_T("DesiredStream"), /* propagator */
+    NULL,
+};
+
+static MI_PropertyDecl MI_CONST* MI_CONST DesiredStream_props[] =
+{
+    &DesiredStream_commandId_prop,
+    &DesiredStream_streamName_prop,
+};
+
+/* class DesiredStream */
+MI_CONST MI_ClassDecl DesiredStream_rtti =
+{
+    MI_FLAG_CLASS, /* flags */
+    0x00646D0D, /* code */
+    MI_T("DesiredStream"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    DesiredStream_props, /* properties */
+    MI_COUNT(DesiredStream_props), /* numProperties */
+    sizeof(DesiredStream), /* size */
+    NULL, /* superClass */
+    NULL, /* superClassDecl */
+    NULL, /* methods */
+    0, /* numMethods */
+    &schemaDecl, /* schema */
+    NULL, /* functions */
+    NULL, /* owningClass */
+};
+
+/*
+**==============================================================================
+**
 ** CommandState
 **
 **==============================================================================
@@ -316,23 +313,6 @@ MI_CONST MI_ClassDecl CommandState_rtti =
 **==============================================================================
 */
 
-/* property Shell.Name */
-static MI_CONST MI_PropertyDecl Shell_Name_prop =
-{
-    MI_FLAG_PROPERTY, /* flags */
-    0x006E6504, /* code */
-    MI_T("Name"), /* name */
-    NULL, /* qualifiers */
-    0, /* numQualifiers */
-    MI_STRING, /* type */
-    NULL, /* className */
-    0, /* subscript */
-    offsetof(Shell, Name), /* offset */
-    MI_T("Shell"), /* origin */
-    MI_T("Shell"), /* propagator */
-    NULL,
-};
-
 /* property Shell.ShellId */
 static MI_CONST MI_PropertyDecl Shell_ShellId_prop =
 {
@@ -350,101 +330,18 @@ static MI_CONST MI_PropertyDecl Shell_ShellId_prop =
     NULL,
 };
 
-/* property Shell.WorkingDirectory */
-static MI_CONST MI_PropertyDecl Shell_WorkingDirectory_prop =
+/* property Shell.Name */
+static MI_CONST MI_PropertyDecl Shell_Name_prop =
 {
     MI_FLAG_PROPERTY, /* flags */
-    0x00777910, /* code */
-    MI_T("WorkingDirectory"), /* name */
+    0x006E6504, /* code */
+    MI_T("Name"), /* name */
     NULL, /* qualifiers */
     0, /* numQualifiers */
     MI_STRING, /* type */
     NULL, /* className */
     0, /* subscript */
-    offsetof(Shell, WorkingDirectory), /* offset */
-    MI_T("Shell"), /* origin */
-    MI_T("Shell"), /* propagator */
-    NULL,
-};
-
-static MI_CONST MI_Char* Shell_Environment_EmbeddedInstance_qual_value = MI_T("EnvironmentVariable");
-
-static MI_CONST MI_Qualifier Shell_Environment_EmbeddedInstance_qual =
-{
-    MI_T("EmbeddedInstance"),
-    MI_STRING,
-    0,
-    &Shell_Environment_EmbeddedInstance_qual_value
-};
-
-static MI_Qualifier MI_CONST* MI_CONST Shell_Environment_quals[] =
-{
-    &Shell_Environment_EmbeddedInstance_qual,
-};
-
-/* property Shell.Environment */
-static MI_CONST MI_PropertyDecl Shell_Environment_prop =
-{
-    MI_FLAG_PROPERTY, /* flags */
-    0x0065740B, /* code */
-    MI_T("Environment"), /* name */
-    Shell_Environment_quals, /* qualifiers */
-    MI_COUNT(Shell_Environment_quals), /* numQualifiers */
-    MI_INSTANCEA, /* type */
-    MI_T("EnvironmentVariable"), /* className */
-    0, /* subscript */
-    offsetof(Shell, Environment), /* offset */
-    MI_T("Shell"), /* origin */
-    MI_T("Shell"), /* propagator */
-    NULL,
-};
-
-/* property Shell.InputStreams */
-static MI_CONST MI_PropertyDecl Shell_InputStreams_prop =
-{
-    MI_FLAG_PROPERTY, /* flags */
-    0x0069730C, /* code */
-    MI_T("InputStreams"), /* name */
-    NULL, /* qualifiers */
-    0, /* numQualifiers */
-    MI_STRING, /* type */
-    NULL, /* className */
-    0, /* subscript */
-    offsetof(Shell, InputStreams), /* offset */
-    MI_T("Shell"), /* origin */
-    MI_T("Shell"), /* propagator */
-    NULL,
-};
-
-/* property Shell.OutputStreams */
-static MI_CONST MI_PropertyDecl Shell_OutputStreams_prop =
-{
-    MI_FLAG_PROPERTY, /* flags */
-    0x006F730D, /* code */
-    MI_T("OutputStreams"), /* name */
-    NULL, /* qualifiers */
-    0, /* numQualifiers */
-    MI_STRING, /* type */
-    NULL, /* className */
-    0, /* subscript */
-    offsetof(Shell, OutputStreams), /* offset */
-    MI_T("Shell"), /* origin */
-    MI_T("Shell"), /* propagator */
-    NULL,
-};
-
-/* property Shell.CompressionMode */
-static MI_CONST MI_PropertyDecl Shell_CompressionMode_prop =
-{
-    MI_FLAG_PROPERTY, /* flags */
-    0x0063650F, /* code */
-    MI_T("CompressionMode"), /* name */
-    NULL, /* qualifiers */
-    0, /* numQualifiers */
-    MI_STRING, /* type */
-    NULL, /* className */
-    0, /* subscript */
-    offsetof(Shell, CompressionMode), /* offset */
+    offsetof(Shell, Name), /* offset */
     MI_T("Shell"), /* origin */
     MI_T("Shell"), /* propagator */
     NULL,
@@ -484,6 +381,108 @@ static MI_CONST MI_PropertyDecl Shell_Owner_prop =
     NULL,
 };
 
+/* property Shell.ClientIP */
+static MI_CONST MI_PropertyDecl Shell_ClientIP_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x00637008, /* code */
+    MI_T("ClientIP"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, ClientIP), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
+/* property Shell.ProcessId */
+static MI_CONST MI_PropertyDecl Shell_ProcessId_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x00706409, /* code */
+    MI_T("ProcessId"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_UINT32, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, ProcessId), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
+/* property Shell.IdleTimeout */
+static MI_CONST MI_PropertyDecl Shell_IdleTimeout_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x0069740B, /* code */
+    MI_T("IdleTimeout"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_DATETIME, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, IdleTimeout), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
+/* property Shell.InputStreams */
+static MI_CONST MI_PropertyDecl Shell_InputStreams_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x0069730C, /* code */
+    MI_T("InputStreams"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, InputStreams), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
+/* property Shell.OutputStreams */
+static MI_CONST MI_PropertyDecl Shell_OutputStreams_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x006F730D, /* code */
+    MI_T("OutputStreams"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, OutputStreams), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
+/* property Shell.MaxIdleTimeout */
+static MI_CONST MI_PropertyDecl Shell_MaxIdleTimeout_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x006D740E, /* code */
+    MI_T("MaxIdleTimeout"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_DATETIME, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, MaxIdleTimeout), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
 /* property Shell.Locale */
 static MI_CONST MI_PropertyDecl Shell_Locale_prop =
 {
@@ -518,6 +517,125 @@ static MI_CONST MI_PropertyDecl Shell_DataLocale_prop =
     NULL,
 };
 
+/* property Shell.CompressionMode */
+static MI_CONST MI_PropertyDecl Shell_CompressionMode_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x0063650F, /* code */
+    MI_T("CompressionMode"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, CompressionMode), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
+/* property Shell.ProfileLoaded */
+static MI_CONST MI_PropertyDecl Shell_ProfileLoaded_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x0070640D, /* code */
+    MI_T("ProfileLoaded"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, ProfileLoaded), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
+/* property Shell.Encoding */
+static MI_CONST MI_PropertyDecl Shell_Encoding_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x00656708, /* code */
+    MI_T("Encoding"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, Encoding), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
+/* property Shell.BufferMode */
+static MI_CONST MI_PropertyDecl Shell_BufferMode_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x0062650A, /* code */
+    MI_T("BufferMode"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, BufferMode), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
+/* property Shell.State */
+static MI_CONST MI_PropertyDecl Shell_State_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x00736505, /* code */
+    MI_T("State"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, State), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
+/* property Shell.ShellRunTime */
+static MI_CONST MI_PropertyDecl Shell_ShellRunTime_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x0073650C, /* code */
+    MI_T("ShellRunTime"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_DATETIME, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, ShellRunTime), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
+/* property Shell.ShellInactivity */
+static MI_CONST MI_PropertyDecl Shell_ShellInactivity_prop =
+{
+    MI_FLAG_PROPERTY, /* flags */
+    0x0073790F, /* code */
+    MI_T("ShellInactivity"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_DATETIME, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell, ShellInactivity), /* offset */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    NULL,
+};
+
 /* property Shell.CreationXml */
 static MI_CONST MI_PropertyDecl Shell_CreationXml_prop =
 {
@@ -537,17 +655,25 @@ static MI_CONST MI_PropertyDecl Shell_CreationXml_prop =
 
 static MI_PropertyDecl MI_CONST* MI_CONST Shell_props[] =
 {
-    &Shell_Name_prop,
     &Shell_ShellId_prop,
-    &Shell_WorkingDirectory_prop,
-    &Shell_Environment_prop,
-    &Shell_InputStreams_prop,
-    &Shell_OutputStreams_prop,
-    &Shell_CompressionMode_prop,
+    &Shell_Name_prop,
     &Shell_ResourceUri_prop,
     &Shell_Owner_prop,
+    &Shell_ClientIP_prop,
+    &Shell_ProcessId_prop,
+    &Shell_IdleTimeout_prop,
+    &Shell_InputStreams_prop,
+    &Shell_OutputStreams_prop,
+    &Shell_MaxIdleTimeout_prop,
     &Shell_Locale_prop,
     &Shell_DataLocale_prop,
+    &Shell_CompressionMode_prop,
+    &Shell_ProfileLoaded_prop,
+    &Shell_Encoding_prop,
+    &Shell_BufferMode_prop,
+    &Shell_State_prop,
+    &Shell_ShellRunTime_prop,
+    &Shell_ShellInactivity_prop,
     &Shell_CreationXml_prop,
 };
 
@@ -700,32 +826,33 @@ MI_CONST MI_MethodDecl Shell_Send_rtti =
     (MI_ProviderFT_Invoke)Shell_Invoke_Send, /* method */
 };
 
-/* parameter Shell.Receive(): commandId */
-static MI_CONST MI_ParameterDecl Shell_Receive_commandId_param =
+static MI_CONST MI_Char* Shell_Receive_DesiredStream_EmbeddedInstance_qual_value = MI_T("DesiredStream");
+
+static MI_CONST MI_Qualifier Shell_Receive_DesiredStream_EmbeddedInstance_qual =
 {
-    MI_FLAG_PARAMETER, /* flags */
-    0x00636409, /* code */
-    MI_T("commandId"), /* name */
-    NULL, /* qualifiers */
-    0, /* numQualifiers */
-    MI_STRING, /* type */
-    NULL, /* className */
-    0, /* subscript */
-    offsetof(Shell_Receive, commandId), /* offset */
+    MI_T("EmbeddedInstance"),
+    MI_STRING,
+    0,
+    &Shell_Receive_DesiredStream_EmbeddedInstance_qual_value
 };
 
-/* parameter Shell.Receive(): streamSet */
-static MI_CONST MI_ParameterDecl Shell_Receive_streamSet_param =
+static MI_Qualifier MI_CONST* MI_CONST Shell_Receive_DesiredStream_quals[] =
+{
+    &Shell_Receive_DesiredStream_EmbeddedInstance_qual,
+};
+
+/* parameter Shell.Receive(): DesiredStream */
+static MI_CONST MI_ParameterDecl Shell_Receive_DesiredStream_param =
 {
     MI_FLAG_PARAMETER, /* flags */
-    0x00737409, /* code */
-    MI_T("streamSet"), /* name */
-    NULL, /* qualifiers */
-    0, /* numQualifiers */
-    MI_STRING, /* type */
-    NULL, /* className */
+    0x00646D0D, /* code */
+    MI_T("DesiredStream"), /* name */
+    Shell_Receive_DesiredStream_quals, /* qualifiers */
+    MI_COUNT(Shell_Receive_DesiredStream_quals), /* numQualifiers */
+    MI_INSTANCE, /* type */
+    MI_T("DesiredStream"), /* className */
     0, /* subscript */
-    offsetof(Shell_Receive, streamSet), /* offset */
+    offsetof(Shell_Receive, DesiredStream), /* offset */
 };
 
 static MI_CONST MI_Char* Shell_Receive_Stream_EmbeddedInstance_qual_value = MI_T("Stream");
@@ -803,8 +930,7 @@ static MI_CONST MI_ParameterDecl Shell_Receive_MIReturn_param =
 static MI_ParameterDecl MI_CONST* MI_CONST Shell_Receive_params[] =
 {
     &Shell_Receive_MIReturn_param,
-    &Shell_Receive_commandId_param,
-    &Shell_Receive_streamSet_param,
+    &Shell_Receive_DesiredStream_param,
     &Shell_Receive_Stream_param,
     &Shell_Receive_CommandState_param,
 };
@@ -894,50 +1020,36 @@ MI_CONST MI_MethodDecl Shell_Signal_rtti =
     (MI_ProviderFT_Invoke)Shell_Invoke_Signal, /* method */
 };
 
-/* parameter Shell.Connect(): shellId */
-static MI_CONST MI_ParameterDecl Shell_Connect_shellId_param =
+/* parameter Shell.Disconnect(): IdleTimeOut */
+static MI_CONST MI_ParameterDecl Shell_Disconnect_IdleTimeOut_param =
 {
     MI_FLAG_PARAMETER, /* flags */
-    0x00736407, /* code */
-    MI_T("shellId"), /* name */
+    0x0069740B, /* code */
+    MI_T("IdleTimeOut"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_DATETIME, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell_Disconnect, IdleTimeOut), /* offset */
+};
+
+/* parameter Shell.Disconnect(): BufferMode */
+static MI_CONST MI_ParameterDecl Shell_Disconnect_BufferMode_param =
+{
+    MI_FLAG_PARAMETER, /* flags */
+    0x0062650A, /* code */
+    MI_T("BufferMode"), /* name */
     NULL, /* qualifiers */
     0, /* numQualifiers */
     MI_STRING, /* type */
     NULL, /* className */
     0, /* subscript */
-    offsetof(Shell_Connect, shellId), /* offset */
+    offsetof(Shell_Disconnect, BufferMode), /* offset */
 };
 
-/* parameter Shell.Connect(): commandId */
-static MI_CONST MI_ParameterDecl Shell_Connect_commandId_param =
-{
-    MI_FLAG_PARAMETER, /* flags */
-    0x00636409, /* code */
-    MI_T("commandId"), /* name */
-    NULL, /* qualifiers */
-    0, /* numQualifiers */
-    MI_STRING, /* type */
-    NULL, /* className */
-    0, /* subscript */
-    offsetof(Shell_Connect, commandId), /* offset */
-};
-
-/* parameter Shell.Connect(): inboundConnectionInfo */
-static MI_CONST MI_ParameterDecl Shell_Connect_inboundConnectionInfo_param =
-{
-    MI_FLAG_PARAMETER, /* flags */
-    0x00696F15, /* code */
-    MI_T("inboundConnectionInfo"), /* name */
-    NULL, /* qualifiers */
-    0, /* numQualifiers */
-    MI_STRING, /* type */
-    NULL, /* className */
-    0, /* subscript */
-    offsetof(Shell_Connect, inboundConnectionInfo), /* offset */
-};
-
-/* parameter Shell.Connect(): MIReturn */
-static MI_CONST MI_ParameterDecl Shell_Connect_MIReturn_param =
+/* parameter Shell.Disconnect(): MIReturn */
+static MI_CONST MI_ParameterDecl Shell_Disconnect_MIReturn_param =
 {
     MI_FLAG_PARAMETER|MI_FLAG_OUT, /* flags */
     0x006D6E08, /* code */
@@ -947,33 +1059,69 @@ static MI_CONST MI_ParameterDecl Shell_Connect_MIReturn_param =
     MI_UINT32, /* type */
     NULL, /* className */
     0, /* subscript */
-    offsetof(Shell_Connect, MIReturn), /* offset */
+    offsetof(Shell_Disconnect, MIReturn), /* offset */
 };
 
-static MI_ParameterDecl MI_CONST* MI_CONST Shell_Connect_params[] =
+static MI_ParameterDecl MI_CONST* MI_CONST Shell_Disconnect_params[] =
 {
-    &Shell_Connect_MIReturn_param,
-    &Shell_Connect_shellId_param,
-    &Shell_Connect_commandId_param,
-    &Shell_Connect_inboundConnectionInfo_param,
+    &Shell_Disconnect_MIReturn_param,
+    &Shell_Disconnect_IdleTimeOut_param,
+    &Shell_Disconnect_BufferMode_param,
 };
 
-/* method Shell.Connect() */
-MI_CONST MI_MethodDecl Shell_Connect_rtti =
+/* method Shell.Disconnect() */
+MI_CONST MI_MethodDecl Shell_Disconnect_rtti =
 {
     MI_FLAG_METHOD|MI_FLAG_STATIC, /* flags */
-    0x00637407, /* code */
-    MI_T("Connect"), /* name */
+    0x0064740A, /* code */
+    MI_T("Disconnect"), /* name */
     NULL, /* qualifiers */
     0, /* numQualifiers */
-    Shell_Connect_params, /* parameters */
-    MI_COUNT(Shell_Connect_params), /* numParameters */
-    sizeof(Shell_Connect), /* size */
+    Shell_Disconnect_params, /* parameters */
+    MI_COUNT(Shell_Disconnect_params), /* numParameters */
+    sizeof(Shell_Disconnect), /* size */
     MI_UINT32, /* returnType */
     MI_T("Shell"), /* origin */
     MI_T("Shell"), /* propagator */
     &schemaDecl, /* schema */
-    (MI_ProviderFT_Invoke)Shell_Invoke_Connect, /* method */
+    (MI_ProviderFT_Invoke)Shell_Invoke_Disconnect, /* method */
+};
+
+/* parameter Shell.Reconnect(): MIReturn */
+static MI_CONST MI_ParameterDecl Shell_Reconnect_MIReturn_param =
+{
+    MI_FLAG_PARAMETER|MI_FLAG_OUT, /* flags */
+    0x006D6E08, /* code */
+    MI_T("MIReturn"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_UINT32, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell_Reconnect, MIReturn), /* offset */
+};
+
+static MI_ParameterDecl MI_CONST* MI_CONST Shell_Reconnect_params[] =
+{
+    &Shell_Reconnect_MIReturn_param,
+};
+
+/* method Shell.Reconnect() */
+MI_CONST MI_MethodDecl Shell_Reconnect_rtti =
+{
+    MI_FLAG_METHOD|MI_FLAG_STATIC, /* flags */
+    0x00727409, /* code */
+    MI_T("Reconnect"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    Shell_Reconnect_params, /* parameters */
+    MI_COUNT(Shell_Reconnect_params), /* numParameters */
+    sizeof(Shell_Reconnect), /* size */
+    MI_UINT32, /* returnType */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    &schemaDecl, /* schema */
+    (MI_ProviderFT_Invoke)Shell_Invoke_Reconnect, /* method */
 };
 
 static MI_MethodDecl MI_CONST* MI_CONST Shell_meths[] =
@@ -982,7 +1130,8 @@ static MI_MethodDecl MI_CONST* MI_CONST Shell_meths[] =
     &Shell_Send_rtti,
     &Shell_Receive_rtti,
     &Shell_Signal_rtti,
-    &Shell_Connect_rtti,
+    &Shell_Disconnect_rtti,
+    &Shell_Reconnect_rtti,
 };
 
 static MI_CONST MI_ProviderFT Shell_funcs =
@@ -1130,7 +1279,7 @@ static MI_ClassDecl MI_CONST* MI_CONST classes[] =
 {
     &Command_rtti,
     &CommandState_rtti,
-    &EnvironmentVariable_rtti,
+    &DesiredStream_rtti,
     &Shell_rtti,
     &Stream_rtti,
 };

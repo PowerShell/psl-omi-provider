@@ -25,26 +25,34 @@ class CommandState
     uint32 exitCode;
 };
 
-class EnvironmentVariable
+class DesiredStream
 {
-    string Name;
-    string Value;
+    [description("optional - present if stream is associated with command otherwise associated with shell")]
+    string commandId;
+    string streamName;
 };
-
 
 class Shell
 {
-    string Name;
     [key] string ShellId;
-    string WorkingDirectory;
-    [embeddedinstance("EnvironmentVariable")] string Environment[];
-    string InputStreams; /* space delimited string */
-    string OutputStreams; /* space delimited string */
-    string CompressionMode;
+    string Name;
     string ResourceUri;
     string Owner;
+    string ClientIP;
+    uint32 ProcessId;
+    datetime IdleTimeout;
+    string InputStreams; /* space delimited string */
+    string OutputStreams; /* space delimited string */
+    datetime MaxIdleTimeout;
     string Locale;
     string DataLocale;
+    string CompressionMode;
+    string ProfileLoaded;
+    string Encoding;
+    string BufferMode;
+    string State;
+    datetime ShellRunTime;
+    datetime ShellInactivity;
     string CreationXml;
 
     Uint32 Command(
@@ -58,9 +66,8 @@ class Shell
         );
 
     Uint32 Receive(
-        string commandId,
-        string streamSet,
-        [out, embeddedinstance("Stream")] string Stream ,
+        [embeddedinstance("DesiredStream")]  string DesiredStream,
+        [out, embeddedinstance("Stream")] string Stream,
         [out, embeddedinstance("CommandState")] string CommandState
         );
 
@@ -77,11 +84,13 @@ class Shell
         );
 
     [static]
-    Uint32 Connect(
-        string shellId,
-        string commandId,
-        string inboundConnectionInfo
+    Uint32 Disconnect(
+        datetime IdleTimeOut,
+        string BufferMode
         );
+
+    [static]
+    Uint32 Reconnect();
 
 };
 

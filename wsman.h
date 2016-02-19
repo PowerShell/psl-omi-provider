@@ -4,6 +4,9 @@
 #include <pal/palcommon.h>
 #include <MI.h>
 
+/* Error codes needed for compatibility with Windows WinRM */
+#define ERROR_WSMAN_SERVICE_STREAM_DISCONNECTED 0x803381DE
+
 /* NOTE: All strings need to be UTF-16. */
 
 typedef void * HANDLE;

@@ -9,6 +9,7 @@
 #include <pal/lock.h>
 #include <pal/atomic.h>
 #include <pal/sem.h>
+#include <pal/process.h>
 #include <base/batch.h>
 #include <base/result.h>
 #include <base/instance.h>
@@ -112,6 +113,13 @@ struct _ShellData
     Shell_Self *shell;
 
     void * pluginShellContext;
+
+    /* When a DeleteInstance comes in we notify the shell to shut down. When it is done shutting down it needs to report
+     * completion of the DeleteInstance operation as well.
+     */
+    MI_Context *deleteInstanceContext;
+
+    enum { Connected, Disconnected } connectedState;
 };
 
 struct _CommandData
@@ -298,6 +306,8 @@ struct _Shell_Self
 
     void* hostHandle;
     unsigned int domainId;
+
+    MI_Context *refuseUnloadContext;
 } ;
 
 
@@ -341,7 +351,7 @@ void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
     Log_Open(SHELL_LOGGING_DIRECTORY);
     Log_SetLevel(SHELL_LOGGING_LEVEL);
 #endif
-    __LOGD(("Shell_Load"));
+    __LOGD(("Shell_Load - loading CLR"));
 
     *self = calloc(1, sizeof(Shell_Self));
     if (*self == NULL)
@@ -376,12 +386,21 @@ void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
     /* Call managed delegate InitPlugin method */
     if (entryPointDelegate)
     {
+        __LOGD(("Shell_Load - Calling InitPlugun"));
         miResult = entryPointDelegate(&(*self)->managedPointers);
         if (miResult)
         {
             GOTO_ERROR("Powershell InitPlugin failed", miResult);
         }
     }
+    
+    /* Lock the provider host from being unloaded and record the context such that we can unlock it
+     * when the shell is deleted (in DeleteInstance). There may be a few other places where the
+     * shell may die that we will need to unlock the host too, but they are mainly going to be
+     * for error situations.
+     */
+    MI_Context_RefuseUnload(context);
+    (*self)->refuseUnloadContext = context;
 
 error:
     __LOGE(("Shell_Load PostResult %p, %u", context, miResult));
@@ -549,14 +568,6 @@ MI_Boolean ExtractStartupInfo(ShellData *shellData, const Shell *shellInstance)
         }
     }
 
-    if (shellInstance->WorkingDirectory.exists)
-    {
-        if (!Utf8ToUtf16Le(shellData->common.batch, shellInstance->WorkingDirectory.value, (MI_Char16**)&shellData->wsmanStartupInfo.workingDirectory))
-        {
-            return MI_FALSE;
-        }
-    }
-
     if (shellInstance->InputStreams.exists)
     {
         shellData->wsmanStartupInfo.inputStreamSet = Batch_Get(shellData->common.batch, sizeof(*shellData->wsmanStartupInfo.inputStreamSet));
@@ -575,26 +586,6 @@ MI_Boolean ExtractStartupInfo(ShellData *shellData, const Shell *shellInstance)
 
         shellData->wsmanStartupInfo.outputStreamSet->streamIDs = (const MI_Char16**) shellData->outputStreams.streamNames;
         shellData->wsmanStartupInfo.outputStreamSet->streamIDsCount = shellData->outputStreams.streamNamesCount;
-    }
-
-    if (shellInstance->Environment.exists)
-    {
-        MI_Uint32 i;
-        shellData->wsmanStartupInfo.variableSet = Batch_Get(shellData->common.batch,
-            sizeof(WSMAN_ENVIRONMENT_VARIABLE_SET) +
-            (sizeof(WSMAN_ENVIRONMENT_VARIABLE) * shellInstance->Environment.value.size));
-        if (shellData->wsmanStartupInfo.variableSet == NULL)
-            return MI_FALSE;
-        shellData->wsmanStartupInfo.variableSet->vars = (WSMAN_ENVIRONMENT_VARIABLE*) (shellData->wsmanStartupInfo.variableSet + 1);
-        shellData->wsmanStartupInfo.variableSet->varsCount = shellInstance->Environment.value.size;
-        for (i = 0; i != shellInstance->Environment.value.size; i++)
-        {
-            if (!Utf8ToUtf16Le(shellData->common.batch, shellInstance->Environment.value.data[i]->Name.value, (MI_Char16**)&shellData->wsmanStartupInfo.variableSet->vars[i].name) ||
-                !Utf8ToUtf16Le(shellData->common.batch, shellInstance->Environment.value.data[i]->Value.value, (MI_Char16**)&shellData->wsmanStartupInfo.variableSet->vars[i].value))
-            {
-                return MI_FALSE;
-            }
-        }
     }
 
     return MI_TRUE;
@@ -950,11 +941,34 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
     shellData->common.miRequestContext = context;
     shellData->common.miOperationInstance = miOperationInstance;
 
+//    if (!newInstance->State.exists)
+//    {
+//        MI_Value value;
+//        value.string = MI_T("Connected");
+//        MI_Instance_SetElement(miOperationInstance, MI_T("State"), &value, MI_STRING, 0);
+//    }
+
+//    if (!newInstance->BufferMode.exists)
+//    {
+//        MI_Value value;
+//        value.string = MI_T("Block");
+//        MI_Instance_SetElement(miOperationInstance, MI_T("BufferMode"), &value, MI_STRING, 0);
+//    }
+
+    if (!newInstance->ProcessId.exists)
+    {
+        MI_Value value;
+        value.uint32 = Process_ID();
+        MI_Instance_SetElement(miOperationInstance, MI_T("ProcessId"), &value, MI_UINT32, 0);
+    }
+
+
     /* Plumb this shell into our list. Failure paths after this need to unplumb it!
     */
     shellData->common.siblingData = (CommonData *)self->shellList;
     self->shellList = shellData;
     shellData->shell = self;
+    shellData->connectedState = Connected;
 
     /* Call out to external plug-in API to continue shell creation.
      * Acceptance of shell is reported through WSManPluginReportContext.
@@ -1032,22 +1046,23 @@ void MI_CALL Shell_DeleteInstance(Shell_Self* self, MI_Context* context,
     {
         __LOGD(("Shell_DeleteInstance namespace=%s, className=%s, shellId=%s", nameSpace, className, instanceName->Name.value));
 
+        /* Record the context so OperationComplete on the shell can report the shell is gone. */
+        shellData->deleteInstanceContext = context;
+
         /* Notify shell to shut itself down. We don't delete things
            here because the shell itself will tell us when it is finished
            */
         RecursiveNotifyShutdown((CommonData*)shellData);
 
-        /* TODO: Do we need to wait for the shell shutdown to complete? */
-
-        miResult = MI_RESULT_OK;
+        /* Wait for the shell to shut down before sending a response */
+        /* TODO: Remove this when shutdown is completed and it is posted in the OperationComplete */
+        MI_Context_PostResult(context, MI_RESULT_OK);
     }
     else
     {
         __LOGD(("Shell_DeleteInstance namespace=%s, className=%s, shellId=%s, FAILED, result=%u", nameSpace, className, instanceName->Name.value, miResult));
+        MI_Context_PostResult(context, miResult);
     }
-
-    __LOGD(("Shell_DeleteInstance -- PostResult=%p, %u", context, miResult));
-    MI_Context_PostResult(context, miResult);
 }
 
 MI_Boolean ExtractCommandArgs(CommonData *commonData, Shell_Command* shellInstance, WSMAN_COMMAND_ARG_SET *wsmanArgSet)
@@ -1696,10 +1711,16 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     {
         GOTO_ERROR("Failed to find shell", MI_RESULT_NOT_FOUND);
     }
-    /* If we have a command ID make sure it is the correct one */
-    if (in->commandId.exists)
+
+    if (shellData->connectedState != Connected)
     {
-        commandData = FindCommandFromShell(shellData, in->commandId.value);
+        GOTO_ERROR("Shell is in disconnected state", MI_RESULT_NOT_SUPPORTED);
+    }
+
+    /* If we have a command ID make sure it is the correct one */
+    if (in->DesiredStream.value && in->DesiredStream.value->commandId.value)
+    {
+        commandData = FindCommandFromShell(shellData, in->DesiredStream.value->commandId.value);
         if (commandData == NULL)
         {
             GOTO_ERROR("Failed to find command", MI_RESULT_NOT_FOUND);
@@ -1728,7 +1749,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
 
 
     /* The WSMAN_OperationTimeout operation option (datetime) means we need to send a response back
-     * before that time or the client will fail the operation. If a Receive respose is set we can cancel
+     * before that time or the client will fail the operation. If a Receive response is set we can cancel
      * the timeout, but if there is no response a dummy, empty 'Running' response needs to be sent.
      */
 
@@ -1770,7 +1791,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
         GOTO_ERROR("out of memory", miResult);
     }
 
-    if (!ExtractStreamSet(&receiveData->common, ((Shell_Receive*)clonedIn)->streamSet.value, &receiveData->outputStreams))
+    if (!ExtractStreamSet(&receiveData->common, ((Shell_Receive*)clonedIn)->DesiredStream.value->streamName.value, &receiveData->outputStreams))
     {
         GOTO_ERROR("ExtractStreamSet failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
@@ -1843,6 +1864,13 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
 error:
     if (receiveData)
         PrintDataFunctionTag(&receiveData->common, "Shell_Invoke_Receive", "PostResult");
+    {
+        Shell_Receive receiveResult;
+        Shell_Receive_Construct(&receiveResult, context);
+        Shell_Receive_Set_MIReturn(&receiveResult, miResult);
+        Shell_Receive_Post(&receiveResult, context);
+        Shell_Receive_Destruct(&receiveResult);
+    }
     MI_Context_PostResult(context, miResult);
 
     if (receiveData)
@@ -2033,19 +2061,136 @@ error:
     }
 }
 
-/* Connect allows the client to re-connect to a shell that was started from a different remote machine and continue getting output delivered to a new client */
-void MI_CALL Shell_Invoke_Connect(Shell_Self* self, MI_Context* context,
-        const MI_Char* nameSpace, const MI_Char* className,
-        const MI_Char* methodName, const Shell* instanceName,
-        const Shell_Connect* in)
+void MI_CALL Shell_Invoke_Disconnect(
+    Shell_Self* self,
+    MI_Context* context,
+    const MI_Char* nameSpace,
+    const MI_Char* className,
+    const MI_Char* methodName,
+    const Shell* instanceName,
+    const Shell_Disconnect* in)
 {
-    __LOGE(("Shell_Invoke_Connect PostResult %p, %u (not supported)", context, MI_RESULT_NOT_SUPPORTED));
-    MI_Context_PostResult(context, MI_RESULT_NOT_SUPPORTED);
+    MI_Result miResult = MI_RESULT_OK;
+    ShellData *shellData = FindShellFromSelf(self, instanceName->ShellId.value);
+    Shell_Disconnect resultInstance;
+
+    __LOGD(("Shell_Invoke_Disconnect Name=%s, ShellId=%s", instanceName->Name.value, instanceName->ShellId.value));
+
+    if (!shellData)
+    {
+        GOTO_ERROR("Failed to find shell", MI_RESULT_NOT_FOUND);
+    }
+
+    /* TODO: HANDLE SHELL TIMEOUT */
+
+
+    /* Mark the shell as disconnected so any other operations will fail until they are reconnected */
+    {
+        MI_Value value;
+        value.string = MI_T("Disconnected");
+        MI_Instance_SetElement(shellData->common.miOperationInstance, MI_T("State"), &value, MI_STRING, 0);
+        shellData->connectedState = Disconnected;
+    }
+
+    /* Enumerate through the nested Receive operations to disconnect them */
+    {
+        CommonData *child = shellData->childNext;
+
+        while (child)
+        {
+            if (child->requestType == CommonData_Type_Receive)
+            {
+                /* Send error to this to disconnect it */
+                MI_Context *miContext = (MI_Context *) Atomic_Swap((ptrdiff_t*)&child->miRequestContext, (ptrdiff_t) NULL);
+                if (miContext)
+                {
+                    MI_Context_PostError(miContext, ERROR_WSMAN_SERVICE_STREAM_DISCONNECTED, MI_RESULT_TYPE_WINRM, MI_T("The WS-Management service cannot process the request because the stream is currently disconnected."));
+                }
+            }
+            else if (child->requestType == CommonData_Type_Command)
+            {
+                CommandData *command = (CommandData*)child;
+                CommonData *commandChild = command->childNext;
+                while (commandChild)
+                {
+                    if (commandChild->requestType == CommonData_Type_Receive)
+                    {
+                        /* Send error to this to disconnect it */
+                        MI_Context *miContext = (MI_Context *) Atomic_Swap((ptrdiff_t*)&commandChild->miRequestContext, (ptrdiff_t) NULL);
+                        if (miContext)
+                        {
+                            MI_Context_PostError(miContext, ERROR_WSMAN_SERVICE_STREAM_DISCONNECTED, MI_RESULT_TYPE_WINRM, MI_T("The WS-Management service cannot process the request because the stream is currently disconnected."));
+                        }
+                    }
+                    commandChild = commandChild->siblingData;
+                }
+            }
+
+            child = child->siblingData;
+        }
+    }
+
+
+error:
+    /* Send the result back */
+    if (Shell_Disconnect_Construct(&resultInstance, context) == MI_RESULT_OK)
+    {
+        Shell_Disconnect_Set_MIReturn(&resultInstance, miResult);
+
+        Shell_Disconnect_Post(&resultInstance, context);
+
+        Shell_Disconnect_Destruct(&resultInstance);
+    }
+
+    MI_Context_PostResult(context, miResult);
+    __LOGE(("Shell_Invoke_Disconnect PostResult %p, %u", context, miResult));
+
 }
 
+void MI_CALL Shell_Invoke_Reconnect(
+    Shell_Self* self,
+    MI_Context* context,
+    const MI_Char* nameSpace,
+    const MI_Char* className,
+    const MI_Char* methodName,
+    const Shell* instanceName,
+    const Shell_Reconnect* in)
+{
+    MI_Result miResult = MI_RESULT_OK;
+    ShellData *shellData = FindShellFromSelf(self, instanceName->ShellId.value);
+    Shell_Reconnect resultInstance;
+
+    __LOGD(("Shell_Invoke_Reconnect Name=%s, ShellId=%s", instanceName->Name.value, instanceName->ShellId.value));
+
+    if (!shellData)
+    {
+        GOTO_ERROR("Failed to find shell", MI_RESULT_NOT_FOUND);
+    }
+
+    /* Mark the shell as disconnected so any other operations will fail until they are reconnected */
+    {
+        MI_Value value;
+        value.string = MI_T("Connected");
+        MI_Instance_SetElement(shellData->common.miOperationInstance, MI_T("State"), &value, MI_STRING, 0);
+        shellData->connectedState = Connected;
+    }
+
+error:
+    /* Send the result back */
+    if (Shell_Reconnect_Construct(&resultInstance, context) == MI_RESULT_OK)
+    {
+        Shell_Reconnect_Set_MIReturn(&resultInstance, miResult);
+
+        Shell_Reconnect_Post(&resultInstance, context);
+
+        Shell_Reconnect_Destruct(&resultInstance);
+    }
+    MI_Context_PostResult(context, miResult);
+    __LOGE(("Shell_Invoke_Reconnect PostResult %p, %u", context, miResult));
+}
 /* report a shell or command context from the winrm plugin. We use this for future calls into the plugin.
  This also means the shell or command has been started successfully so we can post the operation instance
- back to the client to indicate to them that they can now post data to the operation or receive data back from it.
+ back to the client to indicate to them that they can now post data to the operation or receive data back from it&.
  */
 MI_EXPORT  MI_Uint32 MI_CALL WSManPluginReportContext(
     _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
@@ -2482,6 +2627,7 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
     CommonData *commonData = (CommonData*) requestDetails;
     MI_Result miResult = MI_RESULT_OK;
     MI_Context *miContext;
+    MI_Context *requestUnloadContext = NULL;
     MI_Instance *miInstance;
     char *extendedInformation = NULL;
 
@@ -2517,6 +2663,8 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
             PrintDataFunctionTag(commonData, "WSManPluginOperationComplete", "PostResult");
             MI_Context_PostResult(miContext, MI_RESULT_FAILED);
         }
+
+        requestUnloadContext = shellData->shell->refuseUnloadContext;
         break;
     }
     case CommonData_Type_Command:
@@ -2591,6 +2739,11 @@ error:
     DetachOperationFromParent(commonData);
     commonData->parentData = NULL;
     CommonData_Release(commonData);
+
+    if (requestUnloadContext)
+    {
+        MI_Context_RequestUnload(requestUnloadContext);
+    }
     return miResult;
 }
 
@@ -2622,3 +2775,5 @@ MI_EXPORT  void MI_CALL WSManPluginRegisterShutdownCallback(
     commonData->shutdownContext = shutdownContext;
     __LOGD(("WSManPluginRegisterShutdownCallback"));
 }
+
+

@@ -9,7 +9,6 @@
 #include <pal/lock.h>
 #include <pal/atomic.h>
 #include <pal/sem.h>
-#include <pal/process.h>
 #include <base/batch.h>
 #include <base/result.h>
 #include <base/instance.h>
@@ -730,9 +729,9 @@ MI_Boolean ExtractExtraInfo(MI_Boolean isCreate, Batch *batch, const MI_Char *in
     }
 
     if (isCreate)
-        toBytesTotal = (sizeof(CREATION_XML_START) - 1 + creationXmlLength + sizeof(CREATION_XML_END) - 1 ) * 2; /* Assume buffer is twice as big. */
+        toBytesTotal = (sizeof(CREATION_XML_START) - 1 + creationXmlLength + sizeof(CREATION_XML_END) - 1 ) * 2; /* Assume buffer is twice as big as buffer is simple xml. */
     else
-        toBytesTotal = (sizeof(CONNECT_XML_START) - 1 + creationXmlLength + sizeof(CONNECT_XML_END) - 1 ) * 2; /* Assume buffer is twice as big. */
+        toBytesTotal = (sizeof(CONNECT_XML_START) - 1 + creationXmlLength + sizeof(CONNECT_XML_END) - 1 ) * 2; /* Assume buffer is twice as big as buffer is simple xml */
     toBytesLeft = toBytesTotal;
 
     toBuffer = Batch_Get(batch, toBytesTotal);
@@ -743,12 +742,12 @@ MI_Boolean ExtractExtraInfo(MI_Boolean isCreate, Batch *batch, const MI_Char *in
 
     if (isCreate)
     {
-        fromBytesLeft =  sizeof(CREATION_XML_START) - 1; /* Remove null terminator from this one */
+        fromBytesLeft =  sizeof(CREATION_XML_START) - 1; /* Remove null terminator */
         fromBuffer = CREATION_XML_START;
     }
     else
     {
-        fromBytesLeft =  sizeof(CONNECT_XML_START) - 1; /* Remove null terminator from this one */
+        fromBytesLeft =  sizeof(CONNECT_XML_START) - 1; /* Remove null terminator */
         fromBuffer = CONNECT_XML_START;
     }
     iconv_return = iconv(iconvData, &fromBuffer, &fromBytesLeft, &toBufferCurrent, &toBytesLeft);
@@ -766,12 +765,12 @@ MI_Boolean ExtractExtraInfo(MI_Boolean isCreate, Batch *batch, const MI_Char *in
 
     if (isCreate)
     {
-        fromBytesLeft = sizeof(CREATION_XML_END) - 1; /* We want the null terminator this time */
+        fromBytesLeft = sizeof(CREATION_XML_END) - 1; /* remove null terminator */
         fromBuffer = CREATION_XML_END;
     }
     else
     {
-        fromBytesLeft = sizeof(CONNECT_XML_END) - 1; /* We want the null terminator this time */
+        fromBytesLeft = sizeof(CONNECT_XML_END) - 1; /* remove null terminator */
         fromBuffer = CONNECT_XML_END;
     }
     iconv_return = iconv(iconvData, &fromBuffer, &fromBytesLeft, &toBufferCurrent, &toBytesLeft);
@@ -972,28 +971,6 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
     shellData->common.requestType = CommonData_Type_Shell;
     shellData->common.miRequestContext = context;
     shellData->common.miOperationInstance = miOperationInstance;
-
-//    if (!newInstance->State.exists)
-//    {
-//        MI_Value value;
-//        value.string = MI_T("Connected");
-//        MI_Instance_SetElement(miOperationInstance, MI_T("State"), &value, MI_STRING, 0);
-//    }
-
-//    if (!newInstance->BufferMode.exists)
-//    {
-//        MI_Value value;
-//        value.string = MI_T("Block");
-//        MI_Instance_SetElement(miOperationInstance, MI_T("BufferMode"), &value, MI_STRING, 0);
-//    }
-
-    if (!newInstance->ProcessId.exists)
-    {
-        MI_Value value;
-        value.uint32 = Process_ID();
-        MI_Instance_SetElement(miOperationInstance, MI_T("ProcessId"), &value, MI_UINT32, 0);
-    }
-
 
     /* Plumb this shell into our list. Failure paths after this need to unplumb it!
     */

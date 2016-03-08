@@ -1,8 +1,6 @@
 cmake_minimum_required(VERSION 2.8.4)
 project(PSRP_PROVIDER)
 
-set(CMAKE_BUILD_TYPE Debug)
-
 # Export commands for auto-completion engines
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 

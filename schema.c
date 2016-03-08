@@ -1072,7 +1072,7 @@ static MI_ParameterDecl MI_CONST* MI_CONST Shell_Disconnect_params[] =
 /* method Shell.Disconnect() */
 MI_CONST MI_MethodDecl Shell_Disconnect_rtti =
 {
-    MI_FLAG_METHOD|MI_FLAG_STATIC, /* flags */
+    MI_FLAG_METHOD, /* flags */
     0x0064740A, /* code */
     MI_T("Disconnect"), /* name */
     NULL, /* qualifiers */
@@ -1109,7 +1109,7 @@ static MI_ParameterDecl MI_CONST* MI_CONST Shell_Reconnect_params[] =
 /* method Shell.Reconnect() */
 MI_CONST MI_MethodDecl Shell_Reconnect_rtti =
 {
-    MI_FLAG_METHOD|MI_FLAG_STATIC, /* flags */
+    MI_FLAG_METHOD, /* flags */
     0x00727409, /* code */
     MI_T("Reconnect"), /* name */
     NULL, /* qualifiers */
@@ -1124,6 +1124,118 @@ MI_CONST MI_MethodDecl Shell_Reconnect_rtti =
     (MI_ProviderFT_Invoke)Shell_Invoke_Reconnect, /* method */
 };
 
+/* parameter Shell.Connect(): BufferMode */
+static MI_CONST MI_ParameterDecl Shell_Connect_BufferMode_param =
+{
+    MI_FLAG_PARAMETER, /* flags */
+    0x0062650A, /* code */
+    MI_T("BufferMode"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell_Connect, BufferMode), /* offset */
+};
+
+/* parameter Shell.Connect(): connectXml */
+static MI_CONST MI_ParameterDecl Shell_Connect_connectXml_param =
+{
+    MI_FLAG_PARAMETER, /* flags */
+    0x00636C0A, /* code */
+    MI_T("connectXml"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell_Connect, connectXml), /* offset */
+};
+
+/* parameter Shell.Connect(): InputStreams */
+static MI_CONST MI_ParameterDecl Shell_Connect_InputStreams_param =
+{
+    MI_FLAG_PARAMETER|MI_FLAG_OUT, /* flags */
+    0x0069730C, /* code */
+    MI_T("InputStreams"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell_Connect, InputStreams), /* offset */
+};
+
+/* parameter Shell.Connect(): OutputStreams */
+static MI_CONST MI_ParameterDecl Shell_Connect_OutputStreams_param =
+{
+    MI_FLAG_PARAMETER|MI_FLAG_OUT, /* flags */
+    0x006F730D, /* code */
+    MI_T("OutputStreams"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell_Connect, OutputStreams), /* offset */
+};
+
+/* parameter Shell.Connect(): connectResponseXml */
+static MI_CONST MI_ParameterDecl Shell_Connect_connectResponseXml_param =
+{
+    MI_FLAG_PARAMETER|MI_FLAG_OUT, /* flags */
+    0x00636C12, /* code */
+    MI_T("connectResponseXml"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_STRING, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell_Connect, connectResponseXml), /* offset */
+};
+
+/* parameter Shell.Connect(): MIReturn */
+static MI_CONST MI_ParameterDecl Shell_Connect_MIReturn_param =
+{
+    MI_FLAG_PARAMETER|MI_FLAG_OUT, /* flags */
+    0x006D6E08, /* code */
+    MI_T("MIReturn"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    MI_UINT32, /* type */
+    NULL, /* className */
+    0, /* subscript */
+    offsetof(Shell_Connect, MIReturn), /* offset */
+};
+
+static MI_ParameterDecl MI_CONST* MI_CONST Shell_Connect_params[] =
+{
+    &Shell_Connect_MIReturn_param,
+    &Shell_Connect_BufferMode_param,
+    &Shell_Connect_connectXml_param,
+    &Shell_Connect_InputStreams_param,
+    &Shell_Connect_OutputStreams_param,
+    &Shell_Connect_connectResponseXml_param,
+};
+
+/* method Shell.Connect() */
+MI_CONST MI_MethodDecl Shell_Connect_rtti =
+{
+    MI_FLAG_METHOD, /* flags */
+    0x00637407, /* code */
+    MI_T("Connect"), /* name */
+    NULL, /* qualifiers */
+    0, /* numQualifiers */
+    Shell_Connect_params, /* parameters */
+    MI_COUNT(Shell_Connect_params), /* numParameters */
+    sizeof(Shell_Connect), /* size */
+    MI_UINT32, /* returnType */
+    MI_T("Shell"), /* origin */
+    MI_T("Shell"), /* propagator */
+    &schemaDecl, /* schema */
+    (MI_ProviderFT_Invoke)Shell_Invoke_Connect, /* method */
+};
+
 static MI_MethodDecl MI_CONST* MI_CONST Shell_meths[] =
 {
     &Shell_Command_rtti,
@@ -1132,6 +1244,7 @@ static MI_MethodDecl MI_CONST* MI_CONST Shell_meths[] =
     &Shell_Signal_rtti,
     &Shell_Disconnect_rtti,
     &Shell_Reconnect_rtti,
+    &Shell_Connect_rtti,
 };
 
 static MI_CONST MI_ProviderFT Shell_funcs =

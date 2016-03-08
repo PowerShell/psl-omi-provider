@@ -1466,6 +1466,239 @@ MI_INLINE MI_Result MI_CALL Shell_Reconnect_Clear_MIReturn(
 /*
 **==============================================================================
 **
+** Shell.Connect()
+**
+**==============================================================================
+*/
+
+typedef struct _Shell_Connect
+{
+    MI_Instance __instance;
+    /*OUT*/ MI_ConstUint32Field MIReturn;
+MI_ConstStringField BufferMode;
+MI_ConstStringField connectXml;
+    /*OUT*/ MI_ConstStringField InputStreams;
+    /*OUT*/ MI_ConstStringField OutputStreams;
+    /*OUT*/ MI_ConstStringField connectResponseXml;
+}
+Shell_Connect;
+
+MI_EXTERN_C MI_CONST MI_MethodDecl Shell_Connect_rtti;
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_Construct(
+    Shell_Connect* self,
+    MI_Context* context)
+{
+    return MI_ConstructParameters(context, &Shell_Connect_rtti,
+        (MI_Instance*)&self->__instance);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_Clone(
+    const Shell_Connect* self,
+    Shell_Connect** newInstance)
+{
+    return MI_Instance_Clone(
+        &self->__instance, (MI_Instance**)newInstance);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_Destruct(
+    Shell_Connect* self)
+{
+    return MI_Instance_Destruct(&self->__instance);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_Delete(
+    Shell_Connect* self)
+{
+    return MI_Instance_Delete(&self->__instance);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_Post(
+    const Shell_Connect* self,
+    MI_Context* context)
+{
+    return MI_PostInstance(context, &self->__instance);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_Set_MIReturn(
+    Shell_Connect* self,
+    MI_Uint32 x)
+{
+    ((MI_Uint32Field*)&self->MIReturn)->value = x;
+    ((MI_Uint32Field*)&self->MIReturn)->exists = 1;
+    return MI_RESULT_OK;
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_Clear_MIReturn(
+    Shell_Connect* self)
+{
+    memset((void*)&self->MIReturn, 0, sizeof(self->MIReturn));
+    return MI_RESULT_OK;
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_Set_BufferMode(
+    Shell_Connect* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        1,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_SetPtr_BufferMode(
+    Shell_Connect* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        1,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_Clear_BufferMode(
+    Shell_Connect* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
+        1);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_Set_connectXml(
+    Shell_Connect* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        2,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_SetPtr_connectXml(
+    Shell_Connect* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        2,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_Clear_connectXml(
+    Shell_Connect* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
+        2);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_Set_InputStreams(
+    Shell_Connect* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        3,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_SetPtr_InputStreams(
+    Shell_Connect* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        3,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_Clear_InputStreams(
+    Shell_Connect* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
+        3);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_Set_OutputStreams(
+    Shell_Connect* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        4,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_SetPtr_OutputStreams(
+    Shell_Connect* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        4,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_Clear_OutputStreams(
+    Shell_Connect* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
+        4);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_Set_connectResponseXml(
+    Shell_Connect* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        5,
+        (MI_Value*)&str,
+        MI_STRING,
+        0);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_SetPtr_connectResponseXml(
+    Shell_Connect* self,
+    const MI_Char* str)
+{
+    return self->__instance.ft->SetElementAt(
+        (MI_Instance*)&self->__instance,
+        5,
+        (MI_Value*)&str,
+        MI_STRING,
+        MI_FLAG_BORROW);
+}
+
+MI_INLINE MI_Result MI_CALL Shell_Connect_Clear_connectResponseXml(
+    Shell_Connect* self)
+{
+    return self->__instance.ft->ClearElementAt(
+        (MI_Instance*)&self->__instance,
+        5);
+}
+
+/*
+**==============================================================================
+**
 ** Shell provider function prototypes
 **
 **==============================================================================
@@ -1575,6 +1808,15 @@ MI_EXTERN_C void MI_CALL Shell_Invoke_Reconnect(
     const MI_Char* methodName,
     const Shell* instanceName,
     const Shell_Reconnect* in);
+
+MI_EXTERN_C void MI_CALL Shell_Invoke_Connect(
+    Shell_Self* self,
+    MI_Context* context,
+    const MI_Char* nameSpace,
+    const MI_Char* className,
+    const MI_Char* methodName,
+    const Shell* instanceName,
+    const Shell_Connect* in);
 
 
 #endif /* _Shell_h */

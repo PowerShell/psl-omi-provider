@@ -45,7 +45,8 @@ typedef enum
     CommonData_Type_Command = 1,
     CommonData_Type_Send = 2,
     CommonData_Type_Receive = 3,
-    CommonData_Type_Signal = 4
+    CommonData_Type_Signal = 4,
+    CommonData_Type_Connect = 5
 } CommonData_Type;
 
 typedef struct _CommonData CommonData;
@@ -54,6 +55,7 @@ typedef struct _CommandData CommandData;
 typedef struct _SendData SendData;
 typedef struct _ReceiveData ReceiveData;
 typedef struct _SignalData SignalData;
+typedef struct _ConnectData ConnectData;
 
 
 struct _CommonData
@@ -174,6 +176,14 @@ struct _SignalData
 
 };
 
+struct _ConnectData
+{
+    /* MUST BE FIRST ITEM IN STRUCTURE as pointer to CommonData gets cast to ConnectData */
+    CommonData common;
+
+    WSMAN_DATA connectXml;
+};
+
 void CommonData_Release(CommonData *commonData);
 
 ShellData *GetShellFromOperation(CommonData *commonData)
@@ -206,7 +216,8 @@ static const char* CommonData_Type_String(CommonData_Type type)
         "COMMAND",
         "SEND",
         "RECEIVE",
-        "SIGNAL"
+        "SIGNAL",
+        "CONNECT"
     };
     if (type < sizeof(_strings)/sizeof(_strings[0]))
     {
@@ -365,6 +376,7 @@ void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
     {
         GOTO_ERROR("Failed to start CLR", MI_RESULT_FAILED);
     }
+    __LOGD(("Shell_Load - CLR loaded"));
 
     /* TODO: call into the managed function to get the shell delegates */
     InitPluginWkrPtrsFuncPtr entryPointDelegate = NULL;
@@ -381,6 +393,7 @@ void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
     {
         GOTO_ERROR("Failed to create powershell delegate InitPlugin", MI_RESULT_FAILED);
     }
+    __LOGD(("Shell_Load - delegate created"));
 
 
     /* Call managed delegate InitPlugin method */
@@ -393,7 +406,7 @@ void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
             GOTO_ERROR("Powershell InitPlugin failed", miResult);
         }
     }
-    
+
     /* Lock the provider host from being unloaded and record the context such that we can unlock it
      * when the shell is deleted (in DeleteInstance). There may be a few other places where the
      * shell may die that we will need to unlock the host too, but they are mainly going to be
@@ -691,10 +704,11 @@ MI_Boolean ExtractPluginRequest(MI_Context *context, CommonData *commonData)
 
 #define CREATION_XML_START "<creationXml xmlns=\"http://schemas.microsoft.com/powershell\">"
 #define CREATION_XML_END   "</creationXml>"
-MI_Boolean ExtractExtraInfo(ShellData *shellData, const Shell* newInstance)
-{
-    WSMAN_DATA *pExtraInfo = NULL;
+#define CONNECT_XML_START "<connectXml xmlns=\"http://schemas.microsoft.com/powershell\">"
+#define CONNECT_XML_END   "</connectXml>"
 
+MI_Boolean ExtractExtraInfo(MI_Boolean isCreate, Batch *batch, const MI_Char *inData, WSMAN_DATA *outData)
+{
     size_t toBytesTotal;
     size_t toBytesLeft;
     char *toBuffer;
@@ -704,7 +718,7 @@ MI_Boolean ExtractExtraInfo(ShellData *shellData, const Shell* newInstance)
     char *fromBuffer;
     size_t fromBytesLeft;
 
-    size_t creationXmlLength = Tcslen(newInstance->CreationXml.value);
+    size_t creationXmlLength = Tcslen(inData);
 
     size_t iconv_return;
     iconv_t iconvData;
@@ -715,43 +729,61 @@ MI_Boolean ExtractExtraInfo(ShellData *shellData, const Shell* newInstance)
         goto cleanup;
     }
 
-    toBytesTotal = (sizeof(CREATION_XML_START) - 1 + creationXmlLength + sizeof(CREATION_XML_END) - 1 ) * 2; /* Assume buffer is twice as big. */
+    if (isCreate)
+        toBytesTotal = (sizeof(CREATION_XML_START) - 1 + creationXmlLength + sizeof(CREATION_XML_END) - 1 ) * 2; /* Assume buffer is twice as big. */
+    else
+        toBytesTotal = (sizeof(CONNECT_XML_START) - 1 + creationXmlLength + sizeof(CONNECT_XML_END) - 1 ) * 2; /* Assume buffer is twice as big. */
     toBytesLeft = toBytesTotal;
 
-    toBuffer = Batch_Get(shellData->common.batch, toBytesTotal);
+    toBuffer = Batch_Get(batch, toBytesTotal);
     if (toBuffer == NULL)
         goto cleanup;
     toBufferCurrent = toBuffer;
 
 
-    fromBytesLeft =  sizeof(CREATION_XML_START) - 1; /* Remove null terminator from this one */
-    fromBuffer = CREATION_XML_START;
+    if (isCreate)
+    {
+        fromBytesLeft =  sizeof(CREATION_XML_START) - 1; /* Remove null terminator from this one */
+        fromBuffer = CREATION_XML_START;
+    }
+    else
+    {
+        fromBytesLeft =  sizeof(CONNECT_XML_START) - 1; /* Remove null terminator from this one */
+        fromBuffer = CONNECT_XML_START;
+    }
     iconv_return = iconv(iconvData, &fromBuffer, &fromBytesLeft, &toBufferCurrent, &toBytesLeft);
     if (iconv_return == (size_t) -1)
     {
         goto cleanup;
     }
     fromBytesLeft = creationXmlLength;
-    fromBuffer = (char*)newInstance->CreationXml.value;
+    fromBuffer = (char*)inData;
     iconv_return = iconv(iconvData, &fromBuffer, &fromBytesLeft, &toBufferCurrent, &toBytesLeft);
     if (iconv_return == (size_t)-1)
     {
         goto cleanup;
     }
 
-    fromBytesLeft = sizeof(CREATION_XML_END) - 1; /* We want the null terminator this time */
-    fromBuffer = CREATION_XML_END;
+    if (isCreate)
+    {
+        fromBytesLeft = sizeof(CREATION_XML_END) - 1; /* We want the null terminator this time */
+        fromBuffer = CREATION_XML_END;
+    }
+    else
+    {
+        fromBytesLeft = sizeof(CONNECT_XML_END) - 1; /* We want the null terminator this time */
+        fromBuffer = CONNECT_XML_END;
+    }
     iconv_return = iconv(iconvData, &fromBuffer, &fromBytesLeft, &toBufferCurrent, &toBytesLeft);
     if (iconv_return == (size_t)-1)
     {
         goto cleanup;
     }
 
-    pExtraInfo = &shellData->extraInfo;
-    pExtraInfo->type = WSMAN_DATA_TYPE_TEXT;
+    outData->type = WSMAN_DATA_TYPE_TEXT;
     /* Adjust for any unused buffer... length is also string length, not byte length -- another assumption being made about buffer being twice as long */
-    pExtraInfo->text.bufferLength = (toBytesTotal - toBytesLeft)/2;
-    pExtraInfo->text.buffer = (const MI_Char16*) toBuffer;
+    outData->text.bufferLength = (toBytesTotal - toBytesLeft)/2;
+    outData->text.buffer = (const MI_Char16*) toBuffer;
 
     returnValue = MI_TRUE;
 
@@ -909,7 +941,7 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
 
     if (newInstance->CreationXml.value)
     {
-        if (!ExtractExtraInfo(shellData, newInstance))
+        if (!ExtractExtraInfo(MI_TRUE, shellData->common.batch, newInstance->CreationXml.value, &shellData->extraInfo))
         {
             GOTO_ERROR("ExtractExtraInfo failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
         }
@@ -2167,7 +2199,7 @@ void MI_CALL Shell_Invoke_Reconnect(
         GOTO_ERROR("Failed to find shell", MI_RESULT_NOT_FOUND);
     }
 
-    /* Mark the shell as disconnected so any other operations will fail until they are reconnected */
+    /* Mark the shell as connected so any other operations will fail until they are reconnected */
     {
         MI_Value value;
         value.string = MI_T("Connected");
@@ -2188,6 +2220,191 @@ error:
     MI_Context_PostResult(context, miResult);
     __LOGE(("Shell_Invoke_Reconnect PostResult %p, %u", context, miResult));
 }
+
+typedef struct _ConnectParams
+{
+    _In_ Shell_Self* self;
+    _In_ WSMAN_PLUGIN_REQUEST *requestDetails;
+    _In_ MI_Uint32 flags;
+    _In_ void* shellContext;
+    _In_opt_ void* commandContext;
+    _In_ MI_Char16 *code;
+    _In_opt_ WSMAN_DATA inboundConnectInformation;
+} ConnectParams;
+
+PAL_Uint32  _CallConnect(void *_params)
+{
+    ConnectParams *params = (ConnectParams*) _params;
+    params->self->managedPointers.wsManPluginConnectFuncPtr(
+            params->self,
+            params->requestDetails,
+            params->flags,
+            params->shellContext,
+            params->commandContext,
+            &params->inboundConnectInformation);
+    free(params);
+    return 0;
+}
+MI_Boolean CallConnect(
+        _In_ Shell_Self* self,
+        _In_ WSMAN_PLUGIN_REQUEST *requestDetails,
+        _In_ MI_Uint32 flags,
+        _In_ void* shellContext,
+        _In_opt_ void* commandContext,
+        _In_opt_ WSMAN_DATA *inboundConnectInformation)
+{
+    ConnectParams *params = malloc(sizeof(ConnectParams));
+    if (params)
+    {
+        params->self = self;
+        params->requestDetails = requestDetails;
+        params->flags = flags;
+        params->shellContext = shellContext;
+        params->commandContext = commandContext;
+        params->inboundConnectInformation = *inboundConnectInformation;
+        if (Thread_CreateDetached(_CallConnect, NULL, params) == 0)
+            return MI_TRUE;
+
+        free(params);
+    }
+
+    return MI_FALSE;
+}
+void MI_CALL Shell_Invoke_Connect(
+    Shell_Self* self,
+    MI_Context* context,
+    const MI_Char* nameSpace,
+    const MI_Char* className,
+    const MI_Char* methodName,
+    const Shell* instanceName,
+    const Shell_Connect* in)
+{
+    MI_Result miResult = MI_RESULT_OK;
+    ShellData *shellData = FindShellFromSelf(self, instanceName->ShellId.value);
+    CommandData *commandData = NULL;
+    ConnectData *connectData = NULL;
+    Batch *batch = NULL;
+    MI_Instance *clonedIn = NULL;
+
+    __LOGD(("Shell_Invoke_Connect Name=%s, ShellId=%s", instanceName->Name.value, instanceName->ShellId.value));
+
+    if (!shellData)
+    {
+        GOTO_ERROR("Failed to find shell", MI_RESULT_NOT_FOUND);
+    }
+
+    batch = Batch_New(BATCH_MAX_PAGES);
+    if (batch == NULL)
+    {
+        GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
+    connectData = Batch_GetClear(batch, sizeof(ConnectData));
+    if (connectData == NULL)
+    {
+        GOTO_ERROR("Out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+    connectData->common.batch = batch;
+
+    miResult = Instance_Clone(&in->__instance, &clonedIn, batch);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("out of memory", miResult);
+    }
+
+    if (!ExtractPluginRequest(context, &connectData->common))
+    {
+        GOTO_ERROR("ExtractPluginRequest failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
+    if (((Shell_Connect*)clonedIn)->connectXml.value)
+    {
+        if (!ExtractExtraInfo(MI_FALSE, connectData->common.batch, ((Shell_Connect*)clonedIn)->connectXml.value, &connectData->connectXml))
+        {
+            GOTO_ERROR("ExtractExtraInfo failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        }
+    }
+
+    connectData->common.refcount = 1;
+    connectData->common.miRequestContext = context;
+    connectData->common.miOperationInstance = clonedIn;
+    connectData->common.requestType = CommonData_Type_Connect;
+
+    /* Copy over in/out streams from shell into connect instance */
+    {
+        MI_Value value;
+        MI_Type type;
+        if (MI_Instance_GetElement(shellData->common.miOperationInstance, MI_T("InputStreams"), &value, &type, NULL, NULL) == MI_RESULT_OK)
+            MI_Instance_SetElement(clonedIn, MI_T("InputStreams"), &value, type, 0);
+        if (MI_Instance_GetElement(shellData->common.miOperationInstance, MI_T("OutputStreams"), &value, &type, NULL, NULL) == MI_RESULT_OK)
+            MI_Instance_SetElement(clonedIn, MI_T("OutputStreams"), &value, type, 0);
+    }
+
+    {
+        void *providerShellContext = shellData->pluginShellContext;
+        void *providerCommandContext = NULL;
+
+        if (commandData)
+        {
+            connectData->common.parentData = (CommonData*)commandData;
+
+            providerCommandContext = commandData->pluginCommandContext;
+
+            if (!AddChildToCommand(commandData, (CommonData*)connectData))
+            {
+                GOTO_ERROR("Failed to add connect operation, already exists?", MI_RESULT_ALREADY_EXISTS);
+            }
+        }
+        else
+        {
+            connectData->common.parentData = (CommonData*)shellData;
+
+            if (!AddChildToShell(shellData, (CommonData*)connectData))
+            {
+                GOTO_ERROR("Failed to add connect operation, already exists?", MI_RESULT_ALREADY_EXISTS);
+            }
+        }
+
+        PrintDataFunctionStart(&connectData->common, "Shell_Invoke_Connect");
+
+        /* Mark the shell as connected so any other operations will fail until they are reconnected */
+        {
+            MI_Value value;
+            value.string = MI_T("Connected");
+            MI_Instance_SetElement(shellData->common.miOperationInstance, MI_T("State"), &value, MI_STRING, 0);
+            shellData->connectedState = Connected;
+        }
+
+
+        if (!CallConnect(
+            self,
+            &connectData->common.pluginRequest,
+            0,
+            providerShellContext,
+            providerCommandContext,
+            &connectData->connectXml))
+        {
+            DetachOperationFromParent(&connectData->common);
+            GOTO_ERROR("CallConnect failed", MI_RESULT_FAILED);
+        }
+
+    }
+
+    /* Posting on signal context happens when we get a WSManPluginOperationComplete callback */
+    return;
+
+error:
+
+    PrintDataFunctionTag(&connectData->common, "Shell_Invoke_Connect", "PostResult");
+    MI_Context_PostResult(context, miResult);
+    PrintDataFunctionEnd(&connectData->common, "Shell_Invoke_Connect", miResult);
+
+    if (batch)
+    {
+        Batch_Delete(batch);
+    }
+}
+
 /* report a shell or command context from the winrm plugin. We use this for future calls into the plugin.
  This also means the shell or command has been started successfully so we can post the operation instance
  back to the client to indicate to them that they can now post data to the operation or receive data back from it&.
@@ -2732,6 +2949,24 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
 
         break;
     }
+    case CommonData_Type_Connect:
+    {
+        MI_Value miValue;
+
+        /* Methods only have the return code set in the instance so set that and post back. */
+        miValue.uint32 = errorCode;
+        MI_Instance_SetElement(miInstance,MI_T("MIReturn"),&miValue,MI_UINT32,0);
+
+        miValue.string = extendedInformation;
+        MI_Instance_SetElement(miInstance,MI_T("connectResponseXml"),&miValue,MI_STRING,0);
+        PrintDataFunctionTag(commonData, "WSManPluginOperationComplete", "PostInstance");
+        miResult = MI_Context_PostInstance(miContext, miInstance);
+        PrintDataFunctionTag(commonData, "WSManPluginOperationComplete", "PostResult");
+        MI_Context_PostResult(miContext, miResult);
+
+        MI_Instance_Delete(miInstance);
+
+    }
     }
 error:
     PrintDataFunctionEnd(commonData, "WSManPluginOperationComplete", miResult);
@@ -2775,5 +3010,6 @@ MI_EXPORT  void MI_CALL WSManPluginRegisterShutdownCallback(
     commonData->shutdownContext = shutdownContext;
     __LOGD(("WSManPluginRegisterShutdownCallback"));
 }
+
 
 

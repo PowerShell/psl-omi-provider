@@ -18,6 +18,7 @@ MI_Result CompressBuffer(DecodeBuffer *fromBuffer, DecodeBuffer *toBuffer, MI_Ui
 
 MI_Boolean Utf8ToUtf16Le(Batch *batch, const char *from, MI_Char16 **to);
 MI_Boolean Utf16LeToUtf8(Batch *batch, const MI_Char16 *from, char **to);
+size_t Utf16LeStrLenBytes(const MI_Char16* str);
 
 
 #endif /* _BufferManipulation_h_ */

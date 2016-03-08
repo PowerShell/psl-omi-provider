@@ -83,15 +83,20 @@ class Shell
         string code
         );
 
-    [static]
     Uint32 Disconnect(
         datetime IdleTimeOut,
         string BufferMode
         );
 
-    [static]
-    Uint32 Reconnect();
+    Uint32 Reconnect( );
 
+    Uint32 Connect(
+        string BufferMode,
+        string connectXml,
+        [out] string InputStreams,
+        [out] string OutputStreams,
+        [out] string connectResponseXml
+        );
 };
 
 class Command

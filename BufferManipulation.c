@@ -58,7 +58,7 @@ MI_Boolean Utf8ToUtf16Le(Batch *batch, const char *from, MI_Char16 **to)
     return ConvertString(batch, "UTF-8", "UTF-16LE", from, fromBuffLen, (char**) to, fromBuffLen*2);
 }
 
-static size_t Utf16LeStrLenBytes(const MI_Char16* str)
+size_t Utf16LeStrLenBytes(const MI_Char16* str)
 {
     size_t len = 0;
 

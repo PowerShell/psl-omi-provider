@@ -226,15 +226,33 @@ int startCoreCLR(
         "APP_PATHS",
         "APP_NI_PATHS",
         "NATIVE_DLL_SEARCH_DIRECTORIES",
-        "AppDomainCompatSwitch"
+        "PLATFORM_RESOURCE_ROOTS",
+        "AppDomainCompatSwitch",
+        "SERVER_GC",
+        "APP_CONTEXT_BASE_DIRECTORY"
     };
 
+    // We use the CORE_ROOT for just about everything: trusted
+    // platform assemblies, DLLs, native DLLs, resources, and the
+    // AppContext.BaseDirectory. Server garbage collection is disabled
+    // by default because of dotnet/cli#652
     const char* propertyValues[] = {
+        // TRUSTED_PLATFORM_ASSEMBLIES
         tpaList.c_str(),
+        // APP_PATHS
         clrAbsolutePath.c_str(),
+        // APP_NI_PATHS
         clrAbsolutePath.c_str(),
+        // NATIVE_DLL_SEARCH_DIRECTORIES
         clrAbsolutePath.c_str(),
-        "UseLatestBehaviorWhenTFMNotSpecified"
+        // PLATFORM_RESOURCE_ROOTS
+        clrAbsolutePath.c_str(),
+        // AppDomainCompatSwitch
+        "UseLatestBehaviorWhenTFMNotSpecified",
+        // SERVER_GC
+        "0",
+        // APP_CONTEXT_BASE_DIRECTORY
+        clrAbsolutePath.c_str()
     };
 
     // initialize CoreCLR

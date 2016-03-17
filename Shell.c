@@ -1659,6 +1659,21 @@ MI_Boolean CallReceive(
     return MI_FALSE;
 }
 
+static MI_Uint32 _ShutdownReceiveTimeoutThread(ReceiveData *receiveData)
+{
+    MI_Uint32 threadResult = 0;
+
+    /* ShutdownThread == 1 if shut down, 0 if running */
+    if (Atomic_CompareAndSwap(&receiveData->shutdownThread, 0, 1) == 0)
+    {
+        Sem_Post(&receiveData->timeoutSemaphore, 1);
+        Thread_Join(&receiveData->timeoutThread, &threadResult);
+        Sem_Destroy(&receiveData->timeoutSemaphore);
+        Thread_Destroy(&receiveData->timeoutThread);
+    }
+    return threadResult;
+}
+
 static MI_Result  _CreateReceiveTimeoutThread(ReceiveData *receiveData)
 {
     /* The WSMAN_OperationTimeout operation option (datetime) means we need to send a response back
@@ -1676,19 +1691,24 @@ static MI_Result  _CreateReceiveTimeoutThread(ReceiveData *receiveData)
     }
     if (receiveData->timeoutInUse)
     {
-
-        if (Sem_Init(&receiveData->timeoutSemaphore, 0 /* TODO */, 0)!= 0)
+        /* ShutdownThread == 1 if shut down, 0 if running */
+        if (Atomic_CompareAndSwap(&receiveData->shutdownThread, 1, 0) == 1)
         {
-            //FAILED
-            receiveData->timeoutInUse = MI_FALSE;
-            return MI_RESULT_FAILED;
-        }
-        if (Thread_CreateJoinable(&receiveData->timeoutThread, ReceiveTimeoutThread, NULL /* threadDestructor */, receiveData)!= 0)
-        {
-            //FAILED
-            receiveData->timeoutInUse = MI_FALSE;
-            Sem_Destroy(&receiveData->timeoutSemaphore);
-            return MI_RESULT_FAILED;
+            if (Sem_Init(&receiveData->timeoutSemaphore, 0 /* TODO */, 0)!= 0)
+            {
+                //FAILED
+                receiveData->timeoutInUse = MI_FALSE;
+                receiveData->shutdownThread = 1;
+                return MI_RESULT_FAILED;
+            }
+            if (Thread_CreateJoinable(&receiveData->timeoutThread, ReceiveTimeoutThread, NULL /* threadDestructor */, receiveData)!= 0)
+            {
+                //FAILED
+                receiveData->timeoutInUse = MI_FALSE;
+                Sem_Destroy(&receiveData->timeoutSemaphore);
+                receiveData->shutdownThread = 1;
+                return MI_RESULT_FAILED;
+            }
         }
 
      }
@@ -1769,6 +1789,13 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
         MI_Context *tmpContext = (MI_Context*) Atomic_Swap((ptrdiff_t*) &receiveData->common.miRequestContext, (ptrdiff_t) context);
         DEBUG_ASSERT(tmpContext == NULL);
         PrintDataFunctionStart(&receiveData->common, "Shell_Invoke_Receive*");
+
+        /* Create timeout thread if one is not there...
+         * remember, it could have been disconnnected and so the thread
+         * would have been shut down.
+         */
+        _CreateReceiveTimeoutThread(receiveData);
+        
         Sem_Post(&receiveData->timeoutSemaphore, 1);   /* Wake up thread to reset timer */
         CondLock_Broadcast((ptrdiff_t)&receiveData->common.miRequestContext); /* Broadcast in case we have thread waiting for context */
         return;
@@ -1820,16 +1847,20 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     receiveData->common.requestType = CommonData_Type_Receive;
 
     PrintDataFunctionStart(&receiveData->common, "Shell_Invoke_Receive");
+
+    receiveData->shutdownThread = 1;    /* initial state is shut down */
     if (_CreateReceiveTimeoutThread(receiveData)!= MI_RESULT_OK)
     {
         GOTO_ERROR("Failed to create Receive timeout thread", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
+
     if (commandData)
     {
         receiveData->common.parentData = (CommonData*)commandData;
 
         if (!AddChildToCommand(commandData, (CommonData*)receiveData))
         {
+            _ShutdownReceiveTimeoutThread(receiveData);
             GOTO_ERROR("Failed to add receive operation to command", MI_RESULT_ALREADY_EXISTS);
         }
 
@@ -1841,6 +1872,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
                     commandData->pluginCommandContext,
                     &receiveData->wsmanOutputStreams))
         {
+            _ShutdownReceiveTimeoutThread(receiveData);
             DetachOperationFromParent(&receiveData->common);
             GOTO_ERROR("CallReceive failed", MI_RESULT_FAILED);
         }
@@ -1851,6 +1883,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
 
         if (!AddChildToShell(shellData, (CommonData*)receiveData))
         {
+            _ShutdownReceiveTimeoutThread(receiveData);
             GOTO_ERROR("Adding child receive request failed", MI_RESULT_ALREADY_EXISTS);
         }
 
@@ -1862,6 +1895,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
                     NULL,
                     &receiveData->wsmanOutputStreams))
         {
+            _ShutdownReceiveTimeoutThread(receiveData);
             DetachOperationFromParent(&receiveData->common);
             GOTO_ERROR("Adding child receive request failed", MI_RESULT_FAILED);
         }
@@ -2114,6 +2148,7 @@ void MI_CALL Shell_Invoke_Disconnect(
                 if (miContext)
                 {
                     MI_Context_PostError(miContext, ERROR_WSMAN_SERVICE_STREAM_DISCONNECTED, MI_RESULT_TYPE_WINRM, MI_T("The WS-Management service cannot process the request because the stream is currently disconnected."));
+                    _ShutdownReceiveTimeoutThread((ReceiveData*)child);
                 }
             }
             else if (child->requestType == CommonData_Type_Command)
@@ -2808,6 +2843,8 @@ void CommonData_Release(CommonData *commonData)
         Batch_Delete(commonData->batch);
     }
 }
+
+
 /*
 * Reports the completion of an operation by all operation entry points except for the WSMAN_PLUGIN_STARTUP and WSMAN_PLUGIN_SHUTDOWN methods.
 */
@@ -2877,7 +2914,6 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
     case CommonData_Type_Receive:
     {
         ReceiveData *receiveData = (ReceiveData*) commonData;
-        MI_Uint32 threadResult;
 
         /* TODO: This is the termination of the receive. No more will happen for either the command or shell, depending on which is is aimed at */
         /* We may or may not have a pending Receive protocol packet for this depending on if we have already send a command completion message or not */
@@ -2891,11 +2927,7 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
             /* We have a pending request that needs to be terminated */
             _WSManPluginReceiveResult(miContext, commonData, WSMAN_FLAG_RECEIVE_RESULT_NO_MORE_DATA, NULL, NULL, commandState, errorCode);
         }
-        receiveData->shutdownThread = 1;
-        Sem_Post(&receiveData->timeoutSemaphore, 1);
-        Thread_Join(&receiveData->timeoutThread, &threadResult);
-        Sem_Destroy(&receiveData->timeoutSemaphore);
-        Thread_Destroy(&receiveData->timeoutThread);
+        _ShutdownReceiveTimeoutThread(receiveData);
 
         break;
     }

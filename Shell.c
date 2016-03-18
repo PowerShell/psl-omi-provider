@@ -120,6 +120,11 @@ struct _ShellData
      */
     MI_Context *deleteInstanceContext;
 
+    /* Shell context is held open by calling RefuseUnload. We need to use the same context
+     * to allow the unload so storing it here until we are done with the DeleteInstance
+     */
+    MI_Context *refuseUnloadContext;
+
     enum { Connected, Disconnected } connectedState;
 };
 
@@ -316,8 +321,6 @@ struct _Shell_Self
 
     void* hostHandle;
     unsigned int domainId;
-
-    MI_Context *refuseUnloadContext;
 } ;
 
 
@@ -405,14 +408,6 @@ void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
             GOTO_ERROR("Powershell InitPlugin failed", miResult);
         }
     }
-
-    /* Lock the provider host from being unloaded and record the context such that we can unlock it
-     * when the shell is deleted (in DeleteInstance). There may be a few other places where the
-     * shell may die that we will need to unlock the host too, but they are mainly going to be
-     * for error situations.
-     */
-    MI_Context_RefuseUnload(context);
-    (*self)->refuseUnloadContext = context;
 
 error:
     __LOGE(("Shell_Load PostResult %p, %u", context, miResult));
@@ -979,6 +974,15 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
     shellData->shell = self;
     shellData->connectedState = Connected;
 
+
+    /* Lock the provider host from being unloaded and record the context such that we can unlock it
+     * when the shell is deleted (in DeleteInstance). There may be a few other places where the
+     * shell may die that we will need to unlock the host too, but they are mainly going to be
+     * for error situations.
+     */
+    MI_Context_RefuseUnload(context);
+    shellData->refuseUnloadContext = context;
+
     /* Call out to external plug-in API to continue shell creation.
      * Acceptance of shell is reported through WSManPluginReportContext.
      * If the shell succeeds or fails we will get a call through WSManPluginOperationComplete
@@ -1035,7 +1039,12 @@ void RecursiveNotifyShutdown(CommonData *commonData)
 
     /* Now notify for this object if a shutdown registration is present */
     if (commonData->shutdownCallback)
+    {
+        PrintDataFunctionTag(commonData, "RecursiveNotifyShutdown", "Calling registered shutdown callback");
         commonData->shutdownCallback(commonData->shutdownContext);
+        commonData->shutdownCallback = NULL;
+        commonData->shutdownContext = NULL;
+    }
 }
 
 /* Delete a shell instance. This should not be done by the client until
@@ -1062,11 +1071,7 @@ void MI_CALL Shell_DeleteInstance(Shell_Self* self, MI_Context* context,
            here because the shell itself will tell us when it is finished
            */
         RecursiveNotifyShutdown((CommonData*)shellData);
-
-        /* Wait for the shell to shut down before sending a response */
-        /* TODO: Remove this when shutdown is completed and it is posted in the OperationComplete */
-        MI_Context_PostResult(context, MI_RESULT_OK);
-    }
+   }
     else
     {
         __LOGD(("Shell_DeleteInstance namespace=%s, className=%s, shellId=%s, FAILED, result=%u", nameSpace, className, instanceName->Name.value, miResult));
@@ -2187,7 +2192,7 @@ error:
     }
 
     MI_Context_PostResult(context, miResult);
-    __LOGE(("Shell_Invoke_Disconnect PostResult %p, %u", context, miResult));
+    __LOGD(("Shell_Invoke_Disconnect PostResult %p, %u", context, miResult));
 
 }
 
@@ -2230,7 +2235,7 @@ error:
         Shell_Reconnect_Destruct(&resultInstance);
     }
     MI_Context_PostResult(context, miResult);
-    __LOGE(("Shell_Invoke_Reconnect PostResult %p, %u", context, miResult));
+    __LOGD(("Shell_Invoke_Reconnect PostResult %p, %u", context, miResult));
 }
 
 typedef struct _ConnectParams
@@ -2895,7 +2900,10 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
             MI_Context_PostResult(miContext, MI_RESULT_FAILED);
         }
 
-        requestUnloadContext = shellData->shell->refuseUnloadContext;
+        requestUnloadContext = shellData->refuseUnloadContext;
+
+        /* Report that the Shell DeleteInstance has completed. */
+        MI_Context_PostResult(shellData->deleteInstanceContext, MI_RESULT_OK);
         break;
     }
     case CommonData_Type_Command:
@@ -3015,9 +3023,12 @@ MI_EXPORT  void MI_CALL WSManPluginRegisterShutdownCallback(
     _In_opt_ void *shutdownContext)
 {
     CommonData *commonData = (CommonData*)requestDetails;
+
+    PrintDataFunctionStart(commonData, "WSManPluginRegisterShutdownCallback");
+
     commonData->shutdownCallback = shutdownCallback;
     commonData->shutdownContext = shutdownContext;
-    __LOGD(("WSManPluginRegisterShutdownCallback"));
+    __LOGD(("WSManPluginRegisterShutdownCallback - callback %p, context %p", shutdownCallback, shutdownContext));
 }
 
 

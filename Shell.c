@@ -441,10 +441,9 @@ void MI_CALL Shell_Unload(Shell_Self* self, MI_Context* context)
         __LOGE(("Stopping CLR failed"));
     }
 
-
-
     free(self);
-    __LOGD(("Shell_Load PostResult %p, %u", context, MI_RESULT_OK));
+
+    __LOGD(("Shell_Unload PostResult %p, %u", context, MI_RESULT_OK));
 #ifdef SHELL_ENABLE_LOGGING
     Log_Close();
 #endif
@@ -1047,6 +1046,13 @@ void RecursiveNotifyShutdown(CommonData *commonData)
     }
 }
 
+PAL_Uint32 _RecursiveNotifyShutdown(void *params)
+{
+    CommonData *commonData = (CommonData*) params;
+    RecursiveNotifyShutdown(commonData);
+    return 0;
+}
+
 /* Delete a shell instance. This should not be done by the client until
  * the command is finished and shut down.
  */
@@ -1062,19 +1068,21 @@ void MI_CALL Shell_DeleteInstance(Shell_Self* self, MI_Context* context,
 
     if (shellData)
     {
-        __LOGD(("Shell_DeleteInstance namespace=%s, className=%s, shellId=%s", nameSpace, className, instanceName->Name.value));
+        __LOGD(("Shell_DeleteInstance shellId=%s", instanceName->ShellId.value));
 
         /* Record the context so OperationComplete on the shell can report the shell is gone. */
         shellData->deleteInstanceContext = context;
 
         /* Notify shell to shut itself down. We don't delete things
-           here because the shell itself will tell us when it is finished
+           here because the shell itself will tell us when it is finished.
+           We do it on a separate thread so we do not block the protocol
+           thread if another request is needed during the shutdown.
            */
-        RecursiveNotifyShutdown((CommonData*)shellData);
-   }
+        Thread_CreateDetached(_RecursiveNotifyShutdown, NULL, shellData);
+    }
     else
     {
-        __LOGD(("Shell_DeleteInstance namespace=%s, className=%s, shellId=%s, FAILED, result=%u", nameSpace, className, instanceName->Name.value, miResult));
+        __LOGD(("Shell_DeleteInstance shellId=%s, FAILED, result=%u", instanceName->Name.value, miResult));
         MI_Context_PostResult(context, miResult);
     }
 }

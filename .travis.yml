@@ -1,0 +1,16 @@
+lanugage: c
+sudo: required
+dist: trusty
+git:
+  submodules: false
+addons:
+  apt:
+    packages:
+      - libpam0g-dev
+      - libssl-dev
+      - libcurl4-openssl-dev
+      - libboost-filesystem-dev
+before_script:
+  - git config --global url.git@github.com:.insteadOf https://github.com/
+  - git submodule update --init
+script: ./build.sh

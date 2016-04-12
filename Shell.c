@@ -120,11 +120,6 @@ struct _ShellData
      */
     MI_Context *deleteInstanceContext;
 
-    /* Shell context is held open by calling RefuseUnload. We need to use the same context
-     * to allow the unload so storing it here until we are done with the DeleteInstance
-     */
-    MI_Context *refuseUnloadContext;
-
     enum { Connected, Disconnected } connectedState;
 };
 
@@ -980,7 +975,6 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
      * for error situations.
      */
     MI_Context_RefuseUnload(context);
-    shellData->refuseUnloadContext = context;
 
     /* Call out to external plug-in API to continue shell creation.
      * Acceptance of shell is reported through WSManPluginReportContext.
@@ -1800,7 +1794,10 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     {
         /* We already have a Receive queued up with the plug-in so cache the context and wake it up in case it is waiting for it */
         MI_Context *tmpContext = (MI_Context*) Atomic_Swap((ptrdiff_t*) &receiveData->common.miRequestContext, (ptrdiff_t) context);
-        DEBUG_ASSERT(tmpContext == NULL);
+        if (tmpContext != NULL)
+        {
+            DEBUG_ASSERT(tmpContext == NULL);
+        }
         PrintDataFunctionStart(&receiveData->common, "Shell_Invoke_Receive*");
 
         /* Create timeout thread if one is not there...
@@ -2871,7 +2868,6 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
     CommonData *commonData = (CommonData*) requestDetails;
     MI_Result miResult = MI_RESULT_OK;
     MI_Context *miContext;
-    MI_Context *requestUnloadContext = NULL;
     MI_Instance *miInstance;
     char *extendedInformation = NULL;
 
@@ -2905,13 +2901,16 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
         if (miContext)
         {
             PrintDataFunctionTag(commonData, "WSManPluginOperationComplete", "PostResult");
+            MI_Context_RequestUnload(miContext);
             MI_Context_PostResult(miContext, MI_RESULT_FAILED);
         }
-
-        requestUnloadContext = shellData->refuseUnloadContext;
-
+ 
         /* Report that the Shell DeleteInstance has completed. */
-        MI_Context_PostResult(shellData->deleteInstanceContext, MI_RESULT_OK);
+        if (shellData->deleteInstanceContext)
+        {
+            MI_Context_RequestUnload(shellData->deleteInstanceContext);
+            MI_Context_PostResult(shellData->deleteInstanceContext, MI_RESULT_OK);
+        }
         break;
     }
     case CommonData_Type_Command:
@@ -3000,11 +2999,7 @@ error:
     commonData->parentData = NULL;
     CommonData_Release(commonData);
 
-    if (requestUnloadContext)
-    {
-        MI_Context_RequestUnload(requestUnloadContext);
-    }
-    return miResult;
+   return miResult;
 }
 
 /* Seems to be called to say the plug-in is actually done */

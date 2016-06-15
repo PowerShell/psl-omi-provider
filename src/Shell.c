@@ -14,14 +14,10 @@
 #include <base/instance.h>
 #include <base/helpers.h>
 #include <base/logbase.h>
-
-/* TODO:
-    * No provider (de-)initialization through WSManPluginStartup and WSManPluginShutdown
-    * No re-connect
-*/
+#include <base/log.h>
 
 #define SHELL_ENABLE_LOGGING 1
-#define SHELL_LOGGING_DIRECTORY "/tmp/shell.log"
+#define SHELL_LOGGING_FILE "shell"
 #define SHELL_LOGGING_LEVEL OMI_DEBUG
 
 /* Number of characters reserved for command ID and shell ID -- max number of digits for hex 64-bit number with null terminator */
@@ -356,7 +352,10 @@ void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
     int ret;
 
 #ifdef SHELL_ENABLE_LOGGING
-    Log_Open(SHELL_LOGGING_DIRECTORY);
+    MI_Char finalPath[PAL_MAX_PATH_SIZE];
+
+    CreateLogFileNameWithPrefix(SHELL_LOGGING_FILE, finalPath);
+    Log_Open(finalPath);
     Log_SetLevel(SHELL_LOGGING_LEVEL);
 #endif
     __LOGD(("Shell_Load - loading CLR"));
@@ -1805,7 +1804,7 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
          * would have been shut down.
          */
         _CreateReceiveTimeoutThread(receiveData);
-        
+
         Sem_Post(&receiveData->timeoutSemaphore, 1);   /* Wake up thread to reset timer */
         CondLock_Broadcast((ptrdiff_t)&receiveData->common.miRequestContext); /* Broadcast in case we have thread waiting for context */
         return;
@@ -2904,7 +2903,7 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
             MI_Context_RequestUnload(miContext);
             MI_Context_PostResult(miContext, MI_RESULT_FAILED);
         }
- 
+
         /* Report that the Shell DeleteInstance has completed. */
         if (shellData->deleteInstanceContext)
         {

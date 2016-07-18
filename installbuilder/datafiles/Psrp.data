@@ -43,10 +43,10 @@ ${{SHELL_HEADER}}
 rm -rf /var/opt/omi/run/omiserver.sock
 
 %Postinstall_10
-/opt/omi/bin/service_control -restart
+/opt/omi/bin/service_control restart
 
 %Preuninstall_100
-/opt/omi/bin/service_control -stop
+/opt/omi/bin/service_control stop
 
 %Postuninstall_100
-/opt/omi/bin/service_control -start
+/opt/omi/bin/service_control start

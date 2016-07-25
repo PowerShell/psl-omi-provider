@@ -285,7 +285,7 @@ int startCoreCLR(
     status = createDelegate(
         *hostHandle,
         *domainId,
-        "Microsoft.PowerShell.CoreCLR.AssemblyLoadContext, Version=1.0.0.0, PublicKeyToken=null",
+        "Microsoft.PowerShell.CoreCLR.AssemblyLoadContext, Version=1.0.0.0, PublicKeyToken=31bf3856ad364e35",
         "System.Management.Automation.PowerShellAssemblyLoadContextInitializer",
         "SetPowerShellAssemblyLoadContext",
         (void**)&loaderDelegate);

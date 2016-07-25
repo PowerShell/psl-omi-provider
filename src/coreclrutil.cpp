@@ -49,6 +49,7 @@ filesystem::path GetEnvAbsolutePath(const char* env)
     if (!local)
     {
         std::cerr << "Could not read environment variable " << env << std::endl;
+        return filesystem::path();
     }
 
     return filesystem::canonical(local);
@@ -167,6 +168,10 @@ int startCoreCLR(
 
     // get the CoreCLR root path
     auto clrAbsolutePath = GetEnvAbsolutePath("CORE_ROOT");
+    if (clrAbsolutePath.empty())
+    {
+        clrAbsolutePath = filesystem::path("/opt/microsoft/powershell");
+    }
     if(!clrAbsolutePath.is_absolute())
     {
         std::cerr << "Failed to get CORE_ROOT path" << std::endl;
@@ -264,34 +269,6 @@ int startCoreCLR(
         propertyValues,
         hostHandle,
         domainId);
-
-    if (!SUCCEEDED(status))
-    {
-        std::cerr << "coreclr_initialize failed - status: " << std::hex << status << std::endl;
-        return -1;
-    }
-
-    // initialize PowerShell's custom assembly load context
-    filesystem::path alcAbsolutePath(clrAbsolutePath);
-    alcAbsolutePath /= "Microsoft.PowerShell.CoreCLR.AssemblyLoadContext.dll";
-
-    typedef void (*LoaderRunHelperFp)(const char* appPath);
-    LoaderRunHelperFp loaderDelegate = nullptr;
-    status = createDelegate(
-        *hostHandle,
-        *domainId,
-        "Microsoft.PowerShell.CoreCLR.AssemblyLoadContext, Version=1.0.0.0, PublicKeyToken=null",
-        "System.Management.Automation.PowerShellAssemblyLoadContextInitializer",
-        "SetPowerShellAssemblyLoadContext",
-        (void**)&loaderDelegate);
-
-    if (!SUCCEEDED(status))
-    {
-        std::cerr << "could not create delegate for SetPowerShellAssemblyLoadContext - status: " << std::hex << status << std::endl;
-        return -1;
-    }
-
-    loaderDelegate(clrAbsolutePath.c_str());
 
     return status;
 }

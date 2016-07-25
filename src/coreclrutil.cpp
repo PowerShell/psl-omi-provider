@@ -49,6 +49,7 @@ filesystem::path GetEnvAbsolutePath(const char* env)
     if (!local)
     {
         std::cerr << "Could not read environment variable " << env << std::endl;
+        return filesystem::path();
     }
 
     return filesystem::canonical(local);
@@ -167,6 +168,10 @@ int startCoreCLR(
 
     // get the CoreCLR root path
     auto clrAbsolutePath = GetEnvAbsolutePath("CORE_ROOT");
+    if (clrAbsolutePath.empty())
+    {
+        clrAbsolutePath = filesystem::path("/opt/microsoft/powershell");
+    }
     if(!clrAbsolutePath.is_absolute())
     {
         std::cerr << "Failed to get CORE_ROOT path" << std::endl;

@@ -381,9 +381,9 @@ void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
     ret = createDelegate(
         (*self)->hostHandle,
         (*self)->domainId,
-        "System.Management.Automation, Version=3.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35",
-        "System.Management.Automation.Remoting.WSManPluginManagedEntryWrapper",
-        "InitPlugin",
+        "Microsoft.PowerShell.CoreCLR.AssemblyLoadContext, Version=1.0.0.0, PublicKeyToken=31bf3856ad364e35",
+        "System.Management.Automation.PowerShellAssemblyLoadContextInitializer",
+        "WSManPluginWrapper",
         (void**)&entryPointDelegate);
     if (ret != 0)
     {

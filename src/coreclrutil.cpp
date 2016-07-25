@@ -270,34 +270,6 @@ int startCoreCLR(
         hostHandle,
         domainId);
 
-    if (!SUCCEEDED(status))
-    {
-        std::cerr << "coreclr_initialize failed - status: " << std::hex << status << std::endl;
-        return -1;
-    }
-
-    // initialize PowerShell's custom assembly load context
-    filesystem::path alcAbsolutePath(clrAbsolutePath);
-    alcAbsolutePath /= "Microsoft.PowerShell.CoreCLR.AssemblyLoadContext.dll";
-
-    typedef void (*LoaderRunHelperFp)(const char* appPath);
-    LoaderRunHelperFp loaderDelegate = nullptr;
-    status = createDelegate(
-        *hostHandle,
-        *domainId,
-        "Microsoft.PowerShell.CoreCLR.AssemblyLoadContext, Version=1.0.0.0, PublicKeyToken=31bf3856ad364e35",
-        "System.Management.Automation.PowerShellAssemblyLoadContextInitializer",
-        "SetPowerShellAssemblyLoadContext",
-        (void**)&loaderDelegate);
-
-    if (!SUCCEEDED(status))
-    {
-        std::cerr << "could not create delegate for SetPowerShellAssemblyLoadContext - status: " << std::hex << status << std::endl;
-        return -1;
-    }
-
-    loaderDelegate(clrAbsolutePath.c_str());
-
     return status;
 }
 

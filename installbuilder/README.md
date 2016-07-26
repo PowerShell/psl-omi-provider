@@ -1,0 +1,63 @@
+Packaging of PSRP
+=================
+
+Packaging Tool
+--------------
+
+Current OMI (Open Management Infrastructure) products use the [InstallBuilder](https://github.com/Microsoft/pal.git) tool to create installation packages. By describing the files and directories to be installed in a simple text file, this tool is then able to generate appropriate installer package (e.g. RPM or DPKG package) for the target platform.
+
+What is PSRP
+------------
+
+For more information on PSRP, see the Github respository [PowerShell Remoting Protocol](https://github.com/PowerShell/psl-omi-provider). 
+
+Package Requirements
+--------------------
+
+PSRP requires that both OMI and PowerShell be installed on the system.  OMI packages can be downloaded from [Open Group](https://collaboration.opengroup.org/omi/); and PowerShell packages are located at [PowerShell Github Releases](https://github.com/PowerShell/PowerShell/releases).
+
+Building PSRP Package
+---------------------
+
+1. Install [InstallBuilder](https://github.com/Microsoft/pal.git).  
+2. Download [PSRP](https://github.com/PowerShell/psl-omi-provider.git).
+3. Follow instructions in PSRP to build OMI and PSRP. You should now have $HOME/psl-omi-provider/src/libpsrpomiprov.so.
+4. Goto where this README file is located ($HOME/psl-omi-provider/installbuilder), type "make". Package file should now be created in $HOME/psl-omi-provider/omi/Unix/output/release.
+
+Package Details
+===============
+
+Package Variables
+-----------------
+
+SHORT_NAME: 'psrp'
+LONG_NAME: 'PowerShell Remoting Protocol'
+SHELL_HEADER: '#!/bin/sh'
+SHORT_NAME_PREFIX: 'MSFT'
+VENDOR: 'OpenGroup'
+GROUP: 'OpenGroup'
+LICENSE: 'OpenGroup'
+MAINTAINER: 'The Open Group'
+PROVIDES: 'psrppackage'
+DESCRIPTION: 'PowerShell Remoting Protocol provider'
+COPYRIGHT_FILE: 'Copyright OpenGroup'
+HPUX_COPYRIGHT: 'Copyright OpenGroup'
+ROOT_GROUP_NAME: 'root'
+
+New Files Created
+-----------------
+
+/opt/omi/lib/libpsrpomiprov.so
+/etc/opt/omi/conf/omiregister/interop/psrpomiprov.reg
+/opt/microsoft/powershell/libpsrpomiprov.so  (symbolic link to /opt/omi/lib/libpsrpomiprov.so)
+
+Design Philosophy
+-----------------
+
+PSRP is an OMI provider.  To create an OMI provider, you follow instructions in OMI documentation to build a dynamically linked library (.so file on a Linux system).  The installer copies this library to where OMI libraries are located (/opt/omi/lib), registers this provider (using the /opt/omi/bin/omireg command), and then restarts the Omi server.
+
+Since PowerShell needs access to this same library, a symbolic link (softlink) is created in the PowerShell directory (/opt/microsoft/powershell) that points to the same dynamically linked library.
+
+
+
+

@@ -15,22 +15,23 @@ ROOT_GROUP_NAME: 'root'
 SHLIB_EXT: 'so'
 
 %Files
-/opt/omi/lib/libpsrpomiprov.${{SHLIB_EXT}};   /opt/omi-1.0.8/lib/libpsrpomiprov.${{SHLIB_EXT}};           755; root; ${{ROOT_GROUP_NAME}}
-/etc/opt/omi/conf/omiregister/interop/psrpomiprov.reg; /opt/omi-1.0.8/etc/omiregister/interop/psrpomiprov.reg; 755; root; ${{ROOT_GROUP_NAME}}
+/opt/omi/lib/libpsrpomiprov.${{SHLIB_EXT}};  ../../../src/libpsrpomiprov.${{SHLIB_EXT}};           755; root; ${{ROOT_GROUP_NAME}}
 
 %Directories
-/opt;                                    755; root; ${{ROOT_GROUP_NAME}}; sysdir
-/opt/omi;                                755; root; ${{ROOT_GROUP_NAME}}; sysdir
-/opt/omi/lib;                            755; root; ${{ROOT_GROUP_NAME}}; sysdir
-/etc/opt;                                755; root; ${{ROOT_GROUP_NAME}}; sysdir
-/etc/opt/omi;                            755; root; ${{ROOT_GROUP_NAME}}; sysdir
-/etc/opt/omi/conf;                       755; root; ${{ROOT_GROUP_NAME}}; sysdir
-/etc/opt/omi/conf/omiregister;           755; root; ${{ROOT_GROUP_NAME}}; sysdir
-/etc/opt/omi/conf/omiregister/interop;   755; root; ${{ROOT_GROUP_NAME}}; sysdir
+/opt;                                      755; root; ${{ROOT_GROUP_NAME}}; sysdir
+/opt/omi;                                  755; root; ${{ROOT_GROUP_NAME}}; sysdir
+/opt/omi/lib;                              755; root; ${{ROOT_GROUP_NAME}}; sysdir
+/etc/opt;                                  755; root; ${{ROOT_GROUP_NAME}}; sysdir
+/etc/opt/omi;                              755; root; ${{ROOT_GROUP_NAME}}; sysdir
+/etc/opt/omi/conf;                         755; root; ${{ROOT_GROUP_NAME}}; sysdir
+/etc/opt/omi/conf/omiregister;             755; root; ${{ROOT_GROUP_NAME}}; sysdir
+/etc/opt/omi/conf/omiregister/root-cimv2;  755; root; ${{ROOT_GROUP_NAME}}; sysdir
 
 %Links
 
 %Dependencies
+omi
+powershell
 
 %Preinstall_0
 ${{SHELL_HEADER}}
@@ -40,13 +41,16 @@ ${{SHELL_HEADER}}
 ${{SHELL_HEADER}}
 %Postuninstall_0
 ${{SHELL_HEADER}}
-rm -rf /var/opt/omi/run/omiserver.sock
 
 %Postinstall_10
+ln -s /opt/omi/lib/libpsrpomiprov.${{SHLIB_EXT}} /opt/microsoft/powershell/libpsrpomiprov.${{SHLIB_EXT}}
+/opt/omi/bin/omireg /opt/omi/lib/libpsrpomiprov.${{SHLIB_EXT}}        
 /opt/omi/bin/service_control restart
 
 %Preuninstall_100
 /opt/omi/bin/service_control stop
+rm -f /opt/microsoft/powershell/libpsrpomiprov.${{SHLIB_EXT}}
+rm -f /etc/opt/omi/conf/omiregister/root-cimv2/psrpomiprov.reg
 
 %Postuninstall_100
 /opt/omi/bin/service_control start

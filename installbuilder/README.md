@@ -30,26 +30,26 @@ Package Details
 Package Variables
 -----------------
 
-SHORT_NAME: 'psrp'
-LONG_NAME: 'PowerShell Remoting Protocol'
-SHELL_HEADER: '#!/bin/sh'
-SHORT_NAME_PREFIX: 'MSFT'
-VENDOR: 'OpenGroup'
-GROUP: 'OpenGroup'
-LICENSE: 'OpenGroup'
-MAINTAINER: 'The Open Group'
-PROVIDES: 'psrppackage'
-DESCRIPTION: 'PowerShell Remoting Protocol provider'
-COPYRIGHT_FILE: 'Copyright OpenGroup'
-HPUX_COPYRIGHT: 'Copyright OpenGroup'
-ROOT_GROUP_NAME: 'root'
++ SHORT_NAME: 'psrp'
++ LONG_NAME: 'PowerShell Remoting Protocol'
++ SHELL_HEADER: '#!/bin/sh'
++ SHORT_NAME_PREFIX: 'MSFT'
++ VENDOR: 'OpenGroup'
++ GROUP: 'OpenGroup'
++ LICENSE: 'OpenGroup'
++ MAINTAINER: 'The Open Group'
++ PROVIDES: 'psrppackage'
++ DESCRIPTION: 'PowerShell Remoting Protocol provider'
++ COPYRIGHT_FILE: 'Copyright OpenGroup'
++ HPUX_COPYRIGHT: 'Copyright OpenGroup'
++ ROOT_GROUP_NAME: 'root'
 
 New Files Created
 -----------------
 
-/opt/omi/lib/libpsrpomiprov.so
-/etc/opt/omi/conf/omiregister/interop/psrpomiprov.reg
-/opt/microsoft/powershell/libpsrpomiprov.so  (symbolic link to /opt/omi/lib/libpsrpomiprov.so)
++ /opt/omi/lib/libpsrpomiprov.so
++ /etc/opt/omi/conf/omiregister/interop/psrpomiprov.reg
++ /opt/microsoft/powershell/libpsrpomiprov.so  (symbolic link to /opt/omi/lib/libpsrpomiprov.so)
 
 Design Philosophy
 -----------------

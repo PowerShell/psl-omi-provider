@@ -1,3 +1,4 @@
+#include <iconv.h>
 #include <stdlib.h>
 #include <pal/strings.h>
 #include <base/result.h>
@@ -16,7 +17,9 @@ struct WSMAN_API
 
 struct WSMAN_SESSION
 {
+    Batch *batch;
     MI_Session session;
+    MI_DestinationOptions destinationOptions;
 };
 
 struct WSMAN_SHELL
@@ -86,84 +89,225 @@ MI_EXPORT MI_Uint32 WINAPI WSManCreateSession(
     )
 {
     MI_Result miResult;
-    Batch *tmpBatch = NULL;
+    Batch *batch = NULL;
     char *connection = NULL;
+    char *httpUrl = NULL;
+    char *username = NULL;
+    char *password = NULL;
+    MI_UserCredentials userCredentials;
 
     *session = NULL;
 
-    if ((serverAuthenticationCredentials == NULL) ||
-        (serverAuthenticationCredentials->authenticationMechanism != WSMAN_FLAG_AUTH_BASIC))
+    if (serverAuthenticationCredentials == NULL)
     {
-        GOTO_ERROR("Only support basic authentication", MI_RESULT_ACCESS_DENIED);
+        GOTO_ERROR("No authentication credentials given", MI_RESULT_ACCESS_DENIED);
+    }
+    if (proxyInfo)
+    {
+        GOTO_ERROR("Don't support proxy information", MI_RESULT_INVALID_PARAMETER);
     }
 
-    tmpBatch = Batch_New(BATCH_MAX_PAGES);
-    if (tmpBatch == NULL)
+    switch (serverAuthenticationCredentials->authenticationMechanism)
+    {
+        case WSMAN_FLAG_AUTH_BASIC:
+            userCredentials.authenticationType = MI_AUTH_TYPE_BASIC;
+            break;
+        case WSMAN_FLAG_AUTH_NEGOTIATE:
+            userCredentials.authenticationType = MI_AUTH_TYPE_NEGO_WITH_CREDS;
+            break;
+        case WSMAN_FLAG_AUTH_KERBEROS:
+            userCredentials.authenticationType = MI_AUTH_TYPE_KERBEROS;
+            break;
+        default:
+            GOTO_ERROR("Unsupported authentication type", MI_RESULT_ACCESS_DENIED);
+            break;
+
+    }
+
+    batch = Batch_New(BATCH_MAX_PAGES);
+    if (batch == NULL)
     {
         GOTO_ERROR("Out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
-    if (_connection && !Utf16LeToUtf8(tmpBatch, _connection, &connection))
-    {
-        GOTO_ERROR("Failed to convert connection name", MI_RESULT_SERVER_LIMITS_EXCEEDED);
-    }
-
-    (*session) = calloc(1, sizeof(struct WSMAN_SESSION));
+    (*session) = Batch_GetClear(batch, sizeof(struct WSMAN_SESSION));
     if (*session == NULL)
     {
         GOTO_ERROR("Out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
+    (*session)->batch = batch;
 
-    miResult = MI_Application_NewSession(&apiHandle->application,MI_T("MI_REMOTE_WSMAN" ), connection, NULL, NULL, NULL, &(*session)->session);
+    if (_connection && !Utf16LeToUtf8(batch, _connection, &connection))
+    {
+        GOTO_ERROR("Failed to convert connection name", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
+    /* Full format may be:
+     *      <transport>://<computerName>:<port><httpUrl>
+     * where:
+     *      <transport>:// = http:// or https://, if <transport>:// is missing it defaults
+     *      :<port> = port to use based on transport specified, if missing uses defaults
+     *      <httpUrl> = http URL to post to, if missing defaults to /wsman/
+     *
+     * For now, assume there is a http url at the end copy if off and remove so we just have the machine name in the connection string
+     *
+     */
+    httpUrl = strchr(connection, '/');
+    if (httpUrl == NULL)
+        httpUrl = "/wsman/";
+    else
+    {
+        char *tmp = Batch_Tcsdup(batch, httpUrl);
+        if (tmp == NULL)
+        {
+            GOTO_ERROR("Failed to convert connection name", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        }
+        *httpUrl = '\0';
+        httpUrl = tmp;
+    }
+
+    if (serverAuthenticationCredentials->userAccount.username && !Utf16LeToUtf8(batch, serverAuthenticationCredentials->userAccount.username, &username))
+    {
+        GOTO_ERROR("Username missing or failed to convert", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
+    if (serverAuthenticationCredentials->userAccount.password && !Utf16LeToUtf8(batch, serverAuthenticationCredentials->userAccount.password, &password))
+    {
+        GOTO_ERROR("password missing or failed to convert", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
+    userCredentials.credentials.usernamePassword.domain = NULL; /* Assume for now no domain. At some point we may need to split username */
+    userCredentials.credentials.usernamePassword.username = username;
+    userCredentials.credentials.usernamePassword.password = password;
+
+    miResult = MI_Application_NewDestinationOptions(&apiHandle->application, &(*session)->destinationOptions);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Destination options creation failed", miResult);
+    }
+
+    miResult = MI_DestinationOptions_AddDestinationCredentials(&(*session)->destinationOptions, &userCredentials);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to add credentials to destination options", miResult);
+    }
+    miResult = MI_DestinationOptions_SetHttpUrlPrefix(&(*session)->destinationOptions, httpUrl);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to add http prefix to destination options", miResult);
+    }
+
+    /* TODO: CANNOT DO THIS AS SSL OPTIONS ARE ADDED AFTER SESSION IS CREATED */
+    miResult = MI_Application_NewSession(&apiHandle->application,MI_T("MI_REMOTE_WSMAN" ), connection, &(*session)->destinationOptions, NULL, NULL, &(*session)->session);
     if (miResult != MI_RESULT_OK)
     {
         GOTO_ERROR("MI_Application_NewSession failed", miResult);
     }
 
-    Batch_Delete(tmpBatch);
-
     return miResult;
 
 error:
-    if (tmpBatch)
-        Batch_Delete(tmpBatch);
+    if (batch)
+        Batch_Delete(batch);
 
-    if (*session)
-    {
-        free(*session);
-        *session = NULL;
-    }
+    *session = NULL;
+
     return miResult;
 }
 
-MI_Uint32 WINAPI WSManCloseSession(
+MI_EXPORT MI_Uint32 WINAPI WSManCloseSession(
     _Inout_opt_ WSMAN_SESSION_HANDLE session,
     MI_Uint32 flags)
 {
     MI_Result miResult = MI_Session_Close(&session->session, NULL, NULL);
-    free(session);
+
+    if (session->destinationOptions.ft)
+        MI_DestinationOptions_Delete(&session->destinationOptions);
+
+    Batch_Delete(session->batch);
+
     return miResult;
 }
 
-MI_Uint32 WINAPI WSManSetSessionOption(
+MI_EXPORT MI_Uint32 WINAPI WSManSetSessionOption(
     _In_ WSMAN_SESSION_HANDLE session,
     WSManSessionOption option,
     _In_ WSMAN_DATA *data)
 {
-    /* TODO */
-    return MI_RESULT_OK;
+    MI_Result miResult;
+
+    switch (option)
+    {
+        case WSMAN_OPTION_USE_SSL:
+            if (data->type != WSMAN_DATA_TYPE_DWORD)
+                GOTO_ERROR("SSL option should be DWORD", MI_RESULT_INVALID_PARAMETER);
+            if (data->number == 0)
+            {
+                miResult = MI_DestinationOptions_SetTransport(&session->destinationOptions, MI_DESTINATIONOPTIONS_TRANSPORT_HTTP);
+            }
+            else
+            {
+                miResult = MI_DestinationOptions_SetTransport(&session->destinationOptions, MI_DESTINATIONOPTIONS_TRANPSORT_HTTPS);
+            }
+            break;
+
+        case WSMAN_OPTION_UI_LANGUAGE:
+            /* String, convert utf16->utf8, locale */
+            miResult = MI_RESULT_OK;
+            break;
+        case WSMAN_OPTION_LOCALE:
+            /* String, convert utf16->utf8, datalocale */
+            miResult = MI_RESULT_OK;
+            break;
+        case WSMAN_OPTION_DEFAULT_OPERATION_TIMEOUTMS:
+            /* dword, operation timeout when not the others */
+            miResult = MI_RESULT_OK;
+            break;
+        case WSMAN_OPTION_TIMEOUTMS_CREATE_SHELL:
+            /* dword */
+            miResult = MI_RESULT_OK;
+            break;
+        case WSMAN_OPTION_TIMEOUTMS_CLOSE_SHELL:
+            /* dword */
+            miResult = MI_RESULT_OK;
+            break;
+        case WSMAN_OPTION_TIMEOUTMS_SIGNAL_SHELL:
+            /* dword */
+            miResult = MI_RESULT_OK;
+            break;
+
+        default:
+            miResult = MI_RESULT_OK;    /* Assume we can ignore it */
+    }
+
+error:
+    return miResult;
 }
 
-MI_Uint32 WINAPI WSManGetSessionOptionAsDword(
-    _In_ WSMAN_SESSION_HANDLE session,
+MI_EXPORT MI_Uint32 WINAPI WSManGetSessionOptionAsDword(
+    _In_ WSMAN_SESSION_HANDLE session, /* NOTE: This may be an application handle */
     WSManSessionOption option,
     _Inout_ MI_Uint32 *value)
 {
-    /* TODO */
-    return MI_RESULT_NOT_SUPPORTED;
+    MI_Uint32 returnVal = MI_RESULT_OK;
+
+    switch (option)
+    {
+        case WSMAN_OPTION_SHELL_MAX_DATA_SIZE_PER_MESSAGE_KB:
+            *value = 500; /* TODO: Proper value? */
+            break;
+
+        case WSMAN_OPTION_MAX_RETRY_TIME:
+            *value = 60; /* TODO: Proper value? */
+            break;
+
+        default:
+            returnVal = MI_RESULT_NOT_SUPPORTED;
+    }
+    return returnVal;
 }
 
-MI_Uint32 WINAPI WSManGetSessionOptionAsString(
+MI_EXPORT MI_Uint32 WINAPI WSManGetSessionOptionAsString(
     _In_ WSMAN_SESSION_HANDLE session,
     WSManSessionOption option,
     MI_Uint32 stringLength,
@@ -173,7 +317,7 @@ MI_Uint32 WINAPI WSManGetSessionOptionAsString(
     /* TODO */
     return MI_RESULT_NOT_SUPPORTED;
 }
-MI_Uint32 WINAPI WSManCloseOperation(
+MI_EXPORT MI_Uint32 WINAPI WSManCloseOperation(
     _Inout_opt_ WSMAN_OPERATION_HANDLE operationHandle,
     MI_Uint32 flags)
 {
@@ -232,36 +376,68 @@ void MI_CALL CreateShellComplete(
             NULL);
 }
 
-MI_Result ExtractStreamSet(WSMAN_STREAM_ID_SET *streamSet, Batch *batch, MI_Array *array)
+MI_Result ExtractStreamSet(WSMAN_STREAM_ID_SET *streamSet, Batch *batch, char **streamSetString)
 {
     MI_Result miResult = MI_RESULT_OK;
+    size_t stringLength = 1;
+    MI_Uint32 count;
+    char *tmpStr;
+    char *cursor;
+
+    *streamSetString = NULL;
+
+    /* Allocate a buffer that is as big as all strings with spaces in-between  */
+    for (count = 0; count != streamSet->streamIDsCount; count++)
+    {
+        stringLength += Utf16LeStrLenBytes(streamSet->streamIDs[count]);
+        stringLength ++; /* for space between strings, extra one not a big issue */
+    }
+    tmpStr = Batch_Get(batch, stringLength);
+    if (tmpStr == NULL)
+        return MI_RESULT_SERVER_LIMITS_EXCEEDED;
+
+    cursor = tmpStr;
 
     if (streamSet->streamIDsCount > 0)
     {
-        array->size = streamSet->streamIDsCount;
-        array->data = Batch_Get(batch, array->size * sizeof(void*));
-        if (array->data == NULL)
+        size_t iconv_return;
+        iconv_t iconvData;
+
+        iconvData = iconv_open("UTF-16LE", "UTF-8");
+        if (iconvData == (iconv_t)-1)
         {
-            GOTO_ERROR("Alloc failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+            GOTO_ERROR("Failed to convert stream", MI_RESULT_FAILED);
         }
 
-        for (array->size = 0; array->size != streamSet->streamIDsCount; streamSet->streamIDsCount++)
+
+        for (count = 0; count != streamSet->streamIDsCount; count++)
         {
-            if (!Utf16LeToUtf8(batch, streamSet->streamIDs[array->size], &array->data[array->size]))
+            size_t thisStringLen = Utf16LeStrLenBytes(streamSet->streamIDs[count]);
+
+            iconv_return = iconv(iconvData,
+                    (char**) &streamSet->streamIDs[count], &thisStringLen,
+                    &cursor, &stringLength);
+            if (iconv_return == (size_t) -1)
             {
-                GOTO_ERROR("Alloc failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+                iconv_close(iconvData);
+                GOTO_ERROR("Failed to convert stream", MI_RESULT_FAILED);
             }
+
+            /* Append space on end */
+            cursor[0] = ' ';
         }
+        iconv_close(iconvData);
     }
-    else
-    {
-        memset(array, 0, sizeof(*array));
-    }
+
+    /* Null terminate */
+    cursor[0] = '\0';
+
+    *streamSetString = tmpStr;
 error:
     return miResult;
 }
 
-void WINAPI WSManCreateShellEx(
+MI_EXPORT void WINAPI WSManCreateShellEx(
     _Inout_ WSMAN_SESSION_HANDLE session,
     MI_Uint32 flags,
     _In_ const MI_Char16* resourceUri,           // shell resource URI
@@ -379,7 +555,7 @@ error:
     *_shell = NULL;
 }
 
-void WINAPI WSManRunShellCommandEx(
+MI_EXPORT void WINAPI WSManRunShellCommandEx(
     _Inout_ WSMAN_SHELL_HANDLE shell,
     MI_Uint32 flags,
     _In_ const MI_Char16* commandId,
@@ -391,7 +567,7 @@ void WINAPI WSManRunShellCommandEx(
 {
 }
 
-void WINAPI WSManSignalShell(
+MI_EXPORT void WINAPI WSManSignalShell(
     _In_ WSMAN_SHELL_HANDLE shell,
     _In_opt_ WSMAN_COMMAND_HANDLE command,         // if NULL, the Signal will be sent to the shell
     MI_Uint32 flags,
@@ -401,7 +577,7 @@ void WINAPI WSManSignalShell(
 {
 }
 
-void WINAPI WSManReceiveShellOutput(
+MI_EXPORT void WINAPI WSManReceiveShellOutput(
     _Inout_ WSMAN_SHELL_HANDLE shell,
     _In_opt_ WSMAN_COMMAND_HANDLE command,
     MI_Uint32 flags,
@@ -411,7 +587,7 @@ void WINAPI WSManReceiveShellOutput(
 {
 }
 
-void WINAPI WSManSendShellInput(
+MI_EXPORT void WINAPI WSManSendShellInput(
     _In_ WSMAN_SHELL_HANDLE shell,
     _In_opt_ WSMAN_COMMAND_HANDLE command,
     MI_Uint32 flags,
@@ -424,23 +600,34 @@ void WINAPI WSManSendShellInput(
 {
 }
 
-void WINAPI WSManCloseCommand(
+MI_EXPORT void WINAPI WSManCloseCommand(
     _Inout_opt_ WSMAN_COMMAND_HANDLE commandHandle,
     MI_Uint32 flags,
     _In_ WSMAN_SHELL_ASYNC *async)
 {
 }
 
-void WINAPI WSManCloseShell(
+MI_EXPORT void WINAPI WSManCloseShell(
     _Inout_opt_ WSMAN_SHELL_HANDLE shellHandle,
     MI_Uint32 flags,
     _In_ WSMAN_SHELL_ASYNC *async)
 {
-    Batch_Delete(shellHandle->batch);
-    async->completionFunction(lotsOfParams);
+    WSMAN_ERROR error;
+
+    memset(&error, 0, sizeof(error));
+
+    Batch_Delete(&shellHandle->batch);
+    async->completionFunction(
+            shellHandle->asyncCallback.operationContext,
+            WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
+            &error,
+            shellHandle,
+            NULL,
+            NULL,
+            NULL);
 }
 
-void WINAPI WSManDisconnectShell(
+MI_EXPORT void WINAPI WSManDisconnectShell(
     _Inout_ WSMAN_SHELL_HANDLE shell,
     MI_Uint32 flags,
     _In_ WSMAN_SHELL_DISCONNECT_INFO* disconnectInfo,
@@ -448,21 +635,21 @@ void WINAPI WSManDisconnectShell(
 {
 }
 
-void WINAPI WSManReconnectShell(
+MI_EXPORT void WINAPI WSManReconnectShell(
     _Inout_ WSMAN_SHELL_HANDLE shell,
     MI_Uint32 flags,
     _In_ WSMAN_SHELL_ASYNC *async)
 {
 }
 
-void WINAPI WSManReconnectShellCommand(
+MI_EXPORT void WINAPI WSManReconnectShellCommand(
     _Inout_ WSMAN_COMMAND_HANDLE commandHandle,
     MI_Uint32 flags,
     _In_ WSMAN_SHELL_ASYNC *async)
 {
 }
 
-void WINAPI WSManConnectShell(
+MI_EXPORT void WINAPI WSManConnectShell(
     _Inout_ WSMAN_SESSION_HANDLE session,
     MI_Uint32 flags,
     _In_ const MI_Char16* resourceUri,
@@ -474,7 +661,7 @@ void WINAPI WSManConnectShell(
 {
 }
 
-void WINAPI WSManConnectShellCommand(
+MI_EXPORT void WINAPI WSManConnectShellCommand(
     _Inout_ WSMAN_SHELL_HANDLE shell,
     MI_Uint32 flags,
     _In_ const MI_Char16* commandID,  //command Identifier

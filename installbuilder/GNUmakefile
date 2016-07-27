@@ -13,7 +13,7 @@ OUTPUTFILE_LINE = --OUTPUTFILE=psrp-$(CONFIG_VERSION)-$(CONFIG_PATCH_LEVEL).univ
 
 all:
 ifneq ($(PF),Linux)
-	@echo "========================= Make OMI installer $(PF_DISTRO)"
+	@echo "========================= Make PSRP installer $(PF_DISTRO)"
 	sudo rm -rf $(OUTPUTDIR)/intermediate/staging
 	mkdir -p $(OUTPUTDIR)/release $(OUTPUTDIR)/intermediate
 	python $(TOP)/../../../pal/installer/InstallBuilder/installbuilder.py \
@@ -33,7 +33,7 @@ ifneq ($(PF),Linux)
 		$(DATAFILES)
 else
  ifeq ($(BUILD_RPM),1)
-	@echo "========================= Make OMI installer RPM"
+	@echo "========================= Make PSRP installer RPM"
 	sudo rm -rf $(OUTPUTDIR)/intermediate/staging
 	mkdir -p $(OUTPUTDIR)/release $(OUTPUTDIR)/intermediate
 	python $(TOP)/../../../pal/installer/InstallBuilder/installbuilder.py \
@@ -54,7 +54,7 @@ else
 		$(TOP)/installbuilder/datafiles/Linux_RPM.data
  endif
  ifeq ($(BUILD_DPKG),1)
-	echo "========================= Make OMI installer DPKG"
+	echo "========================= Make PSRP installer DPKG"
 	sudo rm -rf $(OUTPUTDIR)/intermediate/staging
 	mkdir -p $(OUTPUTDIR)/release $(OUTPUTDIR)/intermediate
 	python $(TOP)/../../../pal/installer/InstallBuilder/installbuilder.py \

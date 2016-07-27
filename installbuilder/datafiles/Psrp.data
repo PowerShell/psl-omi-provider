@@ -25,7 +25,7 @@ SHLIB_EXT: 'so'
 /etc/opt/omi;                              755; root; ${{ROOT_GROUP_NAME}}; sysdir
 /etc/opt/omi/conf;                         755; root; ${{ROOT_GROUP_NAME}}; sysdir
 /etc/opt/omi/conf/omiregister;             755; root; ${{ROOT_GROUP_NAME}}; sysdir
-/etc/opt/omi/conf/omiregister/root-cimv2;  755; root; ${{ROOT_GROUP_NAME}}; sysdir
+/etc/opt/omi/conf/omiregister/interop;     755; root; ${{ROOT_GROUP_NAME}}; sysdir
 
 %Links
 
@@ -44,13 +44,13 @@ ${{SHELL_HEADER}}
 
 %Postinstall_10
 ln -s /opt/omi/lib/libpsrpomiprov.${{SHLIB_EXT}} /opt/microsoft/powershell/libpsrpomiprov.${{SHLIB_EXT}}
-/opt/omi/bin/omireg /opt/omi/lib/libpsrpomiprov.${{SHLIB_EXT}}        
+/opt/omi/bin/omireg -n interop /opt/omi/lib/libpsrpomiprov.${{SHLIB_EXT}}        
 /opt/omi/bin/service_control restart
 
 %Preuninstall_100
 /opt/omi/bin/service_control stop
 rm -f /opt/microsoft/powershell/libpsrpomiprov.${{SHLIB_EXT}}
-rm -f /etc/opt/omi/conf/omiregister/root-cimv2/psrpomiprov.reg
+rm -f /etc/opt/omi/conf/omiregister/interop/psrpomiprov.reg
 
 %Postuninstall_100
 /opt/omi/bin/service_control start

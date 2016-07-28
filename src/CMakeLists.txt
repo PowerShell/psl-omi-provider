@@ -6,6 +6,10 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 
 add_compile_options(-Wall -Werror -fPIC)
 
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin") 
+	add_definitions(-Dmacos)
+endif ()
+
 set(OMI ../omi/Unix)
 
 find_package(Threads REQUIRED)
@@ -39,7 +43,8 @@ target_link_libraries(psrpomiprov pshost
 	dl
 	pam
 	ssl
-	crypto)
+	crypto
+	iconv)
 target_include_directories(psrpomiprov PRIVATE ${OMI}/output/include ${OMI} ${OMI}/common)
 target_compile_options(psrpomiprov PRIVATE -fvisibility=hidden -fno-strict-aliasing)
 

@@ -170,7 +170,11 @@ int startCoreCLR(
     auto clrAbsolutePath = GetEnvAbsolutePath("CORE_ROOT");
     if (clrAbsolutePath.empty())
     {
+#if defined(__APPLE__)
+        clrAbsolutePath = filesystem::path("/usr/local/microsoft/powershell");
+#else
         clrAbsolutePath = filesystem::path("/opt/microsoft/powershell");
+#endif
     }
     if(!clrAbsolutePath.is_absolute())
     {

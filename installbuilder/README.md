@@ -30,16 +30,16 @@ Package Details
 Package Variables
 -----------------
 
-+ SHORT_NAME: 'psrp'
++ SHORT_NAME: 'omi-psrp-server'
 + LONG_NAME: 'PowerShell Remoting Protocol'
 + SHORT_NAME_PREFIX: 'MSFT'
-+ VENDOR: 'OpenGroup'
-+ GROUP: 'OpenGroup'
-+ LICENSE: 'OpenGroup'
-+ MAINTAINER: 'The Open Group'
-+ PROVIDES: 'psrppackage'
++ VENDOR: 'Microsoft Corporation'
++ GROUP: 'System Environment/Daemons'
++ LICENSE: 'MIT'
++ MAINTAINER: 'Microsoft Corporation'
++ PROVIDES: 'omi-psrp-server'
 + DESCRIPTION: 'PowerShell Remoting Protocol provider'
-+ COPYRIGHT_FILE: 'Copyright OpenGroup'
++ COPYRIGHT_FILE: 'Copyright (c) Microsoft Corporation'
 
 New Files Created
 -----------------

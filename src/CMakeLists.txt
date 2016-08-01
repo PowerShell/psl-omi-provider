@@ -17,6 +17,12 @@ set(OMI ../omi/Unix)
 find_package(Threads REQUIRED)
 link_directories(${OMI}/output/lib)
 
+add_library(psrpclient SHARED
+	Client.c
+	xpress.c
+	BufferManipulation.c
+	schema.c)
+
 add_library(psrpomiprov SHARED
 	Shell.c
 	Command.c
@@ -24,8 +30,12 @@ add_library(psrpomiprov SHARED
 	schema.c
 	xpress.c
 	BufferManipulation.c
-	Client.c
 	coreclrutil.cpp)
+
+target_link_libraries(psrpclient
+	mi
+	${CMAKE_THREAD_LIBS_INIT}
+	)
 
 target_link_libraries(psrpomiprov
 	mi
@@ -43,6 +53,11 @@ target_include_directories(psrpomiprov PRIVATE
 
 # Cannot use target_compile_options with 2.8.11
 set_target_properties(psrpomiprov PROPERTIES COMPILE_FLAGS
+	"-fvisibility=hidden -fno-strict-aliasing")
+
+target_include_directories(psrpclient PRIVATE ${OMI}/output/include ${OMI} ${OMI}/common)
+
+set_target_properties(psrpclient PROPERTIES COMPILE_FLAGS
 	"-fvisibility=hidden -fno-strict-aliasing")
 
 add_custom_command(TARGET psrpomiprov POST_BUILD

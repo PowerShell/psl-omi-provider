@@ -8,6 +8,33 @@
 #include "wsman.h"
 #include "BufferManipulation.h"
 #include "Shell.h"
+#include "Command.h"
+
+/* Disable the provider APIs so we can use the provider RTTI */
+void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule, MI_Context* context) {}
+void MI_CALL Shell_Unload(Shell_Self* self, MI_Context* context) {}
+void MI_CALL Shell_EnumerateInstances(Shell_Self* self, MI_Context* context, const MI_Char* nameSpace, const MI_Char* className, const MI_PropertySet* propertySet, MI_Boolean keysOnly, const MI_Filter* filter) {}
+void MI_CALL Shell_GetInstance(Shell_Self* self, MI_Context* context, const MI_Char* nameSpace, const MI_Char* className, const Shell* instanceName, const MI_PropertySet* propertySet){}
+void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context, const MI_Char* nameSpace, const MI_Char* className, const Shell* newInstance){}
+void MI_CALL Shell_ModifyInstance(Shell_Self* self, MI_Context* context, const MI_Char* nameSpace, const MI_Char* className, const Shell* modifiedInstance, const MI_PropertySet* propertySet) {}
+void MI_CALL Shell_DeleteInstance(Shell_Self* self, MI_Context* context, const MI_Char* nameSpace, const MI_Char* className, const Shell* instanceName){}
+void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context, const MI_Char* nameSpace, const MI_Char* className, const MI_Char* methodName, const Shell* instanceName, const Shell_Command* in){}
+void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context, const MI_Char* nameSpace, const MI_Char* className, const MI_Char* methodName, const Shell* instanceName, const Shell_Send* in){}
+void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context, const MI_Char* nameSpace, const MI_Char* className, const MI_Char* methodName, const Shell* instanceName, const Shell_Receive* in){}
+void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context, const MI_Char* nameSpace, const MI_Char* className, const MI_Char* methodName, const Shell* instanceName, const Shell_Signal* in){}
+void MI_CALL Shell_Invoke_Disconnect( Shell_Self* self, MI_Context* context, const MI_Char* nameSpace, const MI_Char* className, const MI_Char* methodName, const Shell* instanceName, const Shell_Disconnect* in){}
+void MI_CALL Shell_Invoke_Reconnect( Shell_Self* self, MI_Context* context, const MI_Char* nameSpace, const MI_Char* className, const MI_Char* methodName, const Shell* instanceName, const Shell_Reconnect* in){}
+void MI_CALL Shell_Invoke_Connect( Shell_Self* self, MI_Context* context, const MI_Char* nameSpace, const MI_Char* className, const MI_Char* methodName, const Shell* instanceName, const Shell_Connect* in){}
+void MI_CALL Command_Load( Command_Self** self, MI_Module_Self* selfModule, MI_Context* context){}
+void MI_CALL Command_Unload( Command_Self* self, MI_Context* context){}
+void MI_CALL Command_EnumerateInstances( Command_Self* self, MI_Context* context, const MI_Char* nameSpace, const MI_Char* className, const MI_PropertySet* propertySet, MI_Boolean keysOnly, const MI_Filter* filter){}
+void MI_CALL Command_GetInstance( Command_Self* self, MI_Context* context, const MI_Char* nameSpace, const MI_Char* className, const Command* instanceName, const MI_PropertySet* propertySet){}
+void MI_CALL Command_CreateInstance( Command_Self* self, MI_Context* context, const MI_Char* nameSpace, const MI_Char* className, const Command* newInstance){}
+void MI_CALL Command_ModifyInstance( Command_Self* self, MI_Context* context, const MI_Char* nameSpace, const MI_Char* className, const Command* modifiedInstance, const MI_PropertySet* propertySet){}
+void MI_CALL Command_DeleteInstance( Command_Self* self, MI_Context* context, const MI_Char* nameSpace, const MI_Char* className, const Command* instanceName){}
+
+
+
 
 #define GOTO_ERROR(message, result) { __LOGE(("%s (result=%u)", message, result)); miResult = result; goto error; }
 struct WSMAN_API

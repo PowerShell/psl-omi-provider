@@ -21,7 +21,8 @@ add_library(psrpclient SHARED
 	Client.c
 	xpress.c
 	BufferManipulation.c
-	schema.c)
+	schema.c
+	)
 
 add_library(psrpomiprov SHARED
 	Shell.c
@@ -34,6 +35,8 @@ add_library(psrpomiprov SHARED
 
 target_link_libraries(psrpclient
 	mi
+	base
+	pal
 	${CMAKE_THREAD_LIBS_INIT}
 	)
 

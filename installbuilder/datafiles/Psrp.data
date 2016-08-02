@@ -31,7 +31,6 @@ SHLIB_EXT: 'so'
 
 %Dependencies
 omi
-powershell
 
 %Preinstall_0
 ${{SHELL_HEADER}}

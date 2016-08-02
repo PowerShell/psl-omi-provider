@@ -15,7 +15,7 @@ Toolchain Setup
 PSRP requires the following packages:
 
 ```sh
-sudo apt-get install libpam0g-dev libssl-dev libcurl4-openssl-dev libboost-filesystem-dev
+sudo apt-get install libpam0g-dev libssl-dev libcurl4-openssl-dev
 ```
 
 Also install [PowerShell][] from the latest release per their instructions.

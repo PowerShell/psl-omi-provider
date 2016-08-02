@@ -11,9 +11,9 @@
 
 // The name of the CoreCLR native runtime DLL
 #if defined(__APPLE__)
-const std::string coreClrDll = "libcoreclr.dylib";
+const std::string coreClrDll = "/libcoreclr.dylib";
 #else
-const std::string coreClrDll = "libcoreclr.so";
+const std::string coreClrDll = "/libcoreclr.so";
 #endif
 
 void* coreclrLib;
@@ -48,12 +48,17 @@ std::string GetEnvAbsolutePath(const char* env)
     const char* local = std::getenv(env);
     if (!local)
     {
-        std::cerr << "Could not read environment variable " << env << std::endl;
+        std::cerr << "Could not read environment variable " << env << ", using default value." << std::endl;
         return std::string("");
     }
 
     char *ptr = realpath(local, fullpath);
-    return ptr ? std::string(ptr) : std::string("");
+    if (!ptr)
+    {
+        std::cerr << "Invalid environment variable " << env << " content, switching to default value. " << std::endl;
+        return std::string("");
+    }
+    return std::string(ptr);
 }
 
 // Add all *.dll, *.ni.dll, *.exe, and *.ni.exe files from the specified directory to the tpaList string.

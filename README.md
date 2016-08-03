@@ -6,6 +6,25 @@ Infrastructure (OMI)][omi] using this OMI provider.
 
 [omi]: https://github.com/PowerShell/omi
 
+Get PSRP
+========
+
+You can download and install PSRP from following links:
+
+| Platform     | Releases           | Link                             |
+|--------------|--------------------|----------------------------------|
+| Linux        | Debian             | [psrp-0.1.0-0.universal.x64.deb] |
+| Linux        | RPM                | [psrp-0.1.0-0.universal.x64.rpm] |
+
+[psrp-0.1.0-0.universal.x64.deb]: https://github.com/PowerShell/psl-omi-provider/releases/download/v0.1.0.alpha1/psrp-0.1.0-0.universal.x64.deb
+[psrp-0.1.0-0.universal.x64.rpm]: https://github.com/PowerShell/psl-omi-provider/releases/download/v0.1.0.alpha1/psrp-0.1.0-0.universal.x64.rpm
+
+Package Requirement
+-------------------
+
+Prior to installing PSRP, make sure that OMI package is installed.
+Prior to running PSRP, make sure that PowerShell is installed.
+
 Environment
 ===========
 

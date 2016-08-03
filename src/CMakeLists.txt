@@ -14,12 +14,9 @@ endif ()
 set(OMI ../omi/Unix)
 
 find_package(Threads REQUIRED)
-find_package(Boost 1.54.0 REQUIRED COMPONENTS filesystem system)
 link_directories(${OMI}/output/lib)
 
 add_library(pshost SHARED coreclrutil.cpp)
-target_link_libraries(pshost PRIVATE dl ${Boost_LIBRARIES})
-target_include_directories(pshost PRIVATE ${Boost_INCLUDE_DIR})
 target_compile_options(pshost PRIVATE -std=c++11)
 
 add_library(psrpomiprov SHARED

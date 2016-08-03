@@ -2,21 +2,21 @@
 #include <dirent.h>
 #include <dlfcn.h>
 #include <sys/stat.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <string>
 #include <iostream>
 #include <set>
 
-#include <boost/filesystem.hpp>
-using namespace boost;
-
 // The name of the CoreCLR native runtime DLL
 #if defined(__APPLE__)
-constexpr char coreClrDll[] = "libcoreclr.dylib";
+const std::string coreClrDll = "/libcoreclr.dylib";
 #else
-constexpr char coreClrDll[] = "libcoreclr.so";
+const std::string coreClrDll = "/libcoreclr.so";
 #endif
 
 void* coreclrLib;
-char coreRoot[PATH_MAX];
 
 // Prototype of the coreclr_initialize function from the libcoreclr.so
 typedef int (*InitializeCoreCLRFunction)(
@@ -41,18 +41,24 @@ CreateDelegateFunction createDelegate;
 //
 // Get the absolute path given the environment variable.
 //
-// Return true in case of a success, false otherwise.
-//
-filesystem::path GetEnvAbsolutePath(const char* env)
+std::string GetEnvAbsolutePath(const char* env)
 {
+    char fullpath[PATH_MAX + 1];
+
     const char* local = std::getenv(env);
     if (!local)
     {
-        std::cerr << "Could not read environment variable " << env << std::endl;
-        return filesystem::path();
+        std::cerr << "Could not read environment variable " << env << ", using default value." << std::endl;
+        return std::string("");
     }
 
-    return filesystem::canonical(local);
+    char *ptr = realpath(local, fullpath);
+    if (!ptr)
+    {
+        std::cerr << "Invalid environment variable " << env << " content, switching to default value. " << std::endl;
+        return std::string("");
+    }
+    return std::string(ptr);
 }
 
 // Add all *.dll, *.ni.dll, *.exe, and *.ni.exe files from the specified directory to the tpaList string.
@@ -167,26 +173,19 @@ int startCoreCLR(
     exePath[len] = '\0';
 
     // get the CoreCLR root path
-    auto clrAbsolutePath = GetEnvAbsolutePath("CORE_ROOT");
+    std::string clrAbsolutePath = GetEnvAbsolutePath("CORE_ROOT");
     if (clrAbsolutePath.empty())
     {
 #if defined(__APPLE__)
-        clrAbsolutePath = filesystem::path("/usr/local/microsoft/powershell");
+        clrAbsolutePath = std::string("/usr/local/microsoft/powershell");
 #else
-        clrAbsolutePath = filesystem::path("/opt/microsoft/powershell");
+        clrAbsolutePath = std::string("/opt/microsoft/powershell");
 #endif
     }
-    if(!clrAbsolutePath.is_absolute())
-    {
-        std::cerr << "Failed to get CORE_ROOT path" << std::endl;
-        return -1;
-    }
-    // copy to shared buffer
-    clrAbsolutePath.native().copy(coreRoot, clrAbsolutePath.native().size(), 0);
 
     // get the CoreCLR shared library path
-    filesystem::path coreClrDllPath(clrAbsolutePath);
-    coreClrDllPath /= coreClrDll;
+    std::string coreClrDllPath(clrAbsolutePath);
+    coreClrDllPath += coreClrDll;
 
     // open the shared library
     coreclrLib = dlopen(coreClrDllPath.c_str(), RTLD_NOW|RTLD_LOCAL);

@@ -35,8 +35,22 @@ void MI_CALL Command_DeleteInstance( Command_Self* self, MI_Context* context, co
 
 
 
+#define SHELL_ENABLE_LOGGING 1
+#define SHELL_LOGGING_FILE "shell"
+#define SHELL_LOGGING_LEVEL OMI_DEBUG
+
 
 #define GOTO_ERROR(message, result) { __LOGE(("%s (result=%u)", message, result)); miResult = result; goto error; }
+
+static void LogFunctionStart(const char *function)
+{
+    __LOGD(("%s: START", function));
+}
+static void LogFunctionEnd(const char *function, MI_Result miResult)
+{
+    __LOGD(("%s: END, miResult=%u (%s)", function, miResult, Result_ToString(miResult)));
+}
+
 struct WSMAN_API
 {
     MI_Application application;
@@ -57,12 +71,28 @@ struct WSMAN_SHELL
     MI_Operation miOperation;
 };
 
+struct WSMAN_COMMAND
+{
+    Batch batch;
+    WSMAN_SHELL_HANDLE shell;
+};
+
 MI_EXPORT MI_Uint32 WINAPI WSManInitialize(
     MI_Uint32 flags,
     _Out_ WSMAN_API_HANDLE *apiHandle
     )
 {
     MI_Result miResult;
+
+#ifdef SHELL_ENABLE_LOGGING
+    MI_Char finalPath[PAL_MAX_PATH_SIZE];
+
+    CreateLogFileNameWithPrefix(SHELL_LOGGING_FILE, finalPath);
+    Log_Open(finalPath);
+    Log_SetLevel(SHELL_LOGGING_LEVEL);
+#endif
+
+    LogFunctionStart("WSManInitialize");
 
     (*apiHandle) = calloc(1, sizeof(struct WSMAN_API));
     if (*apiHandle == NULL)
@@ -74,6 +104,7 @@ MI_EXPORT MI_Uint32 WINAPI WSManInitialize(
         free(*apiHandle);
         *apiHandle = NULL;
     }
+    LogFunctionEnd("WSManInitialize", miResult);
     return miResult;
 }
 
@@ -83,12 +114,18 @@ MI_EXPORT MI_Uint32 WINAPI WSManDeinitialize(
     MI_Uint32 flags
     )
 {
+    LogFunctionStart("WSManDeinitialize");
     if (apiHandle)
     {
         MI_Application_Close(&apiHandle->application);
         free(apiHandle);
     }
-    return MI_RESULT_OK;
+    LogFunctionEnd("WSManDeinitialize", MI_RESULT_OK);
+
+#ifdef SHELL_ENABLE_LOGGING
+    Log_Close();
+#endif
+     return MI_RESULT_OK;
 }
 
 MI_EXPORT MI_Uint32 WINAPI WSManGetErrorMessage(
@@ -101,6 +138,8 @@ MI_EXPORT MI_Uint32 WINAPI WSManGetErrorMessage(
     _Out_ MI_Uint32* messageLengthUsed  // effective message length, including NULL terminator
     )
 {
+    LogFunctionStart("WSManGetErrorMessage");
+    LogFunctionEnd("WSManGetErrorMessage", MI_RESULT_NOT_SUPPORTED);
     //const char *resultString = Result_ToString(errorCode);
     //Need to convert it to utf16
     return MI_RESULT_NOT_SUPPORTED;
@@ -123,6 +162,7 @@ MI_EXPORT MI_Uint32 WINAPI WSManCreateSession(
     char *password = NULL;
     MI_UserCredentials userCredentials;
 
+    LogFunctionStart("WSManCreateSession");
     *session = NULL;
 
     if (serverAuthenticationCredentials == NULL)
@@ -231,6 +271,7 @@ MI_EXPORT MI_Uint32 WINAPI WSManCreateSession(
         GOTO_ERROR("MI_Application_NewSession failed", miResult);
     }
 
+    LogFunctionEnd("WSManCreateSession", miResult);
     return miResult;
 
 error:
@@ -239,6 +280,7 @@ error:
 
     *session = NULL;
 
+    LogFunctionEnd("WSManCreateSession", miResult);
     return miResult;
 }
 
@@ -248,11 +290,13 @@ MI_EXPORT MI_Uint32 WINAPI WSManCloseSession(
 {
     MI_Result miResult = MI_Session_Close(&session->session, NULL, NULL);
 
+    LogFunctionStart("WSManCloseSession");
     if (session->destinationOptions.ft)
         MI_DestinationOptions_Delete(&session->destinationOptions);
 
     Batch_Delete(session->batch);
 
+    LogFunctionEnd("WSManCloseSession", miResult);
     return miResult;
 }
 
@@ -263,6 +307,7 @@ MI_EXPORT MI_Uint32 WINAPI WSManSetSessionOption(
 {
     MI_Result miResult;
 
+    LogFunctionStart("WSManSetSessionOption");
     switch (option)
     {
         case WSMAN_OPTION_USE_SSL:
@@ -308,6 +353,7 @@ MI_EXPORT MI_Uint32 WINAPI WSManSetSessionOption(
     }
 
 error:
+    LogFunctionEnd("WSManSetSessionOption", miResult);
     return miResult;
 }
 
@@ -316,8 +362,9 @@ MI_EXPORT MI_Uint32 WINAPI WSManGetSessionOptionAsDword(
     WSManSessionOption option,
     _Inout_ MI_Uint32 *value)
 {
-    MI_Uint32 returnVal = MI_RESULT_OK;
+    MI_Uint32 miResult = MI_RESULT_OK;
 
+    LogFunctionStart("WSManGetSessionOptionAsDword");
     switch (option)
     {
         case WSMAN_OPTION_SHELL_MAX_DATA_SIZE_PER_MESSAGE_KB:
@@ -329,9 +376,10 @@ MI_EXPORT MI_Uint32 WINAPI WSManGetSessionOptionAsDword(
             break;
 
         default:
-            returnVal = MI_RESULT_NOT_SUPPORTED;
+            miResult = MI_RESULT_NOT_SUPPORTED;
     }
-    return returnVal;
+    LogFunctionEnd("WSManGetSessionOptionAsDword", miResult);
+    return miResult;
 }
 
 MI_EXPORT MI_Uint32 WINAPI WSManGetSessionOptionAsString(
@@ -341,6 +389,8 @@ MI_EXPORT MI_Uint32 WINAPI WSManGetSessionOptionAsString(
     _Out_writes_to_opt_(stringLength, *stringLengthUsed) MI_Char16* string,
     _Out_ MI_Uint32* stringLengthUsed)
 {
+    LogFunctionStart("WSManGetSessionOptionAsString");
+    LogFunctionEnd("WSManGetSessionOptionAsString", MI_RESULT_NOT_SUPPORTED);
     /* TODO */
     return MI_RESULT_NOT_SUPPORTED;
 }
@@ -348,6 +398,8 @@ MI_EXPORT MI_Uint32 WINAPI WSManCloseOperation(
     _Inout_opt_ WSMAN_OPERATION_HANDLE operationHandle,
     MI_Uint32 flags)
 {
+    LogFunctionStart("WSManCloseOperation");
+    LogFunctionEnd("WSManCloseOperation", MI_RESULT_NOT_SUPPORTED);
     return MI_RESULT_NOT_SUPPORTED;
 }
 
@@ -390,7 +442,8 @@ void MI_CALL CreateShellComplete(
     _In_opt_ MI_Result (MI_CALL * resultAcknowledgement)(_In_ MI_Operation *operation))
 {
     struct WSMAN_SHELL *shell = (struct WSMAN_SHELL *) callbackContext;
-    WSMAN_ERROR error;
+    WSMAN_ERROR error = {0};
+    LogFunctionStart("CreateShellComplete");
     memset(&error, 0, sizeof(error));
     error.code = resultCode;
     shell->asyncCallback.completionFunction(
@@ -401,6 +454,7 @@ void MI_CALL CreateShellComplete(
             NULL,
             NULL,
             NULL);
+    LogFunctionEnd("CreateShellComplete", resultCode);
 }
 
 MI_Result ExtractStreamSet(WSMAN_STREAM_ID_SET *streamSet, Batch *batch, char **streamSetString)
@@ -481,6 +535,8 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
     struct WSMAN_SHELL *shell = NULL;
     char *tmpStr = NULL;
 
+    LogFunctionStart("WSManCreateShellEx");
+
     batch = Batch_New(BATCH_MAX_PAGES);
     if (batch == NULL)
     {
@@ -558,11 +614,12 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
 
 
     *_shell = shell;
+    LogFunctionEnd("WSManCreateShellEx", miResult);
     return;
 
 error:
     {
-        WSMAN_ERROR error;
+        WSMAN_ERROR error = { 0 };
         error.code = miResult;
         async->completionFunction(
                 async->operationContext,
@@ -580,6 +637,7 @@ error:
     }
 
     *_shell = NULL;
+    LogFunctionEnd("WSManCreateShellEx", miResult);
 }
 
 MI_EXPORT void WINAPI WSManRunShellCommandEx(
@@ -592,6 +650,21 @@ MI_EXPORT void WINAPI WSManRunShellCommandEx(
     _In_ WSMAN_SHELL_ASYNC *async,
     _Out_ WSMAN_COMMAND_HANDLE *command) // should be closed using WSManCloseCommand
 {
+    LogFunctionStart("WSManRunShellCommandEx");
+    {
+        WSMAN_ERROR error = { 0 };
+        error.code = MI_RESULT_NOT_SUPPORTED;
+        async->completionFunction(
+                async->operationContext,
+                WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
+                &error,
+                shell,
+                NULL,
+                NULL,
+                NULL);
+     }
+
+    LogFunctionEnd("WSManRunShellCommandEx", MI_RESULT_NOT_SUPPORTED);
 }
 
 MI_EXPORT void WINAPI WSManSignalShell(
@@ -602,6 +675,21 @@ MI_EXPORT void WINAPI WSManSignalShell(
     _In_ WSMAN_SHELL_ASYNC *async,
     _Out_ WSMAN_OPERATION_HANDLE *signalOperation)  // should be closed using WSManCloseOperation
 {
+    LogFunctionStart("WSManSignalShell");
+    {
+        WSMAN_ERROR error = { 0 };
+        error.code = MI_RESULT_NOT_SUPPORTED;
+        async->completionFunction(
+                async->operationContext,
+                WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
+                &error,
+                shell,
+                NULL,
+                NULL,
+                NULL);
+     }
+
+    LogFunctionEnd("WSManSignalShell", MI_RESULT_NOT_SUPPORTED);
 }
 
 MI_EXPORT void WINAPI WSManReceiveShellOutput(
@@ -612,6 +700,21 @@ MI_EXPORT void WINAPI WSManReceiveShellOutput(
     _In_ WSMAN_SHELL_ASYNC *async,
     _Out_ WSMAN_OPERATION_HANDLE *receiveOperation) // should be closed using WSManCloseOperation
 {
+    LogFunctionStart("WSManReceiveShellOutput");
+    {
+        WSMAN_ERROR error = { 0 };
+        error.code = MI_RESULT_NOT_SUPPORTED;
+        async->completionFunction(
+                async->operationContext,
+                WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
+                &error,
+                shell,
+                NULL,
+                NULL,
+                NULL);
+     }
+
+    LogFunctionEnd("WSManReceiveShellOutput", MI_RESULT_NOT_SUPPORTED);
 }
 
 MI_EXPORT void WINAPI WSManSendShellInput(
@@ -625,6 +728,20 @@ MI_EXPORT void WINAPI WSManSendShellInput(
     _In_ WSMAN_SHELL_ASYNC *async,
     _Out_ WSMAN_OPERATION_HANDLE *sendOperation) // should be closed using WSManCloseOperation
 {
+    LogFunctionStart("WSManSendShellInput");
+    {
+        WSMAN_ERROR error = { 0 };
+        error.code = MI_RESULT_NOT_SUPPORTED;
+        async->completionFunction(
+                async->operationContext,
+                WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
+                &error,
+                shell,
+                NULL,
+                NULL,
+                NULL);
+    }
+    LogFunctionEnd("WSManSendShellInput", MI_RESULT_NOT_SUPPORTED);
 }
 
 MI_EXPORT void WINAPI WSManCloseCommand(
@@ -632,6 +749,20 @@ MI_EXPORT void WINAPI WSManCloseCommand(
     MI_Uint32 flags,
     _In_ WSMAN_SHELL_ASYNC *async)
 {
+    LogFunctionStart("WSManCloseCommand");
+    {
+        WSMAN_ERROR error = { 0 };
+        error.code = MI_RESULT_NOT_SUPPORTED;
+        async->completionFunction(
+                async->operationContext,
+                WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
+                &error,
+                commandHandle->shell,
+                NULL,
+                NULL,
+                NULL);
+    }
+    LogFunctionEnd("WSManCloseCommand", MI_RESULT_NOT_SUPPORTED);
 }
 
 MI_EXPORT void WINAPI WSManCloseShell(
@@ -639,8 +770,9 @@ MI_EXPORT void WINAPI WSManCloseShell(
     MI_Uint32 flags,
     _In_ WSMAN_SHELL_ASYNC *async)
 {
-    WSMAN_ERROR error;
+    WSMAN_ERROR error = {0};
 
+    LogFunctionStart("WSManCloseShell");
     memset(&error, 0, sizeof(error));
 
     Batch_Delete(&shellHandle->batch);
@@ -652,6 +784,7 @@ MI_EXPORT void WINAPI WSManCloseShell(
             NULL,
             NULL,
             NULL);
+    LogFunctionEnd("WSManCloseShell", MI_RESULT_NOT_SUPPORTED);
 }
 
 MI_EXPORT void WINAPI WSManDisconnectShell(
@@ -660,6 +793,18 @@ MI_EXPORT void WINAPI WSManDisconnectShell(
     _In_ WSMAN_SHELL_DISCONNECT_INFO* disconnectInfo,
     _In_ WSMAN_SHELL_ASYNC *async)
 {
+    WSMAN_ERROR error = {0};
+    LogFunctionStart("WSManDisconnectShell");
+    error.code = MI_RESULT_NOT_SUPPORTED;
+    async->completionFunction(
+            async->operationContext,
+            WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
+            &error,
+            shell,
+            NULL,
+            NULL,
+            NULL);
+     LogFunctionEnd("WSManDisconnectShell", MI_RESULT_NOT_SUPPORTED);
 }
 
 MI_EXPORT void WINAPI WSManReconnectShell(
@@ -667,6 +812,18 @@ MI_EXPORT void WINAPI WSManReconnectShell(
     MI_Uint32 flags,
     _In_ WSMAN_SHELL_ASYNC *async)
 {
+    WSMAN_ERROR error = {0};
+    LogFunctionStart("WSManReconnectShell");
+    error.code = MI_RESULT_NOT_SUPPORTED;
+    async->completionFunction(
+            async->operationContext,
+            WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
+            &error,
+            shell,
+            NULL,
+            NULL,
+            NULL);
+     LogFunctionEnd("WSManReconnectShell", MI_RESULT_NOT_SUPPORTED);
 }
 
 MI_EXPORT void WINAPI WSManReconnectShellCommand(
@@ -674,6 +831,18 @@ MI_EXPORT void WINAPI WSManReconnectShellCommand(
     MI_Uint32 flags,
     _In_ WSMAN_SHELL_ASYNC *async)
 {
+    WSMAN_ERROR error = {0};
+    LogFunctionStart("WSManReconnectShellCommand");
+    error.code = MI_RESULT_NOT_SUPPORTED;
+    async->completionFunction(
+            async->operationContext,
+            WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
+            &error,
+            commandHandle->shell ,
+            NULL,
+            NULL,
+            NULL);
+     LogFunctionEnd("WSManReconnectShellCommand", MI_RESULT_NOT_SUPPORTED);
 }
 
 MI_EXPORT void WINAPI WSManConnectShell(
@@ -686,6 +855,19 @@ MI_EXPORT void WINAPI WSManConnectShell(
     _In_ WSMAN_SHELL_ASYNC *async,
     _Out_ WSMAN_SHELL_HANDLE *shell) // should be closed using WSManCloseShell
 {
+    WSMAN_ERROR error = {0};
+    *shell = NULL;
+    LogFunctionStart("WSManConnectShell");
+    error.code = MI_RESULT_NOT_SUPPORTED;
+    async->completionFunction(
+            async->operationContext,
+            WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
+            &error,
+            *shell,
+            NULL,
+            NULL,
+            NULL);
+     LogFunctionEnd("WSManConnectShell", MI_RESULT_NOT_SUPPORTED);
 }
 
 MI_EXPORT void WINAPI WSManConnectShellCommand(
@@ -697,4 +879,16 @@ MI_EXPORT void WINAPI WSManConnectShellCommand(
     _In_ WSMAN_SHELL_ASYNC *async,
     _Out_ WSMAN_COMMAND_HANDLE *command) // should be closed using WSManCloseCommand
 {
+    WSMAN_ERROR error = {0};
+    LogFunctionStart("WSManConnectShellCommand");
+    error.code = MI_RESULT_NOT_SUPPORTED;
+    async->completionFunction(
+            async->operationContext,
+            WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
+            &error,
+            shell,
+            NULL,
+            NULL,
+            NULL);
+     LogFunctionEnd("WSManConnectShellCommand", MI_RESULT_NOT_SUPPORTED);
 }

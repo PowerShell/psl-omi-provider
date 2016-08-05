@@ -40,7 +40,7 @@ void MI_CALL Command_DeleteInstance( Command_Self* self, MI_Context* context, co
 #define SHELL_LOGGING_LEVEL OMI_DEBUG
 
 
-#define GOTO_ERROR(message, result) { __LOGE(("%s (result=%u)", message, result)); miResult = result; goto error; }
+#define GOTO_ERROR(message, result) { miResult = result; errorMessage=message; __LOGE(("%s (result=%u)", errorMessage, miResult)); goto error; }
 
 static void LogFunctionStart(const char *function)
 {
@@ -155,6 +155,7 @@ MI_EXPORT MI_Uint32 WINAPI WSManCreateSession(
     )
 {
     MI_Result miResult;
+    char *errorMessage = NULL;
     Batch *batch = NULL;
     char *connection = NULL;
     char *httpUrl = NULL;
@@ -306,6 +307,7 @@ MI_EXPORT MI_Uint32 WINAPI WSManSetSessionOption(
     _In_ WSMAN_DATA *data)
 {
     MI_Result miResult;
+    char *errorMessage = NULL;
 
     LogFunctionStart("WSManSetSessionOption");
     switch (option)
@@ -444,22 +446,44 @@ void MI_CALL CreateShellComplete(
     struct WSMAN_SHELL *shell = (struct WSMAN_SHELL *) callbackContext;
     WSMAN_ERROR error = {0};
     LogFunctionStart("CreateShellComplete");
-    memset(&error, 0, sizeof(error));
     error.code = resultCode;
-    shell->asyncCallback.completionFunction(
-            shell->asyncCallback.operationContext,
-            WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
-            &error,
-            shell,
-            NULL,
-            NULL,
-            NULL);
+    if (errorString)
+    {
+        Utf8ToUtf16Le(&shell->batch, errorString, (MI_Char16**) &error.errorDetail);
+    }
+    else if (resultCode != MI_RESULT_OK)
+    {
+        Utf8ToUtf16Le(&shell->batch, Result_ToString(resultCode), (MI_Char16**) &error.errorDetail);
+    }
+    if (resultCode == MI_RESULT_OK)
+    {
+        shell->asyncCallback.completionFunction(
+                shell->asyncCallback.operationContext,
+                0,
+                &error,
+                shell,
+                NULL,
+                NULL,
+                NULL);
+     }
+    else
+    {
+        shell->asyncCallback.completionFunction(
+                shell->asyncCallback.operationContext,
+                WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
+                &error,
+                shell,
+                NULL,
+                NULL,
+                NULL);
+    }
     LogFunctionEnd("CreateShellComplete", resultCode);
 }
 
 MI_Result ExtractStreamSet(WSMAN_STREAM_ID_SET *streamSet, Batch *batch, char **streamSetString)
 {
     MI_Result miResult = MI_RESULT_OK;
+    char *errorMessage = NULL;
     size_t stringLength = 1;
     MI_Uint32 count;
     char *tmpStr;
@@ -484,7 +508,7 @@ MI_Result ExtractStreamSet(WSMAN_STREAM_ID_SET *streamSet, Batch *batch, char **
         size_t iconv_return;
         iconv_t iconvData;
 
-        iconvData = iconv_open("UTF-16LE", "UTF-8");
+        iconvData = iconv_open("UTF-8", "UTF-16LE");
         if (iconvData == (iconv_t)-1)
         {
             GOTO_ERROR("Failed to convert stream", MI_RESULT_FAILED);
@@ -505,13 +529,13 @@ MI_Result ExtractStreamSet(WSMAN_STREAM_ID_SET *streamSet, Batch *batch, char **
             }
 
             /* Append space on end */
-            cursor[0] = ' ';
+            *(cursor-1) = ' ';
         }
         iconv_close(iconvData);
     }
 
     /* Null terminate */
-    cursor[0] = '\0';
+    *(cursor-1) = '\0';
 
     *streamSetString = tmpStr;
 error:
@@ -532,6 +556,7 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
     Batch *batch = NULL;
     MI_Instance *_shellInstance;
     MI_Result miResult;
+    char *errorMessage = NULL;
     struct WSMAN_SHELL *shell = NULL;
     char *tmpStr = NULL;
 
@@ -548,6 +573,11 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
     {
         GOTO_ERROR("Alloc failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
+
+    /* Stash the async callback information for when we get the wsman response and need
+     * to call back into the client
+     */
+    shell->asyncCallback = *async;
 
     miResult = Instance_New(&_shellInstance, &Shell_rtti, batch);
     if (miResult != MI_RESULT_OK)
@@ -592,7 +622,7 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
 
     if (createXml && (createXml->type == WSMAN_DATA_TYPE_TEXT))
     {
-        if (!Utf16LeToUtf8(batch, resourceUri, &tmpStr))
+        if (!Utf16LeToUtf8(batch, createXml->text.buffer, &tmpStr))
         {
             GOTO_ERROR("Alloc failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
         }
@@ -621,6 +651,7 @@ error:
     {
         WSMAN_ERROR error = { 0 };
         error.code = miResult;
+        Utf8ToUtf16Le(batch, errorMessage, (MI_Char16**) &error.errorDetail);
         async->completionFunction(
                 async->operationContext,
                 WSMAN_FLAG_CALLBACK_END_OF_OPERATION,

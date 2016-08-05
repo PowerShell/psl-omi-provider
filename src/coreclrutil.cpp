@@ -8,6 +8,7 @@
 #include <string>
 #include <iostream>
 #include <set>
+#include <cstdlib>
 
 // The name of the CoreCLR native runtime DLL
 #if defined(__APPLE__)
@@ -73,7 +74,7 @@ void AddFilesFromDirectoryToTpaList(const char* directory, std::string& tpaList)
     };
 
     DIR* dir = opendir(directory);
-    if (dir == nullptr)
+    if (dir == NULL)
     {
         return;
     }
@@ -90,7 +91,7 @@ void AddFilesFromDirectoryToTpaList(const char* directory, std::string& tpaList)
         struct dirent* entry;
 
         // For all entries in the directory
-        while ((entry = readdir(dir)) != nullptr)
+        while ((entry = readdir(dir)) != NULL)
         {
             // We are interested in files only
             switch (entry->d_type)
@@ -189,7 +190,7 @@ int startCoreCLR(
 
     // open the shared library
     coreclrLib = dlopen(coreClrDllPath.c_str(), RTLD_NOW|RTLD_LOCAL);
-    if (coreclrLib == nullptr)
+    if (coreclrLib == NULL)
     {
         std::cerr << "dlopen failed to open the CoreCLR library: " << dlerror() << std::endl;
         return -1;
@@ -201,22 +202,22 @@ int startCoreCLR(
     executeAssembly = (ExecuteAssemblyFunction)dlsym(coreclrLib,"coreclr_execute_assembly");
     createDelegate = (CreateDelegateFunction)dlsym(coreclrLib,"coreclr_create_delegate");
 
-    if (initializeCoreCLR == nullptr)
+    if (initializeCoreCLR == NULL)
     {
         std::cerr << "function coreclr_initialize not found in CoreCLR library" << std::endl;
         return -1;
     }
-    if (executeAssembly == nullptr)
+    if (executeAssembly == NULL)
     {
         std::cerr << "function coreclr_execute_assembly not found in CoreCLR library" << std::endl;
         return -1;
     }
-    if (shutdownCoreCLR == nullptr)
+    if (shutdownCoreCLR == NULL)
     {
         std::cerr << "function coreclr_shutdown not found in CoreCLR library" << std::endl;
         return -1;
     }
-    if (createDelegate == nullptr)
+    if (createDelegate == NULL)
     {
         std::cerr << "function coreclr_create_delegate not found in CoreCLR library" << std::endl;
         return -1;

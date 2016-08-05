@@ -16,17 +16,15 @@ set(OMI ../omi/Unix)
 find_package(Threads REQUIRED)
 link_directories(${OMI}/output/lib)
 
-add_library(pshost SHARED coreclrutil.cpp)
-target_compile_options(pshost PRIVATE -std=c++11)
-
 add_library(psrpomiprov SHARED
 	Shell.c
 	Command.c
 	module.c
 	schema.c
 	xpress.c
-	BufferManipulation.c)
-target_link_libraries(psrpomiprov pshost
+	BufferManipulation.c
+        coreclrutil.cpp)
+target_link_libraries(psrpomiprov
 	miapi
 	omi_error
 	wsman

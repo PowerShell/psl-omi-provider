@@ -13,16 +13,16 @@ COPYRIGHT_FILE: 'Copyright (c) Microsoft Corporation'
 HPUX_COPYRIGHT: 'Copyright (c) Microsoft Corporation'
 ROOT_GROUP_NAME: 'root'
 SHLIB_EXT: 'so'
-OMI_HOME: /opt/omi
-CONFIG_SYSCONFDIR=/etc/opt/omi/conf
+OMI_HOME: '/opt/omi'
+CONFIG_SYSCONFDIR: '/etc/opt/omi/conf'
 
 %Files
 ${{OMI_HOME}}/lib/libpsrpomiprov.${{SHLIB_EXT}};  ../../../src/libpsrpomiprov.${{SHLIB_EXT}};           755; root; ${{ROOT_GROUP_NAME}}
 
 %Directories
 /opt;                                      755; root; ${{ROOT_GROUP_NAME}}; sysdir
-/opt/omi                                   755; root; ${{ROOT_GROUP_NAME}}; sysdir
-/opt/omi/lib;                         755; root; ${{ROOT_GROUP_NAME}}; sysdir
+/opt/omi;                                  755; root; ${{ROOT_GROUP_NAME}}; sysdir
+/opt/omi/lib;                              755; root; ${{ROOT_GROUP_NAME}}; sysdir
 /etc/opt;                                  755; root; ${{ROOT_GROUP_NAME}}; sysdir
 /etc/opt/omi;                              755; root; ${{ROOT_GROUP_NAME}}; sysdir
 /etc/opt/omi/conf;                         755; root; ${{ROOT_GROUP_NAME}}; sysdir

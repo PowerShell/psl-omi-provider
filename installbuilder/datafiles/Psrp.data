@@ -13,16 +13,16 @@ COPYRIGHT_FILE: 'Copyright (c) Microsoft Corporation'
 HPUX_COPYRIGHT: 'Copyright (c) Microsoft Corporation'
 ROOT_GROUP_NAME: 'root'
 SHLIB_EXT: 'so'
-OMI_HOME: /opt/omi
-CONFIG_SYSCONFDIR=/etc/opt/omi/conf
+OMI_HOME: '/opt/omi'
+CONFIG_SYSCONFDIR: '/etc/opt/omi/conf'
 
 %Files
 ${{OMI_HOME}}/lib/libpsrpomiprov.${{SHLIB_EXT}};  ../../../src/libpsrpomiprov.${{SHLIB_EXT}};           755; root; ${{ROOT_GROUP_NAME}}
 
 %Directories
 /opt;                                      755; root; ${{ROOT_GROUP_NAME}}; sysdir
-/opt/omi                                   755; root; ${{ROOT_GROUP_NAME}}; sysdir
-/opt/omi/lib;                         755; root; ${{ROOT_GROUP_NAME}}; sysdir
+/opt/omi;                                  755; root; ${{ROOT_GROUP_NAME}}; sysdir
+/opt/omi/lib;                              755; root; ${{ROOT_GROUP_NAME}}; sysdir
 /etc/opt;                                  755; root; ${{ROOT_GROUP_NAME}}; sysdir
 /etc/opt/omi;                              755; root; ${{ROOT_GROUP_NAME}}; sysdir
 /etc/opt/omi/conf;                         755; root; ${{ROOT_GROUP_NAME}}; sysdir
@@ -44,10 +44,10 @@ ${{SHELL_HEADER}}
 ${{SHELL_HEADER}}
 
 %Postinstall_10
-cat ${{CONFIG_SYSCONFDIR}}/omiserver.conf | ${{OMI_HOME}}/omiconfigeditor httpport add 5985 | ${{OMI_HOME}}/bin/omiconfigeditor https add 5986 > ${{CONFIG_SYSCONFDIR}}/omiserver.conf_temp
+cat ${{CONFIG_SYSCONFDIR}}/omiserver.conf | ${{OMI_HOME}}/bin/omiconfigeditor httpsport --add 5986 > ${{CONFIG_SYSCONFDIR}}/omiserver.conf_temp
 mv ${{CONFIG_SYSCONFDIR}}/omiserver.conf_temp ${{CONFIG_SYSCONFDIR}}/omiserver.conf
 ln -sf ${{OMI_HOME}}/lib/libpsrpomiprov.${{SHLIB_EXT}} /opt/microsoft/powershell/libpsrpomiprov.${{SHLIB_EXT}}
-${{OMI_HOME}}/bin/omireg -n interop ${{OMI_HOME}}/lib/libpsrpomiprov.${{SHLIB_EXT}}        
+${{OMI_HOME}}/bin/omireg -n interop ${{OMI_HOME}}/lib/libpsrpomiprov.${{SHLIB_EXT}} --hosting @requestor-shell@      
 ${{OMI_HOME}}/bin/service_control restart
 
 %Preuninstall_100

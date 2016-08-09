@@ -2,9 +2,9 @@ PowerShell Remoting Protocol [![Build Status](https://travis-ci.com/PowerShell/p
 ============================
 
 PSRP communication is tunneled through the [Open Management
-Infrastructure (OMI)][omi] using this OMI provider.
+Infrastructure (OMI)][OMI] using this OMI provider.
 
-[omi]: https://github.com/Micrsoft/omi
+[OMI]: https://github.com/Micrsoft/omi
 
 Get PSRP
 ========
@@ -22,8 +22,7 @@ You can download and install PSRP from following links:
 Package Requirement
 -------------------
 
-Prior to installing PSRP, make sure that OMI package is installed.
-Prior to running PSRP, make sure that PowerShell is installed.
+Prior to installing PSRP, make sure that [OMI][] package and [PowerShell][] are installed.
 
 Development Environment
 =======================
@@ -39,7 +38,7 @@ sudo apt-get install libpam0g-dev libssl-dev libcurl4-openssl-dev
 
 Also install [PowerShell][] from the latest release per their instructions.
 
-[powershell]: https://github.com/PowerShell/PowerShell
+[PowerShell]: https://github.com/PowerShell/PowerShell
 
 Git Setup
 ---------
@@ -90,8 +89,8 @@ winrm set winrm/config/Client @{TrustedHosts="*"}
 
 > You can also set the `TrustedHosts` to include the target's IP address.
 
-Then on Linux, launch `omiserver` (after building with the
-instructions above, or install OMI from its installation package):
+Then on Linux, launch `omiserver` (if you installed OMI from its installation package, omiserver
+is probably already running):
 
 ```sh
 ./run.sh

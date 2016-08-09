@@ -4,7 +4,7 @@ PowerShell Remoting Protocol [![Build Status](https://travis-ci.com/PowerShell/p
 PSRP communication is tunneled through the [Open Management
 Infrastructure (OMI)][OMI] using this OMI provider.
 
-[OMI]: https://github.com/Micrsoft/omi
+[OMI]: https://github.com/Microsoft/omi
 
 Get PSRP
 ========

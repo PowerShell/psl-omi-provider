@@ -4,7 +4,7 @@ PowerShell Remoting Protocol [![Build Status](https://travis-ci.com/PowerShell/p
 PSRP communication is tunneled through the [Open Management
 Infrastructure (OMI)][omi] using this OMI provider.
 
-[omi]: https://github.com/PowerShell/omi
+[omi]: https://github.com/Micrsoft/omi
 
 Get PSRP
 ========
@@ -25,8 +25,8 @@ Package Requirement
 Prior to installing PSRP, make sure that OMI package is installed.
 Prior to running PSRP, make sure that PowerShell is installed.
 
-Environment
-===========
+Development Environment
+=======================
 
 Toolchain Setup
 ---------------
@@ -51,7 +51,7 @@ git clone --recursive https://github.com/PowerShell/psl-omi-provider.git
 ```
 
 Building
-========
+--------
 
 Run `./build.sh` to build OMI and the provider.
 
@@ -78,7 +78,7 @@ CLR, but there are plans to refactor .NET's packaged host as a shared
 library.
 
 Running
--------
+=======
 
 Some initial setup on Windows is required. Open an administrative command
 prompt and execute the following:
@@ -91,7 +91,7 @@ winrm set winrm/config/Client @{TrustedHosts="*"}
 > You can also set the `TrustedHosts` to include the target's IP address.
 
 Then on Linux, launch `omiserver` (after building with the
-instructions above):
+instructions above, or install OMI from its installation package):
 
 ```sh
 ./run.sh
@@ -101,7 +101,8 @@ Now in a PowerShell prompt on Windows (opened after setting the WinRM client
 configurations):
 
 ```powershell
-Enter-PSSession -ComputerName <IP address of Linux machine> -Credential $cred -Authentication basic
+$o = New-PSSessionOption -SkipCACheck -SkipRevocationCheck -SkipCNCheck
+Enter-PSSession -ComputerName <IP address of Linux machine> -Credential $cred -Authentication basic -UseSSL -SessionOption $o
 ```
 
 The IP address of the Linux machine can be obtained with:

@@ -6,10 +6,12 @@ Infrastructure (OMI)][OMI] using this OMI provider.
 
 [OMI]: https://github.com/Microsoft/omi
 
-Get PSRP
-========
+Two versions of PSRP are available - server and client.  The client PSRP package is under development, and will be distributed together with OMI. The server PSRP package is available now.
 
-You can download and install PSRP from following links:
+Get PSRP-Server
+===============
+
+You can download and install PSRP-Server from following links:
 
 | Platform     | Releases           | Link                             |
 |--------------|--------------------|----------------------------------|
@@ -22,7 +24,7 @@ You can download and install PSRP from following links:
 Package Requirement
 -------------------
 
-Prior to installing PSRP, make sure that [OMI][] package and [PowerShell][] are installed.
+Prior to installing PSRP, make sure that [OMI][] and [PowerShell][] are installed.
 
 Development Environment
 =======================
@@ -33,7 +35,7 @@ Toolchain Setup
 PSRP requires the following packages:
 
 ```sh
-sudo apt-get install libpam0g-dev libssl-dev libcurl4-openssl-dev
+sudo apt-get install libpam0g-dev libssl-dev
 ```
 
 Also install [PowerShell][] from the latest release per their instructions.
@@ -71,10 +73,6 @@ cmake -DCMAKE_BUILD_TYPE=Debug .
 make -j
 popd
 ```
-
-The provider maintains its own native host library to initialize the
-CLR, but there are plans to refactor .NET's packaged host as a shared
-library.
 
 Running
 =======

@@ -1,6 +1,13 @@
-/*++
+/*
+**==============================================================================
+**
+** Copyright (c) Microsoft Corporation. All rights reserved. See file LICENSE
+** for license information.
+**
+**==============================================================================
+*/
 
-Copyright (c) 2010  Microsoft Corporation
+/*++
 
 Module Name:
 

@@ -1,6 +1,7 @@
 #include <iconv.h>
 #include <stdlib.h>
 #include <pal/strings.h>
+#include <pal/atomic.h>
 #include <base/result.h>
 #include <base/logbase.h>
 #include <base/log.h>
@@ -58,6 +59,7 @@ struct WSMAN_API
 
 struct WSMAN_SESSION
 {
+    WSMAN_API_HANDLE api;
     Batch *batch;
     MI_Session session;
     MI_DestinationOptions destinationOptions;
@@ -65,6 +67,7 @@ struct WSMAN_SESSION
 
 struct WSMAN_SHELL
 {
+    WSMAN_SESSION_HANDLE session;
     Batch batch;
     WSMAN_SHELL_ASYNC asyncCallback;
     Shell *shellInstance;
@@ -73,8 +76,8 @@ struct WSMAN_SHELL
 
 struct WSMAN_COMMAND
 {
-    Batch batch;
     WSMAN_SHELL_HANDLE shell;
+    Batch batch;
 };
 
 MI_EXPORT MI_Uint32 WINAPI WSManInitialize(
@@ -138,11 +141,49 @@ MI_EXPORT MI_Uint32 WINAPI WSManGetErrorMessage(
     _Out_ MI_Uint32* messageLengthUsed  // effective message length, including NULL terminator
     )
 {
-    LogFunctionStart("WSManGetErrorMessage");
-    LogFunctionEnd("WSManGetErrorMessage", MI_RESULT_NOT_SUPPORTED);
-    //const char *resultString = Result_ToString(errorCode);
-    //Need to convert it to utf16
-    return MI_RESULT_NOT_SUPPORTED;
+    const char *resultString = Result_ToString(errorCode);
+    size_t resultStringLenth = Tcslen(resultString)+1; /* Includes null terminator */
+    MI_Result miResult = MI_RESULT_OK;
+    size_t tmpMessageLen;
+    char *errorMessage = NULL;
+    size_t iconv_return;
+    iconv_t iconvData;
+
+    //MI_Char16 *convertedString;
+    //Utf8ToUtf16Le(batch, resultString, &convertedString);
+    __LOGD(("%s: START, errorCode=%u, messageLength=%u", "WSManGetErrorMessage", errorCode, messageLength));
+    if ((messageLength == 0) || (message == NULL))
+    {
+        *messageLengthUsed = (MI_Uint32) resultStringLenth;
+        return 122; /* Windows error code ERROR_INSUFFICIENT_BUFFER */
+    }
+
+    iconvData = iconv_open("UTF-16LE", "UTF-8" );
+    if (iconvData == (iconv_t)-1)
+    {
+        GOTO_ERROR("Failed to convert stream", MI_RESULT_FAILED);
+    }
+
+
+    tmpMessageLen = messageLength*2; /* Convert to bytes */
+
+    iconv_return = iconv(iconvData,
+            (char**)&resultString, &resultStringLenth,
+            (char**)&message, &tmpMessageLen);
+    if (iconv_return == (size_t) -1)
+    {
+        iconv_close(iconvData);
+        GOTO_ERROR("Failed to convert stream", MI_RESULT_FAILED);
+    }
+
+    iconv_close(iconvData);
+
+
+    *messageLengthUsed = messageLength - (tmpMessageLen / 2);
+
+error:
+    LogFunctionEnd("WSManGetErrorMessage", miResult);
+    return miResult;
 }
 
 MI_EXPORT MI_Uint32 WINAPI WSManCreateSession(
@@ -272,6 +313,8 @@ MI_EXPORT MI_Uint32 WINAPI WSManCreateSession(
         GOTO_ERROR("MI_Application_NewSession failed", miResult);
     }
 
+    (*session)->api = apiHandle;
+
     LogFunctionEnd("WSManCreateSession", miResult);
     return miResult;
 
@@ -326,13 +369,41 @@ MI_EXPORT MI_Uint32 WINAPI WSManSetSessionOption(
             break;
 
         case WSMAN_OPTION_UI_LANGUAGE:
+        {
             /* String, convert utf16->utf8, locale */
+            MI_Char *tmpStr;
+            if ((data->type != WSMAN_DATA_TYPE_TEXT) ||
+                    data->text.buffer == NULL)
+            {
+                GOTO_ERROR("UI language option is wrong type or NULL", MI_RESULT_INVALID_PARAMETER);
+            }
+            if (!Utf16LeToUtf8(session->batch, data->text.buffer, &tmpStr))
+                GOTO_ERROR("Failed to convert UI language", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+            if (MI_DestinationOptions_SetUILocale(&session->destinationOptions, tmpStr) != MI_RESULT_OK)
+            {
+                GOTO_ERROR("Failed to set UI language option", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+            }
             miResult = MI_RESULT_OK;
             break;
+        }
         case WSMAN_OPTION_LOCALE:
-            /* String, convert utf16->utf8, datalocale */
+        {
+            /* String, convert utf16->utf8, locale */
+            MI_Char *tmpStr;
+            if ((data->type != WSMAN_DATA_TYPE_TEXT) ||
+                    data->text.buffer == NULL)
+            {
+                GOTO_ERROR("Data locale option is wrong type or NULL", MI_RESULT_INVALID_PARAMETER);
+            }
+            if (!Utf16LeToUtf8(session->batch, data->text.buffer, &tmpStr))
+                GOTO_ERROR("Failed to convert Data locale", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+            if (MI_DestinationOptions_SetDataLocale(&session->destinationOptions, tmpStr) != MI_RESULT_OK)
+            {
+                GOTO_ERROR("Failed to set Data locale option", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+            }
             miResult = MI_RESULT_OK;
             break;
+        }
         case WSMAN_OPTION_DEFAULT_OPERATION_TIMEOUTMS:
             /* dword, operation timeout when not the others */
             miResult = MI_RESULT_OK;
@@ -445,7 +516,7 @@ void MI_CALL CreateShellComplete(
 {
     struct WSMAN_SHELL *shell = (struct WSMAN_SHELL *) callbackContext;
     WSMAN_ERROR error = {0};
-    LogFunctionStart("CreateShellComplete");
+    __LOGD(("%s: START, errorCode=%u", "CreateShellComplete", resultCode));
     error.code = resultCode;
     if (errorString)
     {
@@ -542,6 +613,35 @@ error:
     return miResult;
 }
 
+MI_Result ExtractOptions(_In_opt_ WSMAN_OPTION_SET *wsmanOptions, Batch *batch, MI_OperationOptions *miOptions)
+{
+    MI_Uint32 i;
+    MI_Result miResult = MI_RESULT_OK;
+    char *errorMessage = NULL;
+
+
+    if (wsmanOptions == NULL)
+        return MI_RESULT_OK;
+
+    for (i = 0; i != wsmanOptions->optionsCount; i++)
+    {
+        char *name;
+        char *value;
+
+        if (!Utf16LeToUtf8(batch, wsmanOptions->options[i].name, &name))
+            GOTO_ERROR("Failed to convert option name", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+
+        if (!Utf16LeToUtf8(batch, wsmanOptions->options[i].value, &value))
+            GOTO_ERROR("Failed to convert option value", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        __LOGD(("%s: %s=%s", "WSManCreateShellEx", name, value));
+        miResult = MI_OperationOptions_SetString(miOptions, name, value, 0);
+        if (miResult != MI_RESULT_OK)
+            GOTO_ERROR("Failed to set shell option", miResult);
+    }
+error:
+    return miResult;
+}
+
 MI_EXPORT void WINAPI WSManCreateShellEx(
     _Inout_ WSMAN_SESSION_HANDLE session,
     MI_Uint32 flags,
@@ -559,6 +659,7 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
     char *errorMessage = NULL;
     struct WSMAN_SHELL *shell = NULL;
     char *tmpStr = NULL;
+    MI_OperationOptions operationOptions = MI_OPERATIONOPTIONS_NULL;
 
     LogFunctionStart("WSManCreateShellEx");
 
@@ -574,6 +675,10 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
         GOTO_ERROR("Alloc failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
+    shell->session = session;
+
+    MI_Application_NewOperationOptions(&session->api->application, MI_TRUE, &operationOptions);
+
     /* Stash the async callback information for when we get the wsman response and need
      * to call back into the client
      */
@@ -586,6 +691,7 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
     }
     shell->shellInstance = (Shell*) _shellInstance;
 
+
     if (!Utf16LeToUtf8(batch, shellId, &tmpStr))
     {
         GOTO_ERROR("Alloc failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
@@ -597,6 +703,7 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
         GOTO_ERROR("Alloc failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
     Shell_SetPtr_ResourceUri(shell->shellInstance, tmpStr);
+    MI_OperationOptions_SetResourceUri(&operationOptions, tmpStr);
 
     if (startupInfo)
     {
@@ -618,7 +725,20 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
             }
             Shell_SetPtr_OutputStreams(shell->shellInstance, tmpStr);
         }
-     }
+
+        if (startupInfo->name)
+        {
+            if (!Utf16LeToUtf8(batch, startupInfo->name, &tmpStr))
+            {
+                GOTO_ERROR("Alloc failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+            }
+            Shell_SetPtr_Name(shell->shellInstance, tmpStr);
+        }
+    }
+
+    miResult = ExtractOptions(options, batch, &operationOptions);
+    if (miResult != MI_RESULT_OK)
+        GOTO_ERROR("Failed to convert wsman options", miResult);
 
     if (createXml && (createXml->type == WSMAN_DATA_TYPE_TEXT))
     {
@@ -636,12 +756,14 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
 
         MI_Session_CreateInstance(&session->session,
                 0, /* flags */
-                NULL, /*options*/
+                &operationOptions, /*options*/
                 "root/interop",
                 &shell->shellInstance->__instance,
                 &callbacks, &shell->miOperation);
     }
 
+
+    MI_OperationOptions_Delete(&operationOptions);
 
     *_shell = shell;
     LogFunctionEnd("WSManCreateShellEx", miResult);
@@ -665,6 +787,11 @@ error:
     if (batch)
     {
         Batch_Delete(batch);
+    }
+
+    if (operationOptions.ft)
+    {
+        MI_OperationOptions_Delete(&operationOptions);
     }
 
     *_shell = NULL;

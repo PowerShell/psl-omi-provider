@@ -187,6 +187,34 @@ int startCoreCLR(
     if (clrAbsolutePath.empty())
     {
 #if defined(__APPLE__)
+        clrAbsolutePath = std::string("/usr/local/powershell");
+#else
+        clrAbsolutePath = std::string("/usr/bin/powershell");
+#endif
+        char realPath[PATH_MAX + 1];
+        char *ptr = realpath(clrAbsolutePath.c_str(), realPath);
+        if (ptr == NULL)
+        {
+            clrAbsolutePath = std::string("");
+        }
+        else
+        {
+            std::string followedPath(realPath);
+            size_t index = followedPath.find_last_of("/\\");
+            if (index == std::string::npos)
+            {
+                clrAbsolutePath = std::string("");
+            }
+            else
+            {
+                clrAbsolutePath = followedPath.substr(0, index);
+            }
+        }
+    }
+
+    if (clrAbsolutePath.empty())
+    {
+#if defined(__APPLE__)
         clrAbsolutePath = std::string("/usr/local/microsoft/powershell");
 #else
         clrAbsolutePath = std::string("/opt/microsoft/powershell");

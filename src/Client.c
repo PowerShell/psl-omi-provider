@@ -61,7 +61,7 @@ struct WSMAN_SESSION
 {
     WSMAN_API_HANDLE api;
     Batch *batch;
-    MI_Session session;
+    char *hostname;
     MI_DestinationOptions destinationOptions;
 };
 
@@ -71,6 +71,7 @@ struct WSMAN_SHELL
     Batch batch;
     WSMAN_SHELL_ASYNC asyncCallback;
     Shell *shellInstance;
+    MI_Session miSession;
     MI_Operation miOperation;
 };
 
@@ -250,6 +251,7 @@ MI_EXPORT MI_Uint32 WINAPI WSManCreateSession(
     {
         GOTO_ERROR("Failed to convert connection name", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
+    (*session)->hostname = connection;
 
     /* Full format may be:
      *      <transport>://<computerName>:<port><httpUrl>
@@ -306,13 +308,6 @@ MI_EXPORT MI_Uint32 WINAPI WSManCreateSession(
         GOTO_ERROR("Failed to add http prefix to destination options", miResult);
     }
 
-    /* TODO: CANNOT DO THIS AS SSL OPTIONS ARE ADDED AFTER SESSION IS CREATED */
-    miResult = MI_Application_NewSession(&apiHandle->application,MI_T("MI_REMOTE_WSMAN" ), connection, &(*session)->destinationOptions, NULL, NULL, &(*session)->session);
-    if (miResult != MI_RESULT_OK)
-    {
-        GOTO_ERROR("MI_Application_NewSession failed", miResult);
-    }
-
     (*session)->api = apiHandle;
 
     LogFunctionEnd("WSManCreateSession", miResult);
@@ -332,7 +327,7 @@ MI_EXPORT MI_Uint32 WINAPI WSManCloseSession(
     _Inout_opt_ WSMAN_SESSION_HANDLE session,
     MI_Uint32 flags)
 {
-    MI_Result miResult = MI_Session_Close(&session->session, NULL, NULL);
+    MI_Result miResult = MI_RESULT_OK;
 
     LogFunctionStart("WSManCloseSession");
     if (session->destinationOptions.ft)
@@ -526,6 +521,9 @@ void MI_CALL CreateShellComplete(
     {
         Utf8ToUtf16Le(&shell->batch, Result_ToString(resultCode), (MI_Char16**) &error.errorDetail);
     }
+
+    MI_Operation_Close(&shell->miOperation);
+
     if (resultCode == MI_RESULT_OK)
     {
         shell->asyncCallback.completionFunction(
@@ -633,7 +631,7 @@ MI_Result ExtractOptions(_In_opt_ WSMAN_OPTION_SET *wsmanOptions, Batch *batch, 
 
         if (!Utf16LeToUtf8(batch, wsmanOptions->options[i].value, &value))
             GOTO_ERROR("Failed to convert option value", MI_RESULT_SERVER_LIMITS_EXCEEDED);
-        __LOGD(("%s: %s=%s", "WSManCreateShellEx", name, value));
+        __LOGD(("%s: %s=%s", "ExtractOptions", name, value));
         miResult = MI_OperationOptions_SetString(miOptions, name, value, 0);
         if (miResult != MI_RESULT_OK)
             GOTO_ERROR("Failed to set shell option", miResult);
@@ -754,7 +752,13 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
         callbacks.instanceResult = CreateShellComplete;
         callbacks.callbackContext = shell;
 
-        MI_Session_CreateInstance(&session->session,
+        miResult = MI_Application_NewSession(&session->api->application, NULL, session->hostname, &session->destinationOptions, NULL, NULL, &shell->miSession);
+        if (miResult != MI_RESULT_OK)
+        {
+            GOTO_ERROR("MI_Application_NewSession failed", miResult);
+        }
+
+        MI_Session_CreateInstance(&shell->miSession,
                 0, /* flags */
                 &operationOptions, /*options*/
                 "root/interop",
@@ -930,19 +934,20 @@ MI_EXPORT void WINAPI WSManCloseShell(
 {
     WSMAN_ERROR error = {0};
 
-    LogFunctionStart("WSManCloseShell");
-    memset(&error, 0, sizeof(error));
+    MI_Session_Close(&shellHandle->miSession, NULL, NULL);
 
-    Batch_Delete(&shellHandle->batch);
+    LogFunctionStart("WSManCloseShell");
+
     async->completionFunction(
             shellHandle->asyncCallback.operationContext,
-            WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
+            0,
             &error,
             shellHandle,
             NULL,
             NULL,
             NULL);
-    LogFunctionEnd("WSManCloseShell", MI_RESULT_NOT_SUPPORTED);
+    Batch_Delete(&shellHandle->batch);
+    LogFunctionEnd("WSManCloseShell", MI_RESULT_OK);
 }
 
 MI_EXPORT void WINAPI WSManDisconnectShell(

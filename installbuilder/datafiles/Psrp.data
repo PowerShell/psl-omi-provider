@@ -46,13 +46,11 @@ ${{SHELL_HEADER}}
 %Postinstall_10
 cat ${{CONFIG_SYSCONFDIR}}/omiserver.conf | ${{OMI_HOME}}/bin/omiconfigeditor httpsport --add 5986 > ${{CONFIG_SYSCONFDIR}}/omiserver.conf_temp
 mv ${{CONFIG_SYSCONFDIR}}/omiserver.conf_temp ${{CONFIG_SYSCONFDIR}}/omiserver.conf
-ln -sf ${{OMI_HOME}}/lib/libpsrpomiprov.${{SHLIB_EXT}} /opt/microsoft/powershell/libpsrpomiprov.${{SHLIB_EXT}}
 ${{OMI_HOME}}/bin/omireg -n interop ${{OMI_HOME}}/lib/libpsrpomiprov.${{SHLIB_EXT}} --hosting @requestor-shell@      
 ${{OMI_HOME}}/bin/service_control restart
 
 %Preuninstall_100
 ${{OMI_HOME}}/bin/service_control stop
-rm -f /opt/microsoft/powershell/libpsrpomiprov.${{SHLIB_EXT}}
 rm -f ${{CONFIG_SYSCONFDIR}}/omiregister/interop/psrpomiprov.reg
 rm -f ${{OMI_HOME}}/lib/libpsrpomiprov.${{SHLIB_EXT}}
 

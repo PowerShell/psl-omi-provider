@@ -187,7 +187,7 @@ int startCoreCLR(
     if (clrAbsolutePath.empty())
     {
 #if defined(__APPLE__)
-        clrAbsolutePath = std::string("/usr/local/powershell");
+        clrAbsolutePath = std::string("/usr/local/bin/powershell");
 #else
         clrAbsolutePath = std::string("/usr/bin/powershell");
 #endif

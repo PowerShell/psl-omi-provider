@@ -15,11 +15,11 @@ You can download and install PSRP-Server from following links:
 
 | Platform     | Releases           | Link                             |
 |--------------|--------------------|----------------------------------|
-| Linux        | Debian             | [psrp-0.1.0-0.universal.x64.deb] |
-| Linux        | RPM                | [psrp-0.1.0-0.universal.x64.rpm] |
+| Linux        | Debian             | [psrp-1.0.0-0.universal.x64.deb] |
+| Linux        | RPM                | [psrp-1.0.0-0.universal.x64.rpm] |
 
-[psrp-0.1.0-0.universal.x64.deb]: https://github.com/PowerShell/psl-omi-provider/releases/download/v0.1.0.alpha3/psrp-0.1.0-2.universal.x64.deb
-[psrp-0.1.0-0.universal.x64.rpm]: https://github.com/PowerShell/psl-omi-provider/releases/download/v0.1.0.alpha3/psrp-0.1.0-2.universal.x64.rpm
+[psrp-1.0.0-0.universal.x64.deb]: https://github.com/PowerShell/psl-omi-provider/releases/download/v.1.0/psrp-1.0.0-0.universal.x64.deb
+[psrp-1.0.0-0.universal.x64.rpm]: https://github.com/PowerShell/psl-omi-provider/releases/download/v.1.0/psrp-1.0.0-0.universal.x64.rpm
 
 Package Requirement
 -------------------

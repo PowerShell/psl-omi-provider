@@ -81,7 +81,6 @@ Some initial setup on Windows is required. Open an administrative command
 prompt and execute the following:
 
 ```cmd
-winrm set winrm/config/Client @{AllowUnencrypted="true"}
 winrm set winrm/config/Client @{TrustedHosts="*"}
 ```
 

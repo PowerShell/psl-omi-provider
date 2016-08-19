@@ -1,4 +1,4 @@
-PowerShell Remoting Protocol [![Build Status](https://travis-ci.com/PowerShell/psl-omi-provider.svg?token=31YifM4jfyVpBmEGitCm&branch=master)](https://travis-ci.com/PowerShell/psl-omi-provider)
+PowerShell Remoting Protocol [![Build Status](https://travis-ci.org/PowerShell/psl-omi-provider.svg?branch=master)](https://travis-ci.org/PowerShell/psl-omi-provider)
 ============================
 
 PSRP communication is tunneled through the [Open Management

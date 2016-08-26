@@ -1,3 +1,12 @@
+/*
+**==============================================================================
+**
+** Copyright (c) Microsoft Corporation. All rights reserved. See file LICENSE
+** for license information.
+**
+**==============================================================================
+*/
+
 #include <iconv.h>
 #include <stdlib.h>
 #include <pal/strings.h>
@@ -10,6 +19,7 @@
 #include "BufferManipulation.h"
 #include "Shell.h"
 #include "Command.h"
+#include "DesiredStream.h"
 
 /* Disable the provider APIs so we can use the provider RTTI */
 void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule, MI_Context* context) {}
@@ -68,17 +78,30 @@ struct WSMAN_SESSION
 struct WSMAN_SHELL
 {
     WSMAN_SESSION_HANDLE session;
-    Batch batch;
+    Batch *batch;
     WSMAN_SHELL_ASYNC asyncCallback;
     Shell *shellInstance;
     MI_Session miSession;
-    MI_Operation miOperation;
+    MI_Operation miCreateShellOperation;
 };
 
 struct WSMAN_COMMAND
 {
     WSMAN_SHELL_HANDLE shell;
-    Batch batch;
+    Batch *batch;
+    WSMAN_SHELL_ASYNC asyncCallback;
+};
+
+struct WSMAN_OPERATION
+{
+    WSMAN_SHELL_HANDLE shell;
+    WSMAN_COMMAND_HANDLE command;
+    Batch *batch;
+    WSMAN_SHELL_ASYNC asyncCallback;
+    MI_OperationCallbacks callbacks;
+    MI_Operation miOperation;
+    MI_OperationOptions miOptions;
+    MI_Instance *receiveProperties;
 };
 
 MI_EXPORT MI_Uint32 WINAPI WSManInitialize(
@@ -511,22 +534,52 @@ void MI_CALL CreateShellComplete(
 {
     struct WSMAN_SHELL *shell = (struct WSMAN_SHELL *) callbackContext;
     WSMAN_ERROR error = {0};
+
     __LOGD(("%s: START, errorCode=%u", "CreateShellComplete", resultCode));
+
+    /* Copy off the resource URI that all future shell operations should use */
+    if ((resultCode == MI_RESULT_OK) && instance)
+    {
+        MI_Value value;
+        MI_Type type;
+
+        if ((__MI_Instance_GetElement(instance, "ResourceUri", &value, &type, NULL, NULL) == MI_RESULT_OK) &&
+                (type == MI_STRING) &&
+                (Shell_Set_ResourceUri(shell->shellInstance, value.string) == MI_RESULT_OK))
+        {
+            __LOGD(("Create shell returned resource URI = %s", value.string));
+        }
+        else
+        {
+            resultCode = MI_RESULT_FAILED;
+        }
+        if ((__MI_Instance_GetElement(instance, "ShellId", &value, &type, NULL, NULL) == MI_RESULT_OK) &&
+                (type == MI_STRING) &&
+                (Shell_Set_ShellId(shell->shellInstance, value.string) == MI_RESULT_OK))
+        {
+            __LOGD(("Create shell returned Shell ID = %s", value.string));
+        }
+        else
+        {
+            resultCode = MI_RESULT_FAILED;
+        }
+    }
+
     error.code = resultCode;
     if (errorString)
     {
-        Utf8ToUtf16Le(&shell->batch, errorString, (MI_Char16**) &error.errorDetail);
+        Utf8ToUtf16Le(shell->batch, errorString, (MI_Char16**) &error.errorDetail);
     }
     else if (resultCode != MI_RESULT_OK)
     {
-        Utf8ToUtf16Le(&shell->batch, Result_ToString(resultCode), (MI_Char16**) &error.errorDetail);
+        Utf8ToUtf16Le(shell->batch, Result_ToString(resultCode), (MI_Char16**) &error.errorDetail);
     }
 
-    MI_Operation_Close(&shell->miOperation);
+    MI_Operation_Close(&shell->miCreateShellOperation);
 
     if (resultCode == MI_RESULT_OK)
     {
-        shell->asyncCallback.completionFunction(
+       shell->asyncCallback.completionFunction(
                 shell->asyncCallback.operationContext,
                 0,
                 &error,
@@ -549,7 +602,7 @@ void MI_CALL CreateShellComplete(
     LogFunctionEnd("CreateShellComplete", resultCode);
 }
 
-MI_Result ExtractStreamSet(WSMAN_STREAM_ID_SET *streamSet, Batch *batch, char **streamSetString)
+static MI_Result ExtractStreamSet(WSMAN_STREAM_ID_SET *streamSet, Batch *batch, char **streamSetString)
 {
     MI_Result miResult = MI_RESULT_OK;
     char *errorMessage = NULL;
@@ -673,9 +726,14 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
         GOTO_ERROR("Alloc failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
+    shell->batch = batch;
     shell->session = session;
 
-    MI_Application_NewOperationOptions(&session->api->application, MI_TRUE, &operationOptions);
+    miResult = MI_Application_NewOperationOptions(&session->api->application, MI_TRUE, &operationOptions);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to create operation options", miResult);
+    }
 
     /* Stash the async callback information for when we get the wsman response and need
      * to call back into the client
@@ -690,18 +748,35 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
     shell->shellInstance = (Shell*) _shellInstance;
 
 
+    if (shellId)
+    {
     if (!Utf16LeToUtf8(batch, shellId, &tmpStr))
     {
         GOTO_ERROR("Alloc failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
-    Shell_SetPtr_ShellId(shell->shellInstance, tmpStr);
-
-    if (!Utf16LeToUtf8(batch, resourceUri, &tmpStr))
-    {
-        GOTO_ERROR("Alloc failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        if (Shell_Set_ShellId(shell->shellInstance, tmpStr) != MI_RESULT_OK)
+        {
+            GOTO_ERROR("Alloc failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        }
+        __LOGD(("ShellID = %s", tmpStr));
     }
-    Shell_SetPtr_ResourceUri(shell->shellInstance, tmpStr);
-    MI_OperationOptions_SetResourceUri(&operationOptions, tmpStr);
+
+    if (resourceUri)
+    {
+        if (!Utf16LeToUtf8(batch, resourceUri, &tmpStr))
+        {
+            GOTO_ERROR("Alloc failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        }
+        if (Shell_Set_ResourceUri(shell->shellInstance, tmpStr) != MI_RESULT_OK)
+        {
+            GOTO_ERROR("Alloc failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        }
+        if (MI_OperationOptions_SetResourceUri(&operationOptions, tmpStr) != MI_RESULT_OK)
+        {
+            GOTO_ERROR("Failed to set resource URI in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        }
+        __LOGD(("Resource URI = %s", tmpStr));
+    }
 
     if (startupInfo)
     {
@@ -712,7 +787,8 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
             {
                 GOTO_ERROR("Extract input stream failed", miResult);
             }
-            Shell_SetPtr_InputStreams(shell->shellInstance, tmpStr);
+            Shell_Set_InputStreams(shell->shellInstance, tmpStr);
+            __LOGD(("Inbound streams = %s", tmpStr));
         }
         if (startupInfo->outputStreamSet && startupInfo->outputStreamSet->streamIDsCount)
         {
@@ -721,7 +797,11 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
             {
                 GOTO_ERROR("Extract output stream failed", miResult);
             }
-            Shell_SetPtr_OutputStreams(shell->shellInstance, tmpStr);
+            if (Shell_Set_OutputStreams(shell->shellInstance, tmpStr) != MI_RESULT_OK)
+            {
+                GOTO_ERROR("Alloc failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+            }
+            __LOGD(("Output streams = %s", tmpStr));
         }
 
         if (startupInfo->name)
@@ -730,8 +810,12 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
             {
                 GOTO_ERROR("Alloc failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
             }
-            Shell_SetPtr_Name(shell->shellInstance, tmpStr);
-        }
+            if (Shell_Set_Name(shell->shellInstance, tmpStr) != MI_RESULT_OK)
+            {
+                GOTO_ERROR("Alloc failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+            }
+            __LOGD(("Session name = %s", tmpStr));
+         }
     }
 
     miResult = ExtractOptions(options, batch, &operationOptions);
@@ -744,7 +828,11 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
         {
             GOTO_ERROR("Alloc failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
         }
-        Shell_SetPtr_CreationXml(shell->shellInstance, tmpStr);
+        if (Shell_Set_CreationXml(shell->shellInstance, tmpStr) != MI_RESULT_OK)
+        {
+            GOTO_ERROR("Alloc failed", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        }
+        __LOGD(("Creation XML = %s", tmpStr));
     }
 
     {
@@ -761,9 +849,9 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
         MI_Session_CreateInstance(&shell->miSession,
                 0, /* flags */
                 &operationOptions, /*options*/
-                "root/interop",
+                NULL, /* namespace */
                 &shell->shellInstance->__instance,
-                &callbacks, &shell->miOperation);
+                &callbacks, &shell->miCreateShellOperation);
     }
 
 
@@ -854,6 +942,180 @@ MI_EXPORT void WINAPI WSManSignalShell(
     LogFunctionEnd("WSManSignalShell", MI_RESULT_NOT_SUPPORTED);
 }
 
+MI_Result DecodeReceiveStream(WSMAN_OPERATION_HANDLE operation, const char *streamData, const char *streamId)
+{
+    DecodeBuffer decodeBuffer, decodedBuffer;
+    Batch *batch;
+    WSMAN_RESPONSE_DATA responseData;
+    WSMAN_ERROR error = {0};
+
+    memset (&responseData, 0, sizeof(responseData));
+    memset(&decodedBuffer, 0, sizeof(decodedBuffer));
+
+    decodeBuffer.buffer = (char*)streamData;
+    decodeBuffer.bufferLength = Tcslen(streamData);
+    decodeBuffer.bufferUsed = decodeBuffer.bufferLength;
+    if (Base64DecodeBuffer(&decodeBuffer, &decodedBuffer) != MI_RESULT_OK)
+    {
+        error.code = MI_RESULT_FAILED;
+        Utf8ToUtf16Le(operation->batch, "Receive failed to convert stream data", (MI_Char16**) &error.errorDetail);
+        goto error;
+    }
+
+    /* TODO!! */
+    responseData.receiveData.commandState = NULL;
+
+    /* TODO!! Need to decode packet in a custom way to retrieve this from xml attribute for each stream data item */
+    batch = Batch_New(BATCH_MAX_PAGES);
+    if (!Utf8ToUtf16Le(batch, "stdout", (MI_Char16**) &responseData.receiveData.streamId))
+    {
+        error.code = MI_RESULT_FAILED;
+        Utf8ToUtf16Le(operation->batch, "Receive failed to convert stream name", (MI_Char16**) &error.errorDetail);
+        goto error;
+    }
+
+    /* TODO!! Support compression */
+    responseData.receiveData.exitCode = 0;
+    responseData.receiveData.streamData.type = WSMAN_DATA_TYPE_TEXT;
+    responseData.receiveData.streamData.text.buffer = (MI_Char16*) decodedBuffer.buffer;
+    responseData.receiveData.streamData.text.bufferLength = decodedBuffer.bufferUsed;
+
+    operation->asyncCallback.completionFunction(
+            operation->asyncCallback.operationContext,
+            0,
+            &error,
+            operation->shell,
+            operation->command,
+            operation,
+            &responseData);
+
+    free(decodedBuffer.buffer);
+
+    Batch_Delete(batch);
+    return MI_RESULT_OK;
+
+error:
+    operation->asyncCallback.completionFunction(
+                operation->asyncCallback.operationContext,
+                WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
+                &error,
+                operation->shell,
+                operation->command,
+                operation,
+                NULL);
+
+    return error.code;
+}
+
+void MI_CALL ReceiveShellComplete(
+    _In_opt_     MI_Operation *miOperation,
+    _In_     void *callbackContext,
+    _In_opt_ const MI_Instance *instance,
+             MI_Boolean moreResults,
+    _In_     MI_Result resultCode,
+    _In_opt_z_ const MI_Char *errorString,
+    _In_opt_ const MI_Instance *errorDetails,
+    _In_opt_ MI_Result (MI_CALL * resultAcknowledgement)(_In_ MI_Operation *operation))
+{
+    WSMAN_OPERATION_HANDLE operation = ( WSMAN_OPERATION_HANDLE ) callbackContext;
+    WSMAN_ERROR error = {0};
+    __LOGD(("%s: START, errorCode=%u", "ReceiveShellComplete", resultCode));
+    error.code = resultCode;
+    if (resultCode != 0)
+    {
+        if (errorString)
+        {
+            Utf8ToUtf16Le(operation->batch, errorString, (MI_Char16**) &error.errorDetail);
+        }
+        else
+        {
+            Utf8ToUtf16Le(operation->batch, Result_ToString(resultCode), (MI_Char16**) &error.errorDetail);
+        }
+        goto error;
+    }
+    else if (instance)
+    {
+        MI_Value value;
+        MI_Uint32 type;
+
+        __LOGD(("Got an instance"));
+        if (__MI_Instance_GetElement(instance, "Stream", &value, &type, NULL, NULL) == MI_RESULT_OK)
+        {
+            __LOGD(("Got a stream, type = %u", type));
+
+            if (type & MI_STRING)
+            {
+                MI_Result miResult;
+
+                if (type & MI_ARRAY)
+                {
+                    int i;
+                    MI_StringA *strArray = (MI_StringA*) &value;
+
+                    __LOGD(("It is an string array"));
+
+                    for (i = 0; i != strArray->size; i++)
+                    {
+                        __LOGD(("Entry %u = %s", i, strArray->data[i]));
+                        miResult = DecodeReceiveStream(operation, strArray->data[i], "stdout");
+                    }
+
+                }
+                else
+                {
+                    __LOGD(("Entry %u = %s", 0, value.string));
+                    miResult = DecodeReceiveStream(operation, value.string, "stdout");
+                }
+                if (miResult != MI_RESULT_OK)
+                {
+                    error.code = MI_RESULT_FAILED;
+                    Utf8ToUtf16Le(operation->batch, "Receive failed to get stream data", (MI_Char16**) &error.errorDetail);
+                    goto error;
+                }
+            }
+            else
+            {
+                __LOGD(("It is an unsupported type"));
+                error.code = MI_RESULT_FAILED;
+                Utf8ToUtf16Le(operation->batch, "Receive data has unsupported type", (MI_Char16**) &error.errorDetail);
+                goto error;
+            }
+        }
+        else if (__MI_Instance_GetElement(instance, "CommandState", &value, &type, NULL, NULL) == MI_RESULT_OK)
+        {
+            /* TODO!! */
+        }
+    }
+
+    MI_Operation_Close(&operation->miOperation);
+
+    MI_Session_Invoke(&operation->shell->miSession,
+            0, /* flags */
+            &operation->miOptions, /*options*/
+            NULL, /* namespace */
+            "Shell",
+            "Receive",
+            &operation->shell->shellInstance->__instance,
+            operation->receiveProperties,
+            &(operation->callbacks), &operation->miOperation);
+
+    LogFunctionEnd("ReceiveShellComplete", resultCode);
+
+    return;
+
+error:
+    operation->asyncCallback.completionFunction(
+                operation->asyncCallback.operationContext,
+                WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
+                &error,
+                operation->shell,
+                operation->command,
+                operation,
+                NULL);
+    MI_Operation_Close(&operation->miOperation);
+    Batch_Delete(operation->batch);
+ }
+
 MI_EXPORT void WINAPI WSManReceiveShellOutput(
     _Inout_ WSMAN_SHELL_HANDLE shell,
     _In_opt_ WSMAN_COMMAND_HANDLE command,
@@ -862,10 +1124,118 @@ MI_EXPORT void WINAPI WSManReceiveShellOutput(
     _In_ WSMAN_SHELL_ASYNC *async,
     _Out_ WSMAN_OPERATION_HANDLE *receiveOperation) // should be closed using WSManCloseOperation
 {
+    MI_Result miResult;
+    char *errorMessage = NULL;
+    //MI_Instance *desiredStream = NULL;
+    Batch *batch = NULL;
+    char *streamSetString = NULL;
+    MI_Value value;
+
     LogFunctionStart("WSManReceiveShellOutput");
+
+    batch = Batch_New(BATCH_MAX_PAGES);
+    if (batch == NULL)
+    {
+        GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
+    (*receiveOperation) = Batch_GetClear(batch, sizeof(WSMAN_OPERATION_HANDLE));
+    if (*receiveOperation == NULL)
+    {
+        GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+    (*receiveOperation)->shell = shell;
+    (*receiveOperation)->command = command;
+    (*receiveOperation)->asyncCallback = *async;
+    (*receiveOperation)->batch = batch;
+
+    miResult = MI_Application_NewOperationOptions(&shell->session->api->application, MI_TRUE, &(*receiveOperation)->miOptions);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to create operation options", miResult);
+    }
+
+    //miResult = Instance_New((MI_Instance**) &receiveProperties, (MI_ClassDecl*) &Shell_Receive_rtti, batch);
+    //miResult = Instance_NewDynamic(&receiveProperties, "Receive", MI_FLAG_CLASS, batch);
+    miResult = MI_Application_NewInstance(&shell->session->api->application, "Receive", NULL, &(*receiveOperation)->receiveProperties);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to allocate receive properties instance", miResult);
+    }
+
+    //miResult = Instance_New((MI_Instance**) &desiredStream, (MI_ClassDecl*) &DesiredStream_rtti, batch);
+    //miResult = Instance_NewDynamic(&desiredStream, "DesiredStream", MI_FLAG_CLASS, batch);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to allocate desired stream instance", miResult);
+    }
+
+    miResult = ExtractStreamSet(desiredStreamSet, batch, &streamSetString);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to convert receive desiredStreamSet", miResult);
+    }
+
+    value.string = streamSetString;
+    //miResult = MI_Instance_AddElement(desiredStream, "streamName", &value, MI_STRING, MI_FLAG_BORROW);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("out of memory", miResult);
+    }
+
+    /* TODO: Set commandID */
+
+    //Shell_Receive_SetPtr_DesiredStream(receiveProperties, desiredStream);
+    //value.instance = desiredStream;
+    //miResult = MI_Instance_AddElement(receiveProperties, "DesiredStream", &value, MI_INSTANCE, MI_FLAG_BORROW);
+    //value.string = streamSetString;
+    value.string = "stdout";
+    miResult = MI_Instance_AddElement((*receiveOperation)->receiveProperties, "DesiredStream", &value, MI_STRING, 0);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("out of memory", miResult);
+    }
+
+
+    {
+        MI_Value value;
+        MI_Type type;
+        if (__MI_Instance_GetElement(&shell->shellInstance->__instance, "ResourceUri", &value, &type, NULL, NULL) != MI_RESULT_OK)
+        {
+            GOTO_ERROR("Failed to get resource URI", MI_RESULT_FAILED);
+        }
+        if (MI_OperationOptions_SetResourceUri(&(*receiveOperation)->miOptions, value.string) != MI_RESULT_OK)
+        {
+            GOTO_ERROR("Failed to set resource URI in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        }
+    }
+
+    MI_OperationOptions_SetString(&(*receiveOperation)->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Receive", 0);
+    {
+
+        (*receiveOperation)->callbacks.instanceResult = ReceiveShellComplete;
+        (*receiveOperation)->callbacks.callbackContext = *receiveOperation;
+
+        MI_Session_Invoke(&shell->miSession,
+                0, /* flags */
+                &(*receiveOperation)->miOptions, /*options*/
+                NULL, /* namespace */
+                "Shell",
+                "Receive",
+                &shell->shellInstance->__instance,
+                (*receiveOperation)->receiveProperties,
+                &((*receiveOperation)->callbacks), &(*receiveOperation)->miOperation);
+    }
+
+    LogFunctionEnd("WSManReceiveShellOutput", MI_RESULT_OK);
+    return;
+
+
+error:
     {
         WSMAN_ERROR error = { 0 };
-        error.code = MI_RESULT_NOT_SUPPORTED;
+        error.code = miResult;
+        Utf8ToUtf16Le(batch, errorMessage, (MI_Char16**) &error.errorDetail);
         async->completionFunction(
                 async->operationContext,
                 WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
@@ -876,7 +1246,16 @@ MI_EXPORT void WINAPI WSManReceiveShellOutput(
                 NULL);
      }
 
-    LogFunctionEnd("WSManReceiveShellOutput", MI_RESULT_NOT_SUPPORTED);
+    if ((*receiveOperation)->miOptions.ft)
+    {
+        MI_OperationOptions_Delete(&(*receiveOperation)->miOptions);
+    }
+    if ((*receiveOperation)->receiveProperties)
+    {
+        MI_Instance_Delete((*receiveOperation)->receiveProperties);
+    }
+    Batch_Delete(batch);
+    LogFunctionEnd("WSManReceiveShellOutput", miResult);
 }
 
 MI_EXPORT void WINAPI WSManSendShellInput(
@@ -946,7 +1325,7 @@ MI_EXPORT void WINAPI WSManCloseShell(
             NULL,
             NULL,
             NULL);
-    Batch_Delete(&shellHandle->batch);
+    Batch_Delete(shellHandle->batch);
     LogFunctionEnd("WSManCloseShell", MI_RESULT_OK);
 }
 

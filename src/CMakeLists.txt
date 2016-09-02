@@ -1,12 +1,13 @@
-cmake_minimum_required(VERSION 2.8.4)
+cmake_minimum_required(VERSION 2.8.11)
 project(PSRP_PROVIDER)
 
 # Export commands for auto-completion engines
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 
-add_compile_options(-Wall -Werror -fPIC)
+# Cannot use add_compile_options with 2.8.11
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -fPIC")
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin") 
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	add_definitions(-Dmacos)
 	set(CMAKE_ICONV iconv)
 endif ()
@@ -23,7 +24,8 @@ add_library(psrpomiprov SHARED
 	schema.c
 	xpress.c
 	BufferManipulation.c
-        coreclrutil.cpp)
+	coreclrutil.cpp)
+
 target_link_libraries(psrpomiprov
 	miapi
 	omi_error
@@ -41,12 +43,16 @@ target_link_libraries(psrpomiprov
 	ssl
 	crypto
 	${CMAKE_ICONV})
-target_include_directories(psrpomiprov PRIVATE ${OMI}/output/include ${OMI} ${OMI}/common)
-target_compile_options(psrpomiprov PRIVATE -fvisibility=hidden -fno-strict-aliasing)
+
+target_include_directories(psrpomiprov PRIVATE
+	${OMI}/output/include ${OMI} ${OMI}/common)
+
+# Cannot use target_compile_options with 2.8.11
+set_target_properties(psrpomiprov PROPERTIES COMPILE_FLAGS
+	"-fvisibility=hidden -fno-strict-aliasing")
 
 add_custom_command(TARGET psrpomiprov POST_BUILD
 	COMMAND ${OMI}/output/bin/omireg $<TARGET_FILE:psrpomiprov> -n interop --hosting @requestor-shell@)
-#	COMMAND ${OMI}/output/bin/omireg $<TARGET_FILE:psrpomiprov> -n interop)
 
 add_custom_target(gen DEPENDS schema.mof
 	COMMAND ${OMI}/output/bin/omigen -C ${OMI}/share/networkschema/CIM_Schema.mof schema.mof Shell Command)

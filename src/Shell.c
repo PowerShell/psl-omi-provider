@@ -8,6 +8,8 @@
 */
 
 #include <iconv.h>
+#include <sys/types.h>
+#include <pwd.h>
 #include <MI.h>
 #include "Shell.h"
 #include "wsman.h"
@@ -257,6 +259,32 @@ static const char* GetCommandId(CommonData *data)
         commandId = value.string;
     }
     return commandId;
+}
+
+
+/* retrieve the home directory of the effective user
+ * caller must free returned pointer
+ */
+static char* GetHomeDir()
+{
+    char* home = NULL;
+    size_t homelen;
+    struct passwd *pwd = NULL;
+
+    errno = 0;
+    /* geteuid() is always successful */
+    pwd = getpwuid(geteuid());
+    if (pwd == NULL)
+    {
+        __LOGE(("GetHomeDir - %s", strerror(errno)));
+        return NULL;
+    }
+
+    /* copy pw_dir since we do not own pwd */
+    homelen = strnlen(pwd->pw_dir, PAL_MAX_PATH_SIZE);
+    home = strndup(pwd->pw_dir, homelen);
+
+    return home;
 }
 
 

@@ -8,6 +8,8 @@
 */
 
 #include <iconv.h>
+#include <sys/types.h>
+#include <pwd.h>
 #include <MI.h>
 #include "Shell.h"
 #include "wsman.h"
@@ -260,6 +262,63 @@ static const char* GetCommandId(CommonData *data)
 }
 
 
+/* retrieve the home directory of the effective user
+ * caller must free returned pointer
+ */
+static char* GetHomeDir()
+{
+    char* home = NULL;
+    size_t homelen;
+    struct passwd *pwd = NULL;
+
+    errno = 0;
+    /* geteuid() is always successful */
+    pwd = getpwuid(geteuid());
+    if (pwd == NULL)
+    {
+        __LOGE(("GetHomeDir - %s", strerror(errno)));
+        return NULL;
+    }
+
+    /* copy pw_dir since we do not own pwd */
+    homelen = strnlen(pwd->pw_dir, PAL_MAX_PATH_SIZE);
+    home = strndup(pwd->pw_dir, homelen);
+
+    return home;
+}
+
+
+/* set HOME environment variable to home of user
+ * caller must free input pointer
+ */
+static int SetHomeDir(char** home)
+{
+    int ret;
+    if (*home == NULL)
+    {
+        __LOGD(("SetHomeDir - home is empty, looking it up with GetHomeDir"));
+        *home = GetHomeDir();
+    }
+
+    if (*home == NULL)
+    {
+        __LOGE(("SetHomeDir - failed to GetHomeDir"));
+        return -1;
+    }
+
+    __LOGD(("SetHomeDir - setting HOME to %s", *home));
+    errno = 0;
+    /* overwrite HOME with our value */
+    ret = setenv("HOME", *home, 1);
+    if (ret != 0)
+    {
+        __LOGE(("SetHomeDir - %s", strerror(errno)));
+        return ret;
+    }
+    return ret;
+}
+
+
 static void PrintDataFunctionStart(CommonData *data, const char *function)
 {
     const char *shellId = GetShellId(data);
@@ -319,6 +378,8 @@ struct _Shell_Self
 
     PwrshPluginWkr_Ptrs managedPointers;
 
+    char* home;
+
     void* hostHandle;
     unsigned int domainId;
 } ;
@@ -367,15 +428,35 @@ void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
     Log_Open(finalPath);
     Log_SetLevel(SHELL_LOGGING_LEVEL);
 #endif
-    __LOGD(("Shell_Load - loading CLR"));
 
+    __LOGD(("Shell_Load - allocating shell"));
     *self = calloc(1, sizeof(Shell_Self));
     if (*self == NULL)
     {
         GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
 
+    /* Initialize the environment
+     *
+     * This is necessary because OMI can launch this process as a non-root user;
+     * but OMI does not do anything to ensure the environment is correct.
+     * For instance, if HOME=/root in omiserver, * this omiagent process inherits the value.
+     * However, for a shell provider, this causes problems.
+     * PowerShell depends on HOME to be correct; i.e. the user's home folder,
+     * and throws an exception if it gets an IO error on HOME.
+     *
+     * Here we lookup the user's home folder via getpwuid(),
+     * and set HOME for our process to the correct value.
+     */
+    __LOGD(("Shell_Load - setting HOME for effective user"));
+    ret = SetHomeDir(&(*self)->home);
+    if (ret != 0)
+    {
+        __LOGE(("Shell_Load - failed to set HOME for user"));
+    }
+
     /* Initialize the CLR */
+    __LOGD(("Shell_Load - loading CLR"));
     ret = startCoreCLR("ps_omi_host", &(*self)->hostHandle, &(*self)->domainId);
     if (ret != 0)
     {
@@ -444,6 +525,10 @@ void MI_CALL Shell_Unload(Shell_Self* self, MI_Context* context)
         __LOGE(("Stopping CLR failed"));
     }
 
+    if (self->home)
+    {
+        free(self->home);
+    }
     free(self);
 
     __LOGD(("Shell_Unload PostResult %p, %u", context, MI_RESULT_OK));

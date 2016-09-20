@@ -22,6 +22,7 @@ add_library(psrpclient SHARED
 	xpress.c
 	BufferManipulation.c
 	schema.c
+	Utilities.c
 	)
 
 add_library(psrpomiprov SHARED
@@ -31,7 +32,9 @@ add_library(psrpomiprov SHARED
 	schema.c
 	xpress.c
 	BufferManipulation.c
-	coreclrutil.cpp)
+	coreclrutil.cpp
+	Utilities.c
+	)
 
 target_link_libraries(psrpclient
 	mi

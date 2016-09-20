@@ -26,16 +26,16 @@
 #include <base/helpers.h>
 #include <base/logbase.h>
 #include <base/log.h>
+#include "Utilities.h"
 
-#define SHELL_ENABLE_LOGGING 1
+/* Note: Change logging level in omiserver.conf */
 #define SHELL_LOGGING_FILE "shell"
-#define SHELL_LOGGING_LEVEL OMI_DEBUG
 
 /* Number of characters reserved for command ID and shell ID -- max number of digits for hex 64-bit number with null terminator */
 #define ID_LENGTH 17
 
-#define GOTO_ERROR(message, result) { __LOGE(("%s (result=%u)", message, result)); miResult = result; goto error; }
-#define GOTO_ERROR_EX(message, result, label) {__LOGE(("%s (result=%u)", message, result));  miResult = result; goto label; }
+#define GOTO_ERROR(message, result) { miResult = result; errorMessage=message; __LOGE(("%s (result=%u)", errorMessage, miResult)); goto error; }
+#define GOTO_ERROR_EX(message, result, label) {miResult = result; errorMessage=message; __LOGE(("%s (result=%u)", errorMessage, miResult));  goto label; }
 
 #define POWERSHELL_INIT_STRING  "<InitializationParameters><Param Name=\"PSVersion\" Value=\"5.0\"></Param></InitializationParameters>"
 
@@ -420,14 +420,9 @@ void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
 {
     MI_Uint32 miResult = MI_RESULT_OK;
     int ret;
+    char *errorMessage = NULL;
 
-#ifdef SHELL_ENABLE_LOGGING
-    MI_Char finalPath[PAL_MAX_PATH_SIZE];
-
-    CreateLogFileNameWithPrefix(SHELL_LOGGING_FILE, finalPath);
-    Log_Open(finalPath);
-    Log_SetLevel(SHELL_LOGGING_LEVEL);
-#endif
+    _GetLogOptionsFromConfigFile(SHELL_LOGGING_FILE);
 
     __LOGD(("Shell_Load - allocating shell"));
     *self = calloc(1, sizeof(Shell_Self));
@@ -492,10 +487,13 @@ void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule,
             GOTO_ERROR("Powershell InitPlugin failed", miResult);
         }
     }
+    __LOGE(("Shell_Load PostResult %p, %u", context, miResult));
+    MI_Context_PostResult(context, miResult);
+    return;
 
 error:
     __LOGE(("Shell_Load PostResult %p, %u", context, miResult));
-    MI_Context_PostResult(context, miResult);
+    MI_Context_PostError(context, miResult, MI_RESULT_TYPE_MI, errorMessage);
 }
 
 /* Shell_Unload is called after all operations have completed, or they should
@@ -532,9 +530,9 @@ void MI_CALL Shell_Unload(Shell_Self* self, MI_Context* context)
     free(self);
 
     __LOGD(("Shell_Unload PostResult %p, %u", context, MI_RESULT_OK));
-#ifdef SHELL_ENABLE_LOGGING
+
     Log_Close();
-#endif
+
     MI_Context_PostResult(context, MI_RESULT_OK);
 }
 
@@ -739,14 +737,16 @@ MI_Boolean ExtractPluginRequest(MI_Context *context, CommonData *commonData)
             return MI_FALSE;
         }
     }
-    if (MI_Context_GetStringOption(context, MI_T("WSMAN_Locale"), &value) == MI_RESULT_OK)
+    if ((MI_Context_GetStringOption(context, MI_T("WSMAN_Locale"), &value) == MI_RESULT_OK) &&
+            value)
     {
         if (!Utf8ToUtf16Le(commonData->batch, value, (MI_Char16**)&commonData->pluginRequest.locale))
         {
             return MI_FALSE;
         }
     }
-    if (MI_Context_GetStringOption(context, MI_T("WSMAN_DataLocale"), &value) == MI_RESULT_OK)
+    if ((MI_Context_GetStringOption(context, MI_T("WSMAN_DataLocale"), &value) == MI_RESULT_OK) &&
+            value)
     {
         if (!Utf8ToUtf16Le(commonData->batch, value, (MI_Char16**)&commonData->pluginRequest.dataLocale))
         {
@@ -939,6 +939,7 @@ void MI_CALL Shell_CreateInstance(Shell_Self* self, MI_Context* context,
     MI_Instance *miOperationInstance = NULL;
     Batch *batch;
     MI_Char16 *initString;
+    char *errorMessage = NULL;
 
     __LOGD(("Shell_CreateInstance Name=%s, ShellId=%s", newInstance->Name.value, newInstance->ShellId.value));
 
@@ -1090,7 +1091,7 @@ error:
     if (batch)
         Batch_Delete(batch);
 
-    MI_Context_PostResult(context, miResult);
+    MI_Context_PostError(context, miResult, MI_RESULT_TYPE_MI, errorMessage);
 }
 
 
@@ -1340,6 +1341,7 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
     MI_Instance *miOperationInstance = NULL;
     Batch *batch = NULL;
     MI_Char16 *command = NULL;
+    char *errorMessage = NULL;
 
     __LOGD(("Shell_Invoke_Command Name=%s, ShellId=%s", instanceName->Name.value, instanceName->ShellId.value));
 
@@ -1429,7 +1431,7 @@ error:
 
     if (commandData)
         PrintDataFunctionTag(&commandData->common, "Shell_Invoke_Command", "PostResult");
-    MI_Context_PostResult(context, miResult);
+    MI_Context_PostError(context, miResult, MI_RESULT_TYPE_MI, errorMessage);
 
     if (commandData)
         PrintDataFunctionEnd(&commandData->common, "Shell_Invoke_Command", miResult);
@@ -1537,6 +1539,7 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
     DecodeBuffer decodeBuffer, decodedBuffer;
     MI_Instance *clonedIn = NULL;
     MI_Char16 *streamName;
+    char *errorMessage = NULL;
 
     memset(&decodeBuffer, 0, sizeof(decodeBuffer));
     memset(&decodedBuffer, 0, sizeof(decodedBuffer));
@@ -1698,7 +1701,7 @@ void MI_CALL Shell_Invoke_Send(Shell_Self* self, MI_Context* context,
 
 error:
     PrintDataFunctionTag(&sendData->common, "Shell_Invoke_Send", "PostResult");
-    MI_Context_PostResult(context, miResult);
+    MI_Context_PostError(context, miResult, MI_RESULT_TYPE_MI, errorMessage);
 
     PrintDataFunctionEnd(&sendData->common, "Shell_Invoke_Send", miResult);
 
@@ -1833,8 +1836,9 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     ReceiveData *receiveData = NULL;
     Batch *batch = NULL;
     MI_Instance *clonedIn = NULL;
+    char *errorMessage = NULL;
 
-    __LOGD(("Shell_Invoke_Receive Name=%s, ShellId=%s", instanceName->Name.value, instanceName->ShellId.value));
+    __LOGD(("Shell_Invoke_Receive ShellId=%s", instanceName->ShellId.value));
 
     if (!shellData)
     {
@@ -1849,6 +1853,8 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
     /* If we have a command ID make sure it is the correct one */
     if (in->DesiredStream.value && in->DesiredStream.value->commandId.value)
     {
+        __LOGD(("Receive data for commandId=%s", in->DesiredStream.value->commandId.value));
+
         commandData = FindCommandFromShell(shellData, in->DesiredStream.value->commandId.value);
         if (commandData == NULL)
         {
@@ -1889,9 +1895,9 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
         MI_Context *tmpContext = (MI_Context*) Atomic_Swap((ptrdiff_t*) &receiveData->common.miRequestContext, (ptrdiff_t) context);
         if (tmpContext != NULL)
         {
-            DEBUG_ASSERT(tmpContext == NULL);
+            GOTO_ERROR("Receive is still processing a command so cannot process another one yet", MI_RESULT_NOT_SUPPORTED);
         }
-        PrintDataFunctionStart(&receiveData->common, "Shell_Invoke_Receive*");
+        PrintDataFunctionStart(&receiveData->common, "Shell_Invoke_Receive* - using existing queued up receive");
 
         /* Create timeout thread if one is not there...
          * remember, it could have been disconnnected and so the thread
@@ -2017,7 +2023,7 @@ error:
         Shell_Receive_Post(&receiveResult, context);
         Shell_Receive_Destruct(&receiveResult);
     }
-    MI_Context_PostResult(context, miResult);
+    MI_Context_PostError(context, miResult, MI_RESULT_TYPE_MI, errorMessage);
 
     if (receiveData)
         PrintDataFunctionEnd(&receiveData->common, "Shell_Invoke_Receive", miResult);
@@ -2094,6 +2100,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
     Batch *batch = NULL;
     MI_Instance *clonedIn = NULL;
     MI_Char16 *signalCode = NULL;
+    char *errorMessage = NULL;
 
     __LOGD(("Shell_Invoke_Signal Name=%s, ShellId=%s", instanceName->Name.value, instanceName->ShellId.value));
 
@@ -2198,7 +2205,7 @@ void MI_CALL Shell_Invoke_Signal(Shell_Self* self, MI_Context* context,
 error:
 
     PrintDataFunctionTag(&signalData->common, "Shell_Invoke_Signal", "PostResult");
-    MI_Context_PostResult(context, miResult);
+    MI_Context_PostError(context, miResult, MI_RESULT_TYPE_MI, errorMessage);
     PrintDataFunctionEnd(&signalData->common, "Shell_Invoke_Signal", miResult);
 
     if (batch)
@@ -2219,6 +2226,7 @@ void MI_CALL Shell_Invoke_Disconnect(
     MI_Result miResult = MI_RESULT_OK;
     ShellData *shellData = FindShellFromSelf(self, instanceName->ShellId.value);
     Shell_Disconnect resultInstance;
+    char *errorMessage = NULL;
 
     __LOGD(("Shell_Invoke_Disconnect Name=%s, ShellId=%s", instanceName->Name.value, instanceName->ShellId.value));
 
@@ -2289,7 +2297,14 @@ error:
         Shell_Disconnect_Destruct(&resultInstance);
     }
 
-    MI_Context_PostResult(context, miResult);
+    if (miResult == MI_RESULT_OK)
+    {
+        MI_Context_PostResult(context, miResult);
+    }
+    else
+    {
+        MI_Context_PostError(context, miResult, MI_RESULT_TYPE_MI, errorMessage);
+    }
     __LOGD(("Shell_Invoke_Disconnect PostResult %p, %u", context, miResult));
 
 }
@@ -2306,6 +2321,7 @@ void MI_CALL Shell_Invoke_Reconnect(
     MI_Result miResult = MI_RESULT_OK;
     ShellData *shellData = FindShellFromSelf(self, instanceName->ShellId.value);
     Shell_Reconnect resultInstance;
+    char *errorMessage = NULL;
 
     __LOGD(("Shell_Invoke_Reconnect Name=%s, ShellId=%s", instanceName->Name.value, instanceName->ShellId.value));
 
@@ -2332,7 +2348,14 @@ error:
 
         Shell_Reconnect_Destruct(&resultInstance);
     }
-    MI_Context_PostResult(context, miResult);
+    if (miResult == MI_RESULT_OK)
+    {
+        MI_Context_PostResult(context, miResult);
+    }
+    else
+    {
+        MI_Context_PostError(context, miResult, MI_RESULT_TYPE_MI, errorMessage);
+    }
     __LOGD(("Shell_Invoke_Reconnect PostResult %p, %u", context, miResult));
 }
 
@@ -2400,6 +2423,7 @@ void MI_CALL Shell_Invoke_Connect(
     ConnectData *connectData = NULL;
     Batch *batch = NULL;
     MI_Instance *clonedIn = NULL;
+    char *errorMessage = NULL;
 
     __LOGD(("Shell_Invoke_Connect Name=%s, ShellId=%s", instanceName->Name.value, instanceName->ShellId.value));
 
@@ -2511,7 +2535,7 @@ void MI_CALL Shell_Invoke_Connect(
 error:
 
     PrintDataFunctionTag(&connectData->common, "Shell_Invoke_Connect", "PostResult");
-    MI_Context_PostResult(context, miResult);
+    MI_Context_PostError(context, miResult, MI_RESULT_TYPE_MI, errorMessage);
     PrintDataFunctionEnd(&connectData->common, "Shell_Invoke_Connect", miResult);
 
     if (batch)
@@ -2532,6 +2556,7 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginReportContext(
 {
     CommonData *commonData = (CommonData*) requestDetails;
     MI_Result miResult;
+    char *errorMessage = NULL;
     MI_Context *miContext = (MI_Context*) Atomic_Swap((ptrdiff_t*)&commonData->miRequestContext, (ptrdiff_t) NULL);
 
     PrintDataFunctionStart(commonData, "WSManPluginReportContext");
@@ -2552,10 +2577,17 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginReportContext(
     /* Post our shell or command object back to the client */
     PrintDataFunctionTag(commonData, "WSManPluginReportContext", "PostInstance");
     miResult = MI_Context_PostInstance(miContext, commonData->miOperationInstance);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("WSManPluginReportContext faoled to post instance", miResult);
+    }
     PrintDataFunctionTag(commonData, "WSManPluginReportContext", "PostResult");
     miResult = MI_Context_PostResult(miContext, miResult);
+    PrintDataFunctionEnd(commonData, "WSManPluginReportContext", miResult);
+    return miResult;
 
 error:
+    MI_Context_PostError(miContext, miResult, MI_RESULT_TYPE_MI, errorMessage);
     PrintDataFunctionEnd(commonData, "WSManPluginReportContext", miResult);
     return miResult;
 }
@@ -2606,6 +2638,7 @@ MI_Uint32 _WSManPluginReceiveResult(
     )
 {
     MI_Result miResult;
+    char *errorMessage = NULL;
     CommandState commandStateInst;
     MI_Instance *receive = NULL;
     Stream receiveStream;
@@ -2791,7 +2824,16 @@ error:
 
 errorSkipInstanceDeletes:
     PrintDataFunctionTag(commonData, "_WSManPluginReceiveResult", "PostResult");
-    MI_Context_PostResult(receiveContext, miResult);
+    if (miResult == MI_RESULT_OK)
+    {
+        MI_Context_PostResult(receiveContext, miResult);
+    }
+    else
+    {
+        MI_Context_PostError(receiveContext, miResult, MI_RESULT_TYPE_MI, errorMessage);
+    }
+
+
     if (tempBatch)
         Batch_Delete(tempBatch);
 
@@ -2914,12 +2956,27 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginGetOperationParameters (
 
     PrintDataFunctionStartStr(commonData, "WSManPluginGetOperationParameters", "flags", OperationParamToString(flags));
 
-    if ((flags == WSMAN_PLUGIN_PARAMS_GET_REQUESTED_LOCALE) ||
-            (flags == WSMAN_PLUGIN_PARAMS_GET_REQUESTED_DATA_LOCALE))
+    if (flags == WSMAN_PLUGIN_PARAMS_GET_REQUESTED_LOCALE)
     {
-        if (!Utf8ToUtf16Le(commonData->batch, "en-us", (MI_Char16**)&data->text.buffer))
+        const char *tmpStr;
+        if (MI_Context_GetStringOption(commonData->miRequestContext, "__MI_DESTINATIONOPTIONS_UI_LOCALE", &tmpStr) != MI_RESULT_OK)
+            tmpStr = "en-US";
+
+        if (!Utf8ToUtf16Le(commonData->batch, tmpStr, (MI_Char16**)&data->text.buffer))
             return MI_RESULT_FAILED;
-        data->text.bufferLength = 5;
+        data->text.bufferLength = strlen(tmpStr);
+        data->type = WSMAN_DATA_TYPE_TEXT;
+        return MI_RESULT_OK;
+    }
+    if (flags == WSMAN_PLUGIN_PARAMS_GET_REQUESTED_DATA_LOCALE)
+    {
+        const char *tmpStr;
+        if (MI_Context_GetStringOption(commonData->miRequestContext, "__MI_DESTINATIONOPTIONS_DATA_LOCALE", &tmpStr) != MI_RESULT_OK)
+            tmpStr = "en-US";
+
+        if (!Utf8ToUtf16Le(commonData->batch, tmpStr, (MI_Char16**)&data->text.buffer))
+            return MI_RESULT_FAILED;
+        data->text.bufferLength = strlen(tmpStr);
         data->type = WSMAN_DATA_TYPE_TEXT;
         return MI_RESULT_OK;
     }
@@ -2960,6 +3017,7 @@ MI_EXPORT  MI_Uint32 MI_CALL WSManPluginOperationComplete(
 {
     CommonData *commonData = (CommonData*) requestDetails;
     MI_Result miResult = MI_RESULT_OK;
+    char *errorMessage = NULL;
     MI_Context *miContext;
     MI_Instance *miInstance;
     char *extendedInformation = NULL;

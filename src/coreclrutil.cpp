@@ -58,7 +58,6 @@ std::string GetEnvAbsolutePath(const char* env)
     const char* local = std::getenv(env);
     if (!local)
     {
-        std::cerr << "Could not read environment variable " << env << ", using default value." << std::endl;
         return std::string("");
     }
 

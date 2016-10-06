@@ -1368,13 +1368,24 @@ void MI_CALL Shell_Invoke_Command(Shell_Self* self, MI_Context* context,
 
     commandData->common.batch = batch;
 
-    commandData->commandId = Batch_Get(batch, sizeof(MI_Char)*ID_LENGTH);
-    if (!commandData->commandId)
+    if (in->CommandId.exists && in->CommandId.value)
     {
-        GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        commandData->commandId = Batch_ZStrdup(batch, in->CommandId.value);
+        if (!commandData->commandId)
+        {
+            GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        }
     }
+    else
+    {
+        commandData->commandId = Batch_Get(batch, sizeof(MI_Char)*ID_LENGTH);
+        if (!commandData->commandId)
+        {
+            GOTO_ERROR("out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        }
 
-    Stprintf(commandData->commandId, ID_LENGTH, MI_T("%llx"), (MI_Uint64)commandData);
+        Stprintf(commandData->commandId, ID_LENGTH, MI_T("%llx"), (MI_Uint64)commandData);
+    }
 
     /* Create command instance to send back to client */
     miResult = Instance_Clone(&in->__instance, &miOperationInstance, batch);
@@ -1786,12 +1797,15 @@ static MI_Result  _CreateReceiveTimeoutThread(ReceiveData *receiveData)
     MI_Type timeoutType;
     MI_Value timeout;
 
-    if ((MI_Context_GetCustomOption(receiveData->common.miRequestContext, MI_T("WSMan_OperationTimeout"), &timeoutType, &timeout) == MI_RESULT_OK) &&
-        (timeoutType == MI_DATETIME))
+    if ((MI_Context_GetCustomOption(receiveData->common.miRequestContext, MI_T("WSMan_OperationTimeout"), &timeoutType, &timeout) != MI_RESULT_OK) ||
+        (timeoutType != MI_DATETIME))
     {
-        DatetimeToUsec(&timeout.datetime, &receiveData->timeoutMilliseconds);
-        receiveData->timeoutInUse = MI_TRUE;
+        memset(&timeout, 0, sizeof(timeout));
+        timeout.datetime.u.interval.seconds = 50;
     }
+    DatetimeToUsec(&timeout.datetime, &receiveData->timeoutMilliseconds);
+    receiveData->timeoutInUse = MI_TRUE;
+
     if (receiveData->timeoutInUse)
     {
         /* ShutdownThread == 1 if shut down, 0 if running */

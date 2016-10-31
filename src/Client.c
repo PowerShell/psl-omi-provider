@@ -48,7 +48,7 @@ void MI_CALL Command_DeleteInstance( Command_Self* self, MI_Context* context, co
 
 
 /* Note: Change logging level in omiserver.conf */
-#define SHELL_LOGGING_FILE "shell"
+#define SHELL_LOGGING_FILE "shellclient"
 
 
 #define GOTO_ERROR(message, result) { miResult = result; errorMessage=message; __LOGE(("%s (result=%u)", errorMessage, miResult)); goto error; }
@@ -80,10 +80,13 @@ struct WSMAN_SHELL
     WSMAN_SESSION_HANDLE session;
     Batch *batch;
     WSMAN_SHELL_ASYNC asyncCallback;
+    MI_OperationCallbacks callbacks;
     Shell *shellInstance;
     MI_Session miSession;
     MI_Operation miCreateShellOperation;
+    MI_Operation miDeleteShellOperation;
     MI_OperationOptions operationOptions;
+    MI_Boolean didCreate;
 };
 
 struct WSMAN_COMMAND
@@ -441,7 +444,7 @@ MI_EXPORT MI_Uint32 WINAPI WSManSetSessionOption(
         {
             MI_Uint64 microsec = data->number * 1000;
             MI_Datetime datetime;
-            __LOGD(("WSMAN_OPTION_DEFAULT_OPERATION_TIMEOUTMS"));
+            __LOGD(("WSMAN_OPTION_DEFAULT_OPERATION_TIMEOUTMS=%u",data->number));
             UsecToDatetime(microsec, &datetime);
             MI_DestinationOptions_SetTimeout(&session->destinationOptions, &datetime.u.interval);
             /* dword, operation timeout when not the others */
@@ -449,22 +452,22 @@ MI_EXPORT MI_Uint32 WINAPI WSManSetSessionOption(
             break;
         }
         case WSMAN_OPTION_TIMEOUTMS_CREATE_SHELL:
-            __LOGD(("WSMAN_OPTION_TIMEOUTMS_CREATE_SHELL"));
+            __LOGD(("WSMAN_OPTION_TIMEOUTMS_CREATE_SHELL=%u (not implemented yet)", data->number));
             /* dword */
             miResult = MI_RESULT_OK;
             break;
         case WSMAN_OPTION_TIMEOUTMS_CLOSE_SHELL:
-            __LOGD(("WSMAN_OPTION_TIMEOUTMS_CLOSE_SHELL"));
+            __LOGD(("WSMAN_OPTION_TIMEOUTMS_CLOSE_SHELL=%u (not implemented yet)", data->number));
             /* dword */
             miResult = MI_RESULT_OK;
             break;
         case WSMAN_OPTION_TIMEOUTMS_SIGNAL_SHELL:
-            __LOGD(("WSMAN_OPTION_TIMEOUTMS_SIGNAL_SHELL"));
+            __LOGD(("WSMAN_OPTION_TIMEOUTMS_SIGNAL_SHELL=%u (not implemented yet)", data->number));
             /* dword */
             miResult = MI_RESULT_OK;
             break;
         case WSMAN_OPTION_SHELL_MAX_DATA_SIZE_PER_MESSAGE_KB:
-            __LOGD(("WSMAN_OPTION_SHELL_MAX_DATA_SIZE_PER_MESSAGE_KB"));
+            __LOGD(("WSMAN_OPTION_SHELL_MAX_DATA_SIZE_PER_MESSAGE_KB=%u", data->number));
             /* dword */
             if ((data->type != WSMAN_DATA_TYPE_DWORD) ||
                (MI_DestinationOptions_SetMaxEnvelopeSize(&session->destinationOptions, data->number) != MI_RESULT_OK))
@@ -495,14 +498,17 @@ MI_EXPORT MI_Uint32 WINAPI WSManGetSessionOptionAsDword(
     {
         case WSMAN_OPTION_SHELL_MAX_DATA_SIZE_PER_MESSAGE_KB:
             *value = 500; /* TODO: Proper value? */
+            __LOGD(("WSMAN_OPTION_SHELL_MAX_DATA_SIZE_PER_MESSAGE_KB returning 500"));
             break;
 
         case WSMAN_OPTION_MAX_RETRY_TIME:
             *value = 60; /* TODO: Proper value? */
+            __LOGD(("WSMAN_OPTION_SHELL_MAX_DATA_SIZE_PER_MESSAGE_KB returning 60"));
             break;
 
         default:
             miResult = MI_RESULT_NOT_SUPPORTED;
+            __LOGD(("unknown option %u", option));
     }
     LogFunctionEnd("WSManGetSessionOptionAsDword", miResult);
     return miResult;
@@ -621,7 +627,8 @@ void MI_CALL CreateShellComplete(
 
     if (resultCode == MI_RESULT_OK)
     {
-       shell->asyncCallback.completionFunction(
+        shell->didCreate = MI_TRUE;
+        shell->asyncCallback.completionFunction(
                 shell->asyncCallback.operationContext,
                 0,
                 &error,
@@ -1430,7 +1437,7 @@ error:
 MI_Result DecodeReceiveCommandState(WSMAN_OPERATION_HANDLE operation, const MI_Instance *commandStateInstance, MI_Boolean *done)
 {
     Batch *batch;
-    WSMAN_RESPONSE_DATA responseData;
+    WSMAN_RESPONSE_DATA responseData = {0};
     WSMAN_ERROR error = {0};
     const char *commandId = NULL;
     const char *state = NULL;
@@ -2017,15 +2024,18 @@ void MI_CALL CommandCloseShellComplete(
             Utf8ToUtf16Le(command->batch, Result_ToString(resultCode), (MI_Char16**) &error.errorDetail);
         }
     }
-        command->asyncCallback.completionFunction(
-                command->asyncCallback.operationContext,
-                WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
-                &error,
-                command->shell,
-                command,
-                NULL,
-                NULL);
- }
+
+    MI_Operation_Close(miOperation);
+
+    command->asyncCallback.completionFunction(
+            command->asyncCallback.operationContext,
+            WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
+            &error,
+            command->shell,
+            command,
+            NULL,
+            NULL);
+}
 
  MI_EXPORT void WINAPI WSManCloseCommand(
     _Inout_opt_ WSMAN_COMMAND_HANDLE commandHandle,
@@ -2114,62 +2124,73 @@ error:
     return;
 }
 
+void MI_CALL CloseShellComplete(
+    _In_opt_     MI_Operation *miOperation,
+    _In_     void *callbackContext,
+    _In_opt_ const MI_Instance *instance,
+             MI_Boolean moreResults,
+    _In_     MI_Result resultCode,
+    _In_opt_z_ const MI_Char *errorString,
+    _In_opt_ const MI_Instance *errorDetails,
+    _In_opt_ MI_Result (MI_CALL * resultAcknowledgement)(_In_ MI_Operation *operation))
+{
+    WSMAN_SHELL_HANDLE shell = ( WSMAN_SHELL_HANDLE ) callbackContext;
+    WSMAN_ERROR error = {0};
+    __LOGD(("%s: START, errorCode=%u", "CloseShellComplete", resultCode));
+    error.code = resultCode;
+    if (resultCode != 0)
+    {
+        if (errorString)
+        {
+            Utf8ToUtf16Le(shell->batch, errorString, (MI_Char16**) &error.errorDetail);
+            __LOGD(("Error string = %s", errorString));
+        }
+        else
+        {
+            Utf8ToUtf16Le(shell->batch, Result_ToString(resultCode), (MI_Char16**) &error.errorDetail);
+        }
+    }
+    shell->asyncCallback.completionFunction(
+                shell->asyncCallback.operationContext,
+                WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
+                &error,
+                shell,
+                NULL,
+                NULL,
+                NULL);
+    MI_Operation_Close(miOperation);
+    MI_Session_Close(&shell->miSession, NULL, NULL);
+    __LOGD(("%s: END, errorCode=%u", "CloseShellComplete", resultCode));
+}
 MI_EXPORT void WINAPI WSManCloseShell(
     _Inout_opt_ WSMAN_SHELL_HANDLE shellHandle,
     MI_Uint32 flags,
     _In_ WSMAN_SHELL_ASYNC *async)
 {
-    WSMAN_ERROR error = {0};
-    MI_Operation miOperation = MI_OPERATION_NULL;
-    MI_Boolean moreResults;
-    const MI_Char *errorMessage = NULL;
-    const MI_Instance *instance;
     MI_Result miResult;
-    MI_OperationOptions miOptions = MI_OPERATIONOPTIONS_NULL;
+    char *errorMessage = NULL;
+    MI_Value value;
 
     LogFunctionStart("WSManCloseShell");
 
-    miResult = MI_Application_NewOperationOptions(&shellHandle->session->api->application, MI_TRUE, &miOptions);
-    if (miResult != MI_RESULT_OK)
+    shellHandle->asyncCallback = *async;
+
+    if (shellHandle->didCreate)
     {
-        GOTO_ERROR("Failed to create operation options", miResult);
+        shellHandle->callbacks.instanceResult = CloseShellComplete;
+        shellHandle->callbacks.callbackContext = shellHandle;
+
+        MI_Session_DeleteInstance(&shellHandle->miSession,
+                0, /* flags */
+                &shellHandle->operationOptions, /*options*/
+                NULL, /* namespace */
+                &shellHandle->shellInstance->__instance,
+                &shellHandle->callbacks,
+                &shellHandle->miDeleteShellOperation);
     }
 
-    {
-        MI_Value value;
-        MI_Type type;
-        if (__MI_Instance_GetElement(&shellHandle->shellInstance->__instance, "ResourceUri", &value, &type, NULL, NULL) != MI_RESULT_OK)
-        {
-            GOTO_ERROR("Failed to get resource URI", MI_RESULT_FAILED);
-        }
-        if (MI_OperationOptions_SetResourceUri(&miOptions, value.string) != MI_RESULT_OK)
-        {
-            GOTO_ERROR("Failed to set resource URI in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
-        }
-    }
-
-    /* TODO: All of this should be asyncronous */
-    /* TODO: Should make sure everything else is shut down first */
-    MI_Session_DeleteInstance(&shellHandle->miSession, 0, &miOptions, NULL, &shellHandle->shellInstance->__instance, NULL, &miOperation);
-    do
-    {
-        MI_Operation_GetInstance(&miOperation, &instance, &moreResults, &miResult, &errorMessage, NULL);
-    } while (moreResults);
-
-    MI_Session_Close(&shellHandle->miSession, NULL, NULL);
-
-error:
-    error.code = miResult;
-    async->completionFunction(
-            shellHandle->asyncCallback.operationContext,
-            WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
-            &error,
-            shellHandle,
-            NULL,
-            NULL,
-            NULL);
-    Batch_Delete(shellHandle->batch);
-    LogFunctionEnd("WSManCloseShell", miResult);
+    LogFunctionEnd("WSManCloseShell", MI_RESULT_OK);
+    return;
 }
 
 MI_EXPORT void WINAPI WSManDisconnectShell(

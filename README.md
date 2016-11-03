@@ -77,6 +77,9 @@ popd
 Running
 =======
 
+Connecting from Windows to Linux
+--------------------------------
+
 Some initial setup on Windows is required. Open an administrative command
 prompt and execute the following:
 
@@ -97,6 +100,7 @@ Now in a PowerShell prompt on Windows (opened after setting the WinRM client
 configurations):
 
 ```powershell
+$cred = Get-Credential
 $o = New-PSSessionOption -SkipCACheck -SkipRevocationCheck -SkipCNCheck
 Enter-PSSession -ComputerName <IP address of Linux machine> -Credential $cred -Authentication basic -UseSSL -SessionOption $o
 ```
@@ -106,3 +110,40 @@ The IP address of the Linux machine can be obtained with:
 ```sh
 ip -f inet addr show dev eth0
 ```
+
+Connecting from Linux to Windows
+--------------------------------
+
+*NOTE: This is pre-release and does have plenty of known problems. We are pushing it to master so you can try it out.*
+*Please don't file issues on crashes or hangs yet as it is probably already known about.*
+
+WinRM server needs to be configured to allow unencrypted traffic and accept basic authentication for inbound connections.
+*NOTE: This sends passwords over unencrypted http.*
+
+We are working on SPNEGO authentication with encryption over HTTP and this will hopefully be in place soon.
+
+On Windows in an administrative command prompt run:
+```cmd
+winrm set winrm/config/Service @{AllowUnencrypted="true"}
+winrm set winrm/config/Service/Auth @{Basic="true"}
+```
+
+Basic authentication with WinRM can only access local machine accounts so you will need to create a local account on your Windows machine that is part of the administrator group.
+
+
+Building this repository generates two new binaries that need to be picked up instead of the ones included by PowerShell for Linux itself. 
+Run PowerShell as:
+
+```sh
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:psl-omi-provider-path/src;psl-omi-provider-path/omi/Unix/output/lib && powershell
+```
+
+where psl-omi-provider-path is where you enlisted your psl-omi-provider code.
+
+Now in PowerShell prompt on Linux you can connect to Windows using this command:
+
+```powershell
+$cred = Get-Credential
+Enter-PSSession -ComputerName <IP address of windows machine> -Credential $cred -Authentication basic
+```
+

@@ -398,7 +398,7 @@ MI_EXPORT MI_Uint32 WINAPI WSManSetSessionOption(
             }
             else
             {
-                miResult = MI_DestinationOptions_SetTransport(&session->destinationOptions, MI_DESTINATIONOPTIONS_TRANPSORT_HTTPS);
+                miResult = MI_DestinationOptions_SetTransport(&session->destinationOptions, MI_DESTINATIONOPTIONS_TRANSPORT_HTTPS);
             }
             break;
 

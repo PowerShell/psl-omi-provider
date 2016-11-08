@@ -689,9 +689,10 @@ static MI_Result ExtractStreamSet(WSMAN_STREAM_ID_SET *streamSet, Batch *batch, 
         for (count = 0; count != streamSet->streamIDsCount; count++)
         {
             size_t thisStringLen = Utf16LeStrLenBytes(streamSet->streamIDs[count]);
+            const MI_Char16 *strID = streamSet->streamIDs[count];
 
             iconv_return = iconv(iconvData,
-                    (char**) &streamSet->streamIDs[count], &thisStringLen,
+                    (char**) &strID, &thisStringLen,
                     &cursor, &stringLength);
             if (iconv_return == (size_t) -1)
             {

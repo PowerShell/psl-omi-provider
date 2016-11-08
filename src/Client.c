@@ -346,6 +346,12 @@ MI_EXPORT MI_Uint32 WINAPI WSManCreateSession(
         GOTO_ERROR("Failed to add http prefix to destination options", miResult);
     }
 
+    miResult = MI_DestinationOptions_SetTransport(&(*session)->destinationOptions, MI_DESTINATIONOPTIONS_TRANSPORT_HTTP);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to default http transport", miResult);
+    }
+
     (*session)->api = apiHandle;
 
     LogFunctionEnd("WSManCreateSession", miResult);

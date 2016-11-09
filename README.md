@@ -135,7 +135,7 @@ Building this repository generates two new binaries that need to be picked up in
 Run PowerShell as:
 
 ```sh
-export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:psl-omi-provider-path/src;psl-omi-provider-path/omi/Unix/output/lib && powershell
+export LD_LIBRARY_PATH=psl-omi-provider-path/src:psl-omi-provider-path/omi/Unix/output/lib:${LD_LIBRARY_PATH} && powershell
 ```
 
 where psl-omi-provider-path is where you enlisted your psl-omi-provider code.

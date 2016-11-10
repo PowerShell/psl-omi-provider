@@ -1649,7 +1649,7 @@ MI_EXPORT void WINAPI WSManReceiveShellOutput(
     char *errorMessage = NULL;
     //MI_Instance *desiredStream = NULL;
     Batch *batch = NULL;
-//    char *streamSetString = NULL;
+    char *streamSetString = NULL;
     MI_Value value;
 
     LogFunctionStart("WSManReceiveShellOutput");
@@ -1683,8 +1683,6 @@ MI_EXPORT void WINAPI WSManReceiveShellOutput(
         GOTO_ERROR("Failed to allocate receive properties instance", miResult);
     }
 
-#if 0
-    /* For some reason the stream shows as being empty so we will hard code it for now */
     miResult = ExtractStreamSet(desiredStreamSet, batch, &streamSetString);
     if (miResult != MI_RESULT_OK)
     {
@@ -1692,8 +1690,6 @@ MI_EXPORT void WINAPI WSManReceiveShellOutput(
     }
 
     value.string = streamSetString;
-#endif
-    value.string = "stdout";
     miResult = MI_Instance_AddElement((*receiveOperation)->operationProperties, "DesiredStream", &value, MI_STRING, 0);
     if (miResult != MI_RESULT_OK)
     {

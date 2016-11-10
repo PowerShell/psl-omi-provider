@@ -599,7 +599,8 @@ void MI_CALL CreateShellComplete(
 
         if ((__MI_Instance_GetElement(instance, "ResourceUri", &value, &type, NULL, NULL) == MI_RESULT_OK) &&
                 (type == MI_STRING) &&
-                (Shell_Set_ResourceUri(shell->shellInstance, value.string) == MI_RESULT_OK))
+                (Shell_Set_ResourceUri(shell->shellInstance, value.string) == MI_RESULT_OK) &&
+                (MI_OperationOptions_SetResourceUri(&shell->operationOptions, value.string) == MI_RESULT_OK))
         {
             __LOGD(("Create shell returned resource URI = %s", value.string));
         }
@@ -891,9 +892,10 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
     }
 
     {
-        MI_OperationCallbacks callbacks = MI_OPERATIONCALLBACKS_NULL;
-        callbacks.instanceResult = CreateShellComplete;
-        callbacks.callbackContext = shell;
+        memset(&shell->callbacks, 0, sizeof(shell->callbacks));
+
+        shell->callbacks.instanceResult = CreateShellComplete;
+        shell->callbacks.callbackContext = shell;
 
         miResult = MI_Application_NewSession(&session->api->application, NULL, session->hostname, &session->destinationOptions, NULL, NULL, &shell->miSession);
         if (miResult != MI_RESULT_OK)
@@ -906,11 +908,8 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
                 &shell->operationOptions, /*options*/
                 NULL, /* namespace */
                 &shell->shellInstance->__instance,
-                &callbacks, &shell->miCreateShellOperation);
+                &shell->callbacks, &shell->miCreateShellOperation);
     }
-
-
-    MI_OperationOptions_Delete(&shell->operationOptions);
 
     *_shell = shell;
     LogFunctionEnd("WSManCreateShellEx", miResult);

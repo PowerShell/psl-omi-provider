@@ -29,7 +29,7 @@
 #include "Utilities.h"
 
 /* Note: Change logging level in omiserver.conf */
-#define SHELL_LOGGING_FILE "shell"
+#define SHELL_LOGGING_FILE "shellserver"
 
 /* Number of characters reserved for command ID and shell ID -- max number of digits for hex 64-bit number with null terminator */
 #define ID_LENGTH 17
@@ -2030,13 +2030,6 @@ void MI_CALL Shell_Invoke_Receive(Shell_Self* self, MI_Context* context,
 error:
     if (receiveData)
         PrintDataFunctionTag(&receiveData->common, "Shell_Invoke_Receive", "PostResult");
-    {
-        Shell_Receive receiveResult;
-        Shell_Receive_Construct(&receiveResult, context);
-        Shell_Receive_Set_MIReturn(&receiveResult, miResult);
-        Shell_Receive_Post(&receiveResult, context);
-        Shell_Receive_Destruct(&receiveResult);
-    }
     MI_Context_PostError(context, miResult, MI_RESULT_TYPE_MI, errorMessage);
 
     if (receiveData)

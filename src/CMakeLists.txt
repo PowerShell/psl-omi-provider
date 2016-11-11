@@ -43,6 +43,7 @@ target_link_libraries(psrpclient
 	base
 	pal
 	${CMAKE_THREAD_LIBS_INIT}
+	${CMAKE_ICONV}
 	)
 
 target_link_libraries(psrpomiprov

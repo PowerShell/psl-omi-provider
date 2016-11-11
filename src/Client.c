@@ -1516,10 +1516,30 @@ void MI_CALL ReceiveShellComplete(
     MI_Boolean done = MI_FALSE;
     WSMAN_OPERATION_HANDLE operation = ( WSMAN_OPERATION_HANDLE ) callbackContext;
     WSMAN_ERROR error = {0};
-    __LOGD(("%s: START, errorCode=%u", "ReceiveShellComplete", resultCode));
+    if (operation->command)
+    {
+        __LOGD(("%s: START, errorCode=%u, shellId=%s, commandId=%s", "ReceiveShellComplete", resultCode, operation->shell->shellInstance->ShellId.value, operation->command->commandId));
+    }
+    else
+    {
+        __LOGD(("%s: START, errorCode=%u, shellId=%s, commandId=<null>", "ReceiveShellComplete", resultCode, operation->shell->shellInstance->ShellId.value));
+    }
     error.code = resultCode;
     if (resultCode != 0)
     {
+        if (errorDetails)
+        {
+            MI_Value value;
+            MI_Uint32 type;
+            /* We need to check if this is a server-side timeout. If so we need to re-send the request */
+            //ProbableCause == 111 -- timeout
+            if ((MI_Instance_GetElement(errorDetails, "ProbableCause", &value, &type, NULL, NULL) == MI_RESULT_OK) &&
+                    (value.uint32 == 111))
+            {
+                __LOGD(("Timeout from remote machine, re-sending request"));
+                goto retry;
+            }
+        }
         if (errorString)
         {
             __LOGD(("Error string = %s", errorString));
@@ -1604,6 +1624,7 @@ void MI_CALL ReceiveShellComplete(
          }
     }
 
+retry:
     MI_Operation_Close(&operation->miOperation);
 
     /* WHAT ABOUT TIMEOUT ? */

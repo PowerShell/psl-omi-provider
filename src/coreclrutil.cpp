@@ -15,9 +15,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <string>
-#include <iostream>
 #include <set>
 #include <cstdlib>
+#include "base/logbase.h"
 
 // The name of the CoreCLR native runtime DLL
 #if defined(__APPLE__)
@@ -64,7 +64,7 @@ std::string GetEnvAbsolutePath(const char* env)
     char *ptr = realpath(local, fullpath);
     if (!ptr)
     {
-        std::cerr << "Invalid environment variable " << env << " content, switching to default value. " << std::endl;
+        __LOGE(("Invalid environment variable %s content, switching to default value. ", env));
         return std::string("");
     }
     return std::string(ptr);
@@ -228,7 +228,7 @@ int startCoreCLR(
     coreclrLib = dlopen(coreClrDllPath.c_str(), RTLD_NOW|RTLD_LOCAL);
     if (coreclrLib == NULL)
     {
-        std::cerr << "dlopen failed to open the CoreCLR library: " << dlerror() << std::endl;
+        __LOGE(("dlopen failed to open the CoreCLR library: %s ", dlerror()));
         return -1;
     }
 
@@ -240,22 +240,22 @@ int startCoreCLR(
 
     if (initializeCoreCLR == NULL)
     {
-        std::cerr << "function coreclr_initialize not found in CoreCLR library" << std::endl;
+        __LOGE(("function coreclr_initialize not found in CoreCLR library"));
         return -1;
     }
     if (executeAssembly == NULL)
     {
-        std::cerr << "function coreclr_execute_assembly not found in CoreCLR library" << std::endl;
+        __LOGE(("function coreclr_execute_assembly not found in CoreCLR library"));
         return -1;
     }
     if (shutdownCoreCLR == NULL)
     {
-        std::cerr << "function coreclr_shutdown not found in CoreCLR library" << std::endl;
+        __LOGE(("function coreclr_shutdown not found in CoreCLR library"));
         return -1;
     }
     if (createDelegate == NULL)
     {
-        std::cerr << "function coreclr_create_delegate not found in CoreCLR library" << std::endl;
+        __LOGE(("function coreclr_create_delegate not found in CoreCLR library"));
         return -1;
     }
 
@@ -319,13 +319,13 @@ int stopCoreCLR(void* hostHandle, unsigned int domainId)
     int status = shutdownCoreCLR(hostHandle, domainId);
     if (!SUCCEEDED(status))
     {
-        std::cerr << "coreclr_shutdown failed - status: " << std::hex << status << std::endl;
+        __LOGE(("coreclr_shutdown failed - status: %X", status));
     }
 
     // close the dynamic library
     if (0 != dlclose(coreclrLib))
     {
-        std::cerr << "failed to close CoreCLR library" << std::endl;
+        __LOGE(("failed to close CoreCLR library"));
     }
 
     return status;

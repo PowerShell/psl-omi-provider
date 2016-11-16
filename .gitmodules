@@ -1,3 +1,7 @@
 [submodule "omi"]
 	path = omi
 	url = https://github.com/Microsoft/omi.git
+[submodule "Pester"]
+	path = Pester
+	url = https://github.com/PowerShell/psl-pester
+	branch = develop

@@ -2211,6 +2211,19 @@ MI_EXPORT void WINAPI WSManCloseShell(
                 &shellHandle->callbacks,
                 &shellHandle->miDeleteShellOperation);
     }
+    else
+    {
+        WSMAN_ERROR error = {0};
+        error.code = MI_RESULT_FAILED;
+        shellHandle->asyncCallback.completionFunction(
+                    shellHandle->asyncCallback.operationContext,
+                    WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
+                    &error,
+                    shellHandle,
+                    NULL,
+                    NULL,
+                    NULL);
+     }
 
     LogFunctionEnd("WSManCloseShell", MI_RESULT_OK);
     return;

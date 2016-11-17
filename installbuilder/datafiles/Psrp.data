@@ -52,7 +52,6 @@ ${{OMI_HOME}}/bin/service_control restart
 %Preuninstall_100
 ${{OMI_HOME}}/bin/service_control stop
 rm -f ${{CONFIG_SYSCONFDIR}}/omiregister/interop/psrpomiprov.reg
-rm -f ${{OMI_HOME}}/lib/libpsrpomiprov.${{SHLIB_EXT}}
 
 %Postuninstall_100
 ${{OMI_HOME}}/bin/service_control start

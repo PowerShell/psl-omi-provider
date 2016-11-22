@@ -88,6 +88,7 @@ struct WSMAN_SHELL
     MI_Operation miDeleteShellOperation;
     MI_OperationOptions operationOptions;
     MI_Boolean didCreate;
+    MI_Boolean isCompressed;
 };
 
 struct WSMAN_COMMAND
@@ -1074,6 +1075,12 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
         __LOGD(("Creation XML = %s", tmpStr));
     }
 
+    if ((flags & WSMAN_FLAG_NO_COMPRESSION) == 0)
+    {
+        shell->isCompressed = MI_TRUE;
+        Shell_Set_CompressionMode(shell->shellInstance, "xpress");
+    }
+
     {
         memset(&shell->callbacks, 0, sizeof(shell->callbacks));
 
@@ -1568,6 +1575,15 @@ MI_Result DecodeReceiveStream(WSMAN_OPERATION_HANDLE operation, const MI_Instanc
     {
         streamName = value.string;
         __LOGD(("Stream Name = %s", streamName));
+
+        batch = Batch_New(BATCH_MAX_PAGES);
+        if (!Utf8ToUtf16Le(batch, streamName, (MI_Char16**) &responseData.receiveData.streamId))
+        {
+            error.code = MI_RESULT_FAILED;
+            Utf8ToUtf16Le(operation->batch, "Receive failed to convert stream name", (MI_Char16**) &error.errorDetail);
+            goto error;
+        }
+
     }
 
     if (__MI_Instance_GetElement(streamInstance, "endOfStream", &value, &type, &flags, NULL) == MI_RESULT_OK)
@@ -1592,18 +1608,21 @@ MI_Result DecodeReceiveStream(WSMAN_OPERATION_HANDLE operation, const MI_Instanc
         goto error;
     }
 
-    /* TODO!! */
-    responseData.receiveData.commandState = NULL;
-
-    batch = Batch_New(BATCH_MAX_PAGES);
-    if (!Utf8ToUtf16Le(batch, streamName, (MI_Char16**) &responseData.receiveData.streamId))
+    if (operation->shell->isCompressed)
     {
-        error.code = MI_RESULT_FAILED;
-        Utf8ToUtf16Le(operation->batch, "Receive failed to convert stream name", (MI_Char16**) &error.errorDetail);
-        goto error;
+        decodeBuffer = decodedBuffer;
+        if (DecompressBuffer(&decodeBuffer, &decodedBuffer) != MI_RESULT_OK)
+        {
+            free(decodeBuffer.buffer);
+            error.code = MI_RESULT_FAILED;
+            Utf8ToUtf16Le(operation->batch, "Failed to decompress stream data", (MI_Char16**) &error.errorDetail);
+            goto error;
+        }
+        free(decodeBuffer.buffer);
     }
 
-    /* TODO!! Support compression */
+    responseData.receiveData.commandState = NULL;
+
     responseData.receiveData.exitCode = 0;
     responseData.receiveData.streamData.type = WSMAN_DATA_TYPE_TEXT;
     responseData.receiveData.streamData.text.buffer = (MI_Char16*) decodedBuffer.buffer;
@@ -2125,8 +2144,28 @@ MI_EXPORT void WINAPI WSManSendShellInput(
         decodeBuffer.bufferLength = streamData->binaryData.dataLength;
         decodeBuffer.bufferUsed = decodeBuffer.bufferLength;
 
+        if (shell->isCompressed)
+        {
+            miResult = CompressBuffer(&decodeBuffer, &decodedBuffer, sizeof(MI_Char));
+            if (miResult != MI_RESULT_OK)
+            {
+                GOTO_ERROR("Failed to compress buffer", miResult);
+            }
+
+            /* switch the decodedBuffer back to decodeBuffer for further processing.
+             */
+            decodeBuffer = decodedBuffer;
+         }
+
         /* NOTE: Base64EncodeBuffer allocates enough space for a NULL terminator */
         miResult = Base64EncodeBuffer(&decodeBuffer, &decodedBuffer);
+
+        /* Free previously allocated buffer if it was compressed. */
+        if (shell->isCompressed)
+        {
+            free(decodeBuffer.buffer);
+        }
+
         if (miResult != MI_RESULT_OK)
         {
             GOTO_ERROR("Base64EncodeBuffer failed", miResult);
@@ -2137,6 +2176,7 @@ MI_EXPORT void WINAPI WSManSendShellInput(
 
         value.string = decodedBuffer.buffer;
 
+        /* TODO: shouldn't this just adopt the pointer so we don't need to copy it? */
         miResult = MI_Instance_AddElement(stream, "data", &value, MI_STRING, 0);
 
         if (miResult != MI_RESULT_OK)

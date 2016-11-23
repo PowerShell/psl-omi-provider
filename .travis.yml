@@ -1,10 +1,19 @@
-lanugage: c
+language: c
+
+matrix:
+  include:
+    - os: linux
+      dist: trusty
+    - os: osx
+      osx_image: xcode7.3
+
 sudo: required
-dist: trusty
+
 addons:
   apt:
     packages:
       - libpam0g-dev
       - libssl-dev
       - libcurl4-openssl-dev
+
 script: ./build.sh

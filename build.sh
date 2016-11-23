@@ -10,4 +10,5 @@ popd
 pushd src
 cmake -DCMAKE_BUILD_TYPE=Debug .
 make -j
+make reg
 popd

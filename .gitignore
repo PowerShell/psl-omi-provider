@@ -1,0 +1,12 @@
+/src/CMakeCache.txt
+/src/CMakeFiles
+/src/CMakeScripts
+/src/Makefile
+/src/cmake_install.cmake
+/src/install_manifest.txt
+/src/compile_commands.json
+/src/*.so
+/src/*.dylib
+
+/intermediate
+/release

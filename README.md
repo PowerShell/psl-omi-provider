@@ -54,9 +54,9 @@ git clone --recursive https://github.com/PowerShell/psl-omi-provider.git
 Building
 --------
 
-Run `./build.sh` to build OMI and the provider.
+Run `make debug` or `make release` to build OMI and the provider.
 
-This script first builds OMI in developer mode:
+In debug mode, this script first builds OMI in developer mode:
 
 ```sh
 pushd omi/Unix
@@ -73,6 +73,8 @@ cmake -DCMAKE_BUILD_TYPE=Debug .
 make -j
 popd
 ```
+
+In release mode, this script will build omi, the provider, and packages (for distribution).
 
 Running
 =======

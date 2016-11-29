@@ -11,11 +11,11 @@ Go to the top level of the PSRP repository and set environment variables for tes
 
 Linux/MacOS
 ```
-export LINUXHOSTNAME=<inputTestLinuxHostName>
-export LINUXUSERNAME=<inputTestLinuxUserName>
-export WINDOWSHOSTNAME=<inputTestWindowsHostName>
-export WINDOWSUSERNAME=<inputTestWindowsUserName>
-export PASSWORDSTRING=<inputTestHostPassword>
+export LINUXHOSTNAME="<inputTestLinuxHostName>"
+export LINUXUSERNAME="<inputTestLinuxUserName>"
+export WINDOWSHOSTNAME="<inputTestWindowsHostName>"
+export WINDOWSUSERNAME="<inputTestWindowsUserName>"
+export PASSWORDSTRING="<inputTestHostPassword>"
 ```
 
 Windows Command Line
@@ -36,6 +36,6 @@ $env:WINDOWSUSERNAME="<inputTestWindowsUserName>"
 $env:PASSWORDSTRING="<inputTestHostPassword>"
 ```
 
-Then run: `Import-Module Pester` inside a self-hosted copy of PowerShell.
+Then open a self-hosted copy of PowerShell.
 
 You should use `Invoke-Pester .\test\PSRP.Tests.ps1` to run the PSRP test on three different platforms to cover all the tests.

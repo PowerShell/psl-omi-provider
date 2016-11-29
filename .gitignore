@@ -9,4 +9,4 @@
 /src/*.dylib
 
 /intermediate
-/release
+/target

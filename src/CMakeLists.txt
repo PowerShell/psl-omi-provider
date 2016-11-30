@@ -4,6 +4,12 @@ project(PSRP_PROVIDER)
 # Export commands for auto-completion engines
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 
+# The client is distributed in an unknown directory
+# so we set the RPATH=$ORIGIN to make sure it can
+# run properly from the directory it is installed in
+set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE) 
+set(CMAKE_INSTALL_RPATH $ORIGIN)
+
 add_definitions(-D_GNU_SOURCE)
 
 # Cannot use add_compile_options with 2.8.11

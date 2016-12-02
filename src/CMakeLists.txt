@@ -3,13 +3,6 @@ project(PSRP_PROVIDER)
 
 # Export commands for auto-completion engines
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
-
-# The client is distributed in an unknown directory
-# so we set the RPATH=$ORIGIN to make sure it can
-# run properly from the directory it is installed in
-set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE) 
-set(CMAKE_INSTALL_RPATH $ORIGIN)
-
 add_definitions(-D_GNU_SOURCE)
 
 # Cannot use add_compile_options with 2.8.11
@@ -19,8 +12,18 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	add_definitions(-Dmacos)
 	set(CMAKE_ICONV iconv)
 	set(OUR_LD_PATH export DYLD_LIBRARY_PATH)
+
+	# set rpath to @rpath on mac
+	set(CMAKE_MACOSX_RPATH 1)
+	SET(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE) 
+
 else ()
 	set(OUR_LD_PATH export LD_LIBRARY_PATH)
+
+	# set rpath to $origin on linux
+	set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE) 
+	set(CMAKE_INSTALL_RPATH $ORIGIN)
+
 endif ()
 
 set(OMI ../omi/Unix)

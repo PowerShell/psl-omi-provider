@@ -13,7 +13,12 @@ debug :
 
 
 release :
-	cd omi/Unix; ./configure; make -j
+	cd omi/Unix; ./configure --enable-microsoft; make -j
 	cd src; cmake .; make -j
 	cd pal/build/; ./configure --enable-system-build
 	cd installbuilder/; make
+	
+clean :
+	cd omi/Unix; make clean; rm -rf output/
+	cd src; make clean
+	rm -rf target/

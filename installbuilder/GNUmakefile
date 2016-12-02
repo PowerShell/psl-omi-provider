@@ -66,6 +66,10 @@ endif
 	# Pick up the PSRP client library for distribution
 	cp $(TOP)/src/libpsrpclient.* $(TARGET_DIR)
 
+ifeq ($(PF),Darwin)
+	# On mac we need to patch the dylib path for libmi.dylib, on Linux it is done in the linking
+	install_name_tool -change '/opt/omi/lib/libmi.dylib' '@executable_path/libmi.dylib' $(TARGET_DIR)/libpsrpclient.dylib
+endif
 
 clean:
 	sudo rm -rf $(TOP)/release $(TOP)/intermediate

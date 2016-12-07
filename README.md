@@ -6,7 +6,7 @@ Infrastructure (OMI)][OMI] using this OMI provider.
 
 [OMI]: https://github.com/Microsoft/omi
 
-Two versions of PSRP are available - server and client.  The client PSRP package is under development, and will be distributed together with OMI. The server PSRP package is available now.
+Two parts of PSRP are available - server and client.  The client PSRP part (libpsrpclient) is under development, and will be distributed together with PowerShell. The server PSRP package is available now and should be installed after installing [OMI][] as it is an OMI provider.
 
 Get PSRP-Server
 ===============

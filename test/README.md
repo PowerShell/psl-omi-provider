@@ -26,23 +26,41 @@ Running PSRP Pester Tests
 
 Go to the top level of the PSRP repository and set environment variables for testing:
 
+(Option 1)Manual setting:
+
 Linux/MacOS
 ```
 export LINUXHOSTNAME="<inputTestLinuxHostName>"
 export LINUXUSERNAME="<inputTestLinuxUserName>"
+export LINUXPASSWORDSTRING="<inputTestLinuxHostPassword>"
 export WINDOWSHOSTNAME="<inputTestWindowsHostName>"
 export WINDOWSUSERNAME="<inputTestWindowsUserName>"
-export PASSWORDSTRING="<inputTestHostPassword>"
+export WINDOWSPASSWORDSTRING="<inputTestWindowsHostPassword>"
 ```
 
 Windows Open PowerShell Command
 ```
 $env:LINUXHOSTNAME="<inputTestLinuxHostName>"
 $env:LINUXUSERNAME="<inputTestLinuxUserName>"
+$env:LINUXPASSWORDSTRING="<inputTestLinuxHostPassword>"
 $env:WINDOWSHOSTNAME="<inputTestWindowsHostName>"
 $env:WINDOWSUSERNAME="<inputTestWindowsUserName>"
-$env:PASSWORDSTRING="<inputTestHostPassword>"
+$env:WINDOWSPASSWORDSTRING="<inputTestWindowsHostPassword>"
 ```
+
+(Option 2)Script setting:
+
+Linux/MacOS
+```
+chmod +x setPSRPTest.sh
+. setPSRPTest.sh --linux="hostname/username:password" --windows="hostname/username:password"
+```
+
+Windows Open PowerShell Command
+```
+.\setPSRPTest.ps1 -linux "hostname/username:password" -windows "hostname/username:password"
+```
+
 
 Then open a self-hosted copy of Open PowerShell.
 

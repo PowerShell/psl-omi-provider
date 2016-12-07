@@ -2,9 +2,10 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
         BeforeALL {
                     $LinuxHostName = $env:LINUXHOSTNAME
                     $LinuxUserName = $env:LINUXUSERNAME
+                    $linuxPasswordString = $env:LINUXPASSWORDSTRING
                     $WindowsHostName = $env:WINDOWSHOSTNAME
                     $WindowsUserName = $env:WINDOWSUSERNAME
-                    $passwordString = $env:PASSWORDSTRING
+                    $windowsPasswordString = $env:WINDOWSPASSWORDSTRING
                     $badUserName = "badUserName"
                     $badPassword = "badPassword"
                     $Port = 5986
@@ -13,8 +14,16 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
         It "Remoting from Windows/Linux/MacOS to Linux with basic authentication should work" {
             $hostname = $LinuxHostName
             $User = $LinuxUserName
-            $PWord = convertto-securestring $passwordString -asplaintext -force
-            $cred = New-Object –TypeName System.Management.Automation.PSCredential –ArgumentList $User, $PWord
+            if($IsLinux -Or $IsOSX)
+            {
+                $password=$linuxPasswordString
+            }
+            elseif($IsWindows)
+            {
+                $password=$windowsPasswordString
+            }
+            $PWord = convertto-securestring $password -asplaintext -force
+            $cred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $User,$PWord
             $sessionOption = New-PSSessionOption -SkipCACheck -SkipRevocationCheck -SkipCNCheck
             $mySession = New-PSSession -ComputerName $hostname -Credential $cred -Authentication Basic -UseSSL -SessionOption $sessionOption
             $result = Invoke-Command -Session $mySession {Get-Host}
@@ -25,20 +34,28 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
             $User = $LinuxUserName
             if($IsLinux -Or $IsOSX)
             {
-                $result = /opt/omi/bin/omicli id -u $User -p $passwordString --auth Basic --hostname $hostname --port $Port --encryption https
+                $result = /opt/omi/bin/omicli id -u $User -p $linuxPasswordString --auth Basic --hostname $hostname --port $Port --encryption https
                 $result|Should Not BeNullOrEmpty
             }
             elseif($IsWindows)
             {
-                $result = winrm enumerate http://schemas.microsoft.com/wbem/wscim/1/cim-schema/2/OMI_Identify?__cimnamespace=root/omi -r:https://${hostname}:$Port -auth:Basic -u:$User -p:$passwordString -skipcncheck -skipcacheck -encoding:utf-8
-                $result|Should Not BeNullOrEmpt
+                $result = winrm enumerate http://schemas.microsoft.com/wbem/wscim/1/cim-schema/2/OMI_Identify?__cimnamespace=root/omi -r:https://${hostname}:$Port -auth:Basic -u:$User -p:$windowsPasswordString -skipcncheck -skipcacheck -encoding:utf-8
+                $result|Should Not BeNullOrEmpty
             }
         }
         It "Remoting from Windows/Linux/MacOS to Linux with basic authentication with bad username should throw exception" {
             $hostname = $LinuxHostName
             $User = $badUserName
-            $PWord = convertto-securestring $passwordString -asplaintext -force
-            $cred = New-Object –TypeName System.Management.Automation.PSCredential –ArgumentList $User, $PWord
+            if($IsLinux -Or $IsOSX)
+            {
+                $password=$linuxPasswordString
+            }
+            elseif($IsWindows)
+            {
+                $password=$windowsPasswordString
+            }
+            $PWord = Convertto-SecureString $password -AsPlainText -Force
+            $cred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $User,$PWord
             $sessionOption = New-PSSessionOption -SkipCACheck -SkipRevocationCheck -SkipCNCheck
             try
             {
@@ -54,8 +71,8 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
         It "Remoting from Windows/Linux/MacOS to Linux with basic authentication with bad password should throw exception" {
             $hostname = $LinuxHostName
             $User = $LinuxUserName
-            $PWord = convertto-securestring $badPassword -asplaintext -force
-            $cred = New-Object –TypeName System.Management.Automation.PSCredential –ArgumentList $User, $PWord
+            $PWord = Convertto-SecureString $badPassword -AsPlainText -Force
+            $cred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $User, $PWord
             $sessionOption = New-PSSessionOption -SkipCACheck -SkipRevocationCheck -SkipCNCheck
             try
             {
@@ -75,14 +92,14 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
 
             if($IsLinux -Or $IsOSX)
             {
-                $result = /opt/omi/bin/omicli id -u $User -p $passwordString --auth Basic --hostname $hostname --port $Port --encryption https
+                $result = /opt/omi/bin/omicli id -u $User -p $linuxPasswordString --auth Basic --hostname $hostname --port $Port --encryption https
                 $result | Should Match 'error'
            }
            elseif($IsWindows)
            {
                 try
                 {
-                    winrm enumerate http://schemas.microsoft.com/wbem/wscim/1/cim-schema/2/OMI_Identify?__cimnamespace=root/omi -r:https://${hostname}:$Port -auth:Basic -u:$User -p:$passwordString -skipcncheck -skipcacheck -encoding:utf-8
+                    winrm enumerate http://schemas.microsoft.com/wbem/wscim/1/cim-schema/2/OMI_Identify?__cimnamespace=root/omi -r:https://${hostname}:$Port -auth:Basic -u:$User -p:$windowsPasswordString -skipcncheck -skipcacheck -encoding:utf-8
                 }
                 catch
                 {
@@ -117,8 +134,8 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
         It "Remoting from Linux/MacOS to Windows with basic authentication should work" -Skip:($IsWindows){
             $hostname = $WindowsHostName
             $User = $WindowsUserName
-            $PWord = convertto-securestring $passwordString -asplaintext -force
-            $cred = New-Object –TypeName System.Management.Automation.PSCredential –ArgumentList $User, $PWord
+            $PWord = Convertto-SecureString $windowsPasswordString -AsPlainText -Force
+            $cred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $User, $PWord
             $sessionOption = New-PSSessionOption -SkipCACheck -SkipRevocationCheck -SkipCNCheck
             $mySession = New-PSSession -ComputerName $hostname -Credential $cred -Authentication Basic -UseSSL -SessionOption $sessionOption
             $result = Invoke-Command -Session $mySession {Get-Host}
@@ -130,7 +147,7 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
             $User = $WindowsUserName
             if($IsLinux -Or $IsOSX)
             {
-                $result = /opt/omi/bin/omicli id -u $User -p $passwordString --auth Basic --hostname $hostname --port $Port --encryption https
+                $result = /opt/omi/bin/omicli id -u $User -p $linuxPasswordString --auth Basic --hostname $hostname --port $Port --encryption https
                 $result|Should Not BeNullOrEmpty
             }
         }

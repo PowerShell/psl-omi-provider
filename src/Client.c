@@ -106,7 +106,8 @@ typedef enum
 {
         WSMAN_OPERATION_SEND = 1,
         WSMAN_OPERATION_RECEIVE = 2,
-        WSMAN_OPERATION_SIGNAL = 3
+        WSMAN_OPERATION_SIGNAL = 3,
+        WSMAN_OPERATION_DISCONNECT = 4
 } WSMAN_OPERATION_TYPE;
 struct WSMAN_OPERATION
 {
@@ -2229,6 +2230,48 @@ MI_EXPORT void WINAPI WSManCloseShell(
     return;
 }
 
+void MI_CALL DisconnectShellComplete(
+    _In_opt_     MI_Operation *operation,
+    _In_     void *callbackContext,
+    _In_opt_ const MI_Instance *instance,
+             MI_Boolean moreResults,
+    _In_     MI_Result resultCode,
+    _In_opt_z_ const MI_Char *errorString,
+    _In_opt_ const MI_Instance *errorDetails,
+    _In_opt_ MI_Result (MI_CALL * resultAcknowledgement)(_In_ MI_Operation *operation))
+{
+    WSMAN_OPERATION_HANDLE operationHandle = (WSMAN_OPERATION_HANDLE)(callbackContext);
+    WSMAN_ERROR error = {0};
+    __LOGD(("%s: START, errorCode=%u", "DisconnectShellComplete", resultCode));
+    error.code = resultCode;
+    if (resultCode != 0)
+    {
+        if (errorString)
+        {
+            Utf8ToUtf16Le(operationHandle->batch, errorString, (MI_Char16**) &error.errorDetail);
+            __LOGD(("Error string = %s", errorString));
+        }
+        else
+        {
+            Utf8ToUtf16Le(operationHandle->batch, Result_ToString(resultCode), (MI_Char16**) &error.errorDetail);
+        }
+    }
+
+    MI_Operation_Close(operation);
+
+    operationHandle->asyncCallback.completionFunction(
+            operationHandle->asyncCallback.operationContext,
+            WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
+            &error,
+            operationHandle->shell,
+            NULL,
+            NULL,
+            NULL);
+}
+
+/* ShellID */
+/* idle timeout */
+/* Buffer mode? WSMAN_FLAG_SERVER_BUFFERING_MODE_DROP flag or a WSMAN_FLAG_SERVER_BUFFERING_MODE_BLOCK  */
 MI_EXPORT void WINAPI WSManDisconnectShell(
     _Inout_ WSMAN_SHELL_HANDLE shell,
     MI_Uint32 flags,
@@ -2236,8 +2279,92 @@ MI_EXPORT void WINAPI WSManDisconnectShell(
     _In_ WSMAN_SHELL_ASYNC *async)
 {
     WSMAN_ERROR error = {0};
+    MI_Result miResult;
+    char *errorMessage = NULL;
+    Batch *batch;
+    WSMAN_OPERATION_HANDLE operationHandle;
     LogFunctionStart("WSManDisconnectShell");
-    error.code = MI_RESULT_NOT_SUPPORTED;
+
+    batch = Batch_New(BATCH_MAX_PAGES);
+    if (batch == NULL)
+    {
+        GOTO_ERROR("Out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
+    operationHandle = Batch_GetClear(batch, sizeof(struct WSMAN_OPERATION));
+    if (operationHandle == NULL)
+    {
+        GOTO_ERROR("Out of memory", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+    operationHandle->batch = batch;
+    operationHandle->shell = shell;
+
+
+    miResult = Instance_NewDynamic(&operationHandle->operationProperties, "Disconnect", MI_FLAG_PARAMETER, batch );
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to allocate receive properties instance", miResult);
+    }
+
+    if (disconnectInfo)
+    {
+        MI_Value value;
+        MI_Uint64 timeoutUsec = disconnectInfo->idleTimeoutMs * 1000;
+        UsecToDatetime(timeoutUsec, &value.datetime);
+
+        miResult = __MI_Instance_AddElement(operationHandle->operationProperties, "IdleTimeOut", &value, MI_DATETIME, 0);
+        if (miResult != MI_RESULT_OK)
+        {
+            GOTO_ERROR("Failed to add Disconnect instance properties", miResult);
+        }
+    }
+
+    if (flags & WSMAN_FLAG_SERVER_BUFFERING_MODE_DROP)
+    {
+        MI_Value value;
+        value.string = "Drop";
+        miResult = __MI_Instance_AddElement(operationHandle->operationProperties, "BufferMode", &value, MI_STRING, 0);
+        if (miResult != MI_RESULT_OK)
+        {
+            GOTO_ERROR("Failed to add Disconnect instance properties", miResult);
+        }
+    }
+    else if (flags & WSMAN_FLAG_SERVER_BUFFERING_MODE_BLOCK)
+    {
+        MI_Value value;
+        value.string = "Block";
+        miResult = __MI_Instance_AddElement(operationHandle->operationProperties, "BufferMode", &value, MI_STRING, 0);
+        if (miResult != MI_RESULT_OK)
+        {
+            GOTO_ERROR("Failed to add Disconnect instance properties", miResult);
+        }
+    }
+
+    {
+        operationHandle->asyncCallback = *async;
+        operationHandle->callbacks.callbackContext = operationHandle;
+        operationHandle->callbacks.instanceResult = DisconnectShellComplete;
+
+        MI_Session_Invoke(&shell->miSession,
+                0, /* flags */
+                &operationHandle->miOptions, /*options*/
+                NULL, /* namespace */
+                "Shell",
+                "Disconnect",
+                &shell->shellInstance->__instance,
+                operationHandle->operationProperties,
+                &(operationHandle->callbacks), &operationHandle->miOperation);
+    }
+
+    return;
+
+error:
+    if (batch)
+    {
+        Batch_Delete(batch);
+    }
+
+    error.code = miResult;
     async->completionFunction(
             async->operationContext,
             WSMAN_FLAG_CALLBACK_END_OF_OPERATION,
@@ -2246,7 +2373,7 @@ MI_EXPORT void WINAPI WSManDisconnectShell(
             NULL,
             NULL,
             NULL);
-     LogFunctionEnd("WSManDisconnectShell", MI_RESULT_NOT_SUPPORTED);
+     LogFunctionEnd("WSManDisconnectShell", miResult);
 }
 
 MI_EXPORT void WINAPI WSManReconnectShell(

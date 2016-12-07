@@ -85,6 +85,8 @@ class Shell
 
     Uint32 Disconnect(
         datetime IdleTimeOut,
+
+        [description("Block or Drop")]
         string BufferMode
         );
 

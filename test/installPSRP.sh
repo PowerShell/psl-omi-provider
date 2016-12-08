@@ -7,11 +7,15 @@ trap '
   kill -s INT "$$"
 ' INT
 
-if [ $# -eq 0 ]; then 
-	chmod +x ./installpowershell.sh
-	./installpowershell.sh
+if [ $# -ne 1 ]; then 
+    echo -e "Need redmondpassword\nUsage:installPSRP.sh redmondpassword"
+	exit 2
 fi
 
+chmod +x ./installpowershell.sh
+./installpowershell.sh
+
+redmondpassword=$1
 isMacOS=false
 omiversion="1.1.0-17"
 psrpversion="2"
@@ -113,27 +117,27 @@ if [ "$isMacOS" = "true" ]; then
 	# Mac OS don't have mount_cifs, so use mount_smbfs
 	omifolder=$(get_omifolder "$omiversion" "$platfrom" "$opensslversion")
 	echo "mounting from $realdataDir folder to omi folder: $omifolder"
-	sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:Sep2016Q4!@wsscnafiler43/ostcdata$' /download
+	sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:'"$redmondpassword"'@wsscnafiler43/ostcdata$' /download
 	sudo cp $omifolder"omicli" /opt/omi/bin
 	sudo cp $omifolder"libmi.dylib" /opt/omi/lib
 	sudo umount /download
 
 	psrpfolder=$(get_psrpfolder "$psrpversion" "$platfrom")
 	echo "mounting from $realdataDir folder to psrp folder: $psrpfolder"
-	sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:Sep2016Q4!@wsscnafiler43/ostcdata$' /download
+	sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:'"$redmondpassword"'@wsscnafiler43/ostcdata$' /download
 	echo "Copying psrpclient ..."
 	sudo cp $psrpfolder/libpsrpclient.dylib $powershellDir
 	sudo umount /download
 else
 	omifolder=$(get_omifolder "$omiversion" "$platfrom" "$opensslversion")
 	echo "mounting from $realdataDir folder to omi folder: $omifolder"
-	sudo mount -t cifs $realdataDir /download -o username=scxsvc,password="Sep2016Q4!",domain=redmond.corp.microsoft.com
+	sudo mount -t cifs $realdataDir /download -o username=scxsvc,password="$redmondpassword",domain=redmond.corp.microsoft.com
 	sudo cp -u $omifolder/* $(pwd)
 	sudo umount /download
 
 	psrpfolder=$(get_psrpfolder "$psrpversion" "$platfrom")
 	echo "mounting from $realdataDir folder to psrp folder: $psrpfolder"
-	sudo mount -t cifs $realdataDir /download -o username=scxsvc,password="Sep2016Q4!",domain=redmond.corp.microsoft.com
+	sudo mount -t cifs $realdataDir /download -o username=scxsvc,password="$redmondpassword",domain=redmond.corp.microsoft.com
 	sudo cp -u $psrpfolder/* $(pwd)
 	sudo umount /download
 fi

@@ -12,7 +12,7 @@ Run below install script to install PowerShell, OMI and PSRP:
 Linux/MacOS
 ```
 chmod +x ./installPSRP.sh
-./installPSRP.sh
+./installPSRP.sh <inputRedmondPassword>
 ```
 
 Windows Native PowerShell Command

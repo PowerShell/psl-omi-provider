@@ -638,7 +638,7 @@ void MI_CALL CreateShellComplete(
         shell->didCreate = MI_TRUE;
         shell->asyncCallback.completionFunction(
                 shell->asyncCallback.operationContext,
-                0,
+                WSMAN_FLAG_CALLBACK_SHELL_SUPPORTS_DISCONNECT,
                 &error,
                 shell,
                 NULL,
@@ -2267,6 +2267,12 @@ void MI_CALL DisconnectShellComplete(
             NULL,
             NULL,
             NULL);
+
+
+    MI_OperationOptions_Delete(&operationHandle->miOptions);
+
+    Batch_Delete(operationHandle->batch);
+
 }
 
 /* ShellID */
@@ -2299,6 +2305,29 @@ MI_EXPORT void WINAPI WSManDisconnectShell(
     operationHandle->batch = batch;
     operationHandle->shell = shell;
 
+
+    miResult = MI_Application_NewOperationOptions(&shell->session->api->application, MI_FALSE, &operationHandle->miOptions);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to allocate receive properties instance", miResult);
+    }
+
+    {
+        MI_Value value;
+        MI_Type type;
+        if (__MI_Instance_GetElement(&shell->shellInstance->__instance, "ResourceUri", &value, &type, NULL, NULL) != MI_RESULT_OK)
+        {
+            GOTO_ERROR("Failed to get resource URI", MI_RESULT_FAILED);
+        }
+        if (MI_OperationOptions_SetResourceUri(&operationHandle->miOptions, value.string) != MI_RESULT_OK)
+        {
+            GOTO_ERROR("Failed to set resource URI in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+        }
+    }
+    if (MI_OperationOptions_SetString(&operationHandle->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Disconnect", 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to set resource URI in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
 
     miResult = Instance_NewDynamic(&operationHandle->operationProperties, "Disconnect", MI_FLAG_PARAMETER, batch );
     if (miResult != MI_RESULT_OK)
@@ -2359,6 +2388,11 @@ MI_EXPORT void WINAPI WSManDisconnectShell(
     return;
 
 error:
+    if (operationHandle->miOptions.ft)
+    {
+        MI_OperationOptions_Delete(&operationHandle->miOptions);
+    }
+
     if (batch)
     {
         Batch_Delete(batch);

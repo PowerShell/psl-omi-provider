@@ -98,7 +98,7 @@ function Start-PSRPInstall {
         if($msiFile -ne $null -and ($msiFile -ne ""))
         {
             Write-Verbose "Uninstalling packages: $PSScriptRoot\$msiFile"
-            msiexec /u $PSScriptRoot\$msiFile /qn
+            msiexec /x $PSScriptRoot\$msiFile /qn
             Write-Verbose "[Done]:Uninstalled packages: $PSScriptRoot\$msiFile"
         }
         else

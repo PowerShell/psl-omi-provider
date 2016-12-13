@@ -9,7 +9,7 @@ trap '
 
 if [ $# -ne 1 ]; then 
     echo -e "Need redmondpassword\nUsage:installPSRP.sh redmondpassword"
-	exit 2
+    exit 2
 fi
 
 chmod +x ./installpowershell.sh
@@ -17,8 +17,8 @@ chmod +x ./installpowershell.sh
 
 redmondpassword=$1
 isMacOS=false
-omiversion="1.1.0-17"
-psrpversion="2"
+omiversion="1.1.0-28"
+psrpversion="3"
 powershellDir="/opt/microsoft/powershell/6.0.0-alpha.13"
 powershellDirForMac="/usr/local/microsoft/powershell/6.0.0-alpha.13"
 realdataDir="//wsscnafiler43/ostcdata$"
@@ -88,11 +88,11 @@ case "$OSTYPE" in
         esac
         ;;
     darwin*)
-		echo "Runtime is darwin!"
+        echo "Runtime is darwin!"
         platfrom=Darwin_10.11_x64_64_Release
         opensslversion=""
         isMacOS=true
-		powershellDir=$powershellDirForMac
+        powershellDir=$powershellDirForMac
         ;;
     *)
         echo "$OSTYPE is not supported!" >&2
@@ -105,41 +105,42 @@ if sudo bash -c '[ ! -d "/download" ]' ; then
 fi
 
 if [ "$isMacOS" = "true" ]; then
-	if sudo bash -c '[ ! -d "/opt/omi" ]' ; then
+    if sudo bash -c '[ ! -d "/opt/omi" ]' ; then
     sudo mkdir /opt/omi
-	fi
-	if sudo bash -c '[ ! -d "/opt/omi/bin" ]' ; then
+    fi
+    if sudo bash -c '[ ! -d "/opt/omi/bin" ]' ; then
     sudo mkdir /opt/omi/bin
-	fi
-	if sudo bash -c '[ ! -d "/opt/omi/lib" ]' ; then
+    fi
+    if sudo bash -c '[ ! -d "/opt/omi/lib" ]' ; then
     sudo mkdir /opt/omi/lib
-	fi
-	# Mac OS don't have mount_cifs, so use mount_smbfs
-	omifolder=$(get_omifolder "$omiversion" "$platfrom" "$opensslversion")
-	echo "mounting from $realdataDir folder to omi folder: $omifolder"
-	sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:'"$redmondpassword"'@wsscnafiler43/ostcdata$' /download
-	sudo cp $omifolder"omicli" /opt/omi/bin
-	sudo cp $omifolder"libmi.dylib" /opt/omi/lib
-	sudo umount /download
+    fi
+    # Mac OS don't have mount_cifs, so use mount_smbfs
+    omifolder=$(get_omifolder "$omiversion" "$platfrom" "$opensslversion")
+    echo "mounting from $realdataDir folder to omi folder: $omifolder"
+    sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:'"$redmondpassword"'@wsscnafiler43/ostcdata$' /download
+    sudo cp -f $omifolder"omicli" /opt/omi/bin
+    sudo cp -f $omifolder"libmi.dylib" /opt/omi/lib
+    sudo cp -f $omifolder"libmi.dylib" $powershellDir
+    sudo umount /download
 
-	psrpfolder=$(get_psrpfolder "$psrpversion" "$platfrom")
-	echo "mounting from $realdataDir folder to psrp folder: $psrpfolder"
-	sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:'"$redmondpassword"'@wsscnafiler43/ostcdata$' /download
-	echo "Copying psrpclient ..."
-	sudo cp $psrpfolder/libpsrpclient.dylib $powershellDir
-	sudo umount /download
+    psrpfolder=$(get_psrpfolder "$psrpversion" "$platfrom")
+    echo "mounting from $realdataDir folder to psrp folder: $psrpfolder"
+    sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:'"$redmondpassword"'@wsscnafiler43/ostcdata$' /download
+    echo "Copying psrpclient ..."
+    sudo cp -f $psrpfolder/libpsrpclient.dylib $powershellDir
+    sudo umount /download
 else
-	omifolder=$(get_omifolder "$omiversion" "$platfrom" "$opensslversion")
-	echo "mounting from $realdataDir folder to omi folder: $omifolder"
-	sudo mount -t cifs $realdataDir /download -o username=scxsvc,password="$redmondpassword",domain=redmond.corp.microsoft.com
-	sudo cp -u $omifolder/* $(pwd)
-	sudo umount /download
+    omifolder=$(get_omifolder "$omiversion" "$platfrom" "$opensslversion")
+    echo "mounting from $realdataDir folder to omi folder: $omifolder"
+    sudo mount -t cifs $realdataDir /download -o username=scxsvc,password="$redmondpassword",domain=redmond.corp.microsoft.com
+    sudo cp -u $omifolder/* $(pwd)
+    sudo umount /download
 
-	psrpfolder=$(get_psrpfolder "$psrpversion" "$platfrom")
-	echo "mounting from $realdataDir folder to psrp folder: $psrpfolder"
-	sudo mount -t cifs $realdataDir /download -o username=scxsvc,password="$redmondpassword",domain=redmond.corp.microsoft.com
-	sudo cp -u $psrpfolder/* $(pwd)
-	sudo umount /download
+    psrpfolder=$(get_psrpfolder "$psrpversion" "$platfrom")
+    echo "mounting from $realdataDir folder to psrp folder: $psrpfolder"
+    sudo mount -t cifs $realdataDir /download -o username=scxsvc,password="$redmondpassword",domain=redmond.corp.microsoft.com
+    sudo cp -u $psrpfolder/* $(pwd)
+    sudo umount /download
 fi
 
 # Installs OMI and PSRP package
@@ -166,18 +167,18 @@ case "$OSTYPE" in
                 sudo rpm -i "./$psrppackage"
                 
                 echo "Copying omicli and psrpclient ..."
-                # cp -u libmi.so $powershellDir
+                sudo cp -u libmi.so $powershellDir
                 sudo cp -u libpsrpclient.so $powershellDir
                 ;;
             ubuntu)
                 # dpkg does not automatically resolve dependencies, but spouts ugly errors
-				omipackage=omi-$omiversion.ulinux.x64.deb
+                omipackage=omi-$omiversion.ulinux.x64.deb
                 if [[ ! -r "$omipackage" ]]; then
                     echo "ERROR: $omipackage failed to download! Aborting..." >&2
                     exit 1
                 fi
                 sudo dpkg -i "./$omipackage"
-				
+                
                 psrppackage=psrp-1.0.0-0.universal.x64.deb
                 if [[ ! -r "$psrppackage" ]]; then
                     echo "ERROR: $psrppackage failed to download! Aborting..." >&2
@@ -186,7 +187,7 @@ case "$OSTYPE" in
                 sudo dpkg -i "./$psrppackage" &> /dev/null
                 
                 echo "Copying omicli and psrpclient ..."
-                # cp -u libmi.so $powershellDir
+                sudo cp -u libmi.so $powershellDir
                 sudo cp -u libpsrpclient.so $powershellDir
                 # Resolve dependencies
                 sudo apt-get install -f

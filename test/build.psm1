@@ -1,6 +1,6 @@
 #Basic variables initial
 $DownloadFolder = "https://github.com/PowerShell/PowerShell/releases/download/"
-$ReleaseTag = "v6.0.0-alpha.13"
+$ReleaseTag = "v6.0.0-alpha.14"
 $Endfix = $ReleaseTag.Substring($ReleaseTag.LastIndexOf(".")+1,$ReleaseTag.Length - $ReleaseTag.LastIndexOf(".")-1)
 $MSIversion = $ReleaseTag.Substring(1,$ReleaseTag.Length -1 ).Replace("-",".$Endfix-")
 $version = $MSIversion.Substring(0,$MSIversion.IndexOf("-"))

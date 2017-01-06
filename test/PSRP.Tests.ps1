@@ -14,16 +14,7 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
         It "Remoting from Windows/Linux/MacOS to Linux with basic authentication should work" {
             $hostname = $LinuxHostName
             $User = $LinuxUserName
-            
-            if($IsLinux -Or $IsOSX)
-            {
-                $password=$linuxPasswordString
-            }
-            elseif($IsWindows)
-            {
-                $password=$windowsPasswordString
-            }
-            
+            $password=$linuxPasswordString
             $PWord = convertto-securestring $password -asplaintext -force
             $cred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $User,$PWord
             $sessionOption = New-PSSessionOption -SkipCACheck -SkipRevocationCheck -SkipCNCheck
@@ -57,14 +48,7 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
         It "Remoting from Windows/Linux/MacOS to Linux with basic authentication with bad username should throw exception" {
             $hostname = $LinuxHostName
             $User = $badUserName
-            if($IsLinux -Or $IsOSX)
-            {
-                $password=$linuxPasswordString
-            }
-            elseif($IsWindows)
-            {
-                $password=$windowsPasswordString
-            }
+            $password=$linuxPasswordString
             $PWord = Convertto-SecureString $password -AsPlainText -Force
             $cred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $User,$PWord
             $sessionOption = New-PSSessionOption -SkipCACheck -SkipRevocationCheck -SkipCNCheck
@@ -189,5 +173,57 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
                 $result = /opt/omi/bin/omicli ei root/cimv2 Win32_SystemOperatingSystem -u $User -p $windowsPasswordString --auth Basic --hostname $hostname --port $HTTPPort --encryption none
                 $result|Should Not BeNullOrEmpty
             }
+        }
+
+        It "Remoting from Windows/Linux/MacOS to Linux with negotiate authentication should work" {
+            $hostname = $LinuxHostName
+            $User = $LinuxUserName
+            $password=$linuxPasswordString
+            $PWord = convertto-securestring $password -asplaintext -force
+            $cred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList "$hostname\$User",$PWord
+            $sessionOption = New-PSSessionOption -SkipCACheck -SkipRevocationCheck -SkipCNCheck
+            $mySession = New-PSSession -ComputerName $hostname -Credential $cred -Authentication negotiate -UseSSL -SessionOption $sessionOption
+            $result = Invoke-Command -Session $mySession {Get-Host}
+            $result.PSComputerName|Should Not BeNullOrEmpty
+            # Linux/MacOS to Linux: Disconnect-PSSession not works, error:"To support disconnecting, the remote computer must be running Windows PowerShell 3.0 or a later version of Windows PowerShell.", just skip it.
+            if($IsWindows)
+            {
+                Get-PSSession|Disconnect-PSSession
+            }
+            Get-PSSession|Remove-PSSession
+        }
+
+        It "Remoting from Windows/Linux/MacOS to Linux with negotiate authentication with winrm/omicli should work" {
+            $hostname = $LinuxHostName
+            $User = $LinuxUserName
+            if($IsLinux -Or $IsOSX)
+            {
+                $result = /opt/omi/bin/omicli id -u "$hostname\$User" -p $linuxPasswordString --auth NegoWithCreds --hostname $hostname --port $Port --encryption https
+                $result|Should Not BeNullOrEmpty
+            }
+            elseif($IsWindows)
+            {
+                $result = winrm enumerate http://schemas.microsoft.com/wbem/wscim/1/cim-schema/2/OMI_Identify?__cimnamespace=root/omi -r:https://${hostname}:$Port -auth:negotiate -u:"$hostname\$User" -p:$linuxPasswordString -skipcncheck -skipcacheck -encoding:utf-8
+                # "$result | Should Not BeNullOrEmpty" not works here, it is a Pester bug, so just use Length verificaiton now
+                $result.Length|Should BeGreaterThan 1
+            }
+        }
+
+        #Skip Windows to Windows because of not support.
+        It "Remoting from Linux/MacOS to Windows with negotiate authentication should work" -Skip:($IsWindows) {
+            $hostname = $WindowsHostName
+            $User = $WindowsUserName
+            $PWord = Convertto-SecureString $windowsPasswordString -AsPlainText -Force
+            $cred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList "$hostname\$User", $PWord
+            $sessionOption = New-PSSessionOption -SkipCACheck -SkipRevocationCheck -SkipCNCheck
+            $mySession = New-PSSession -ComputerName $hostname -Credential $cred -Authentication negotiate -SessionOption $sessionOption
+            $result = Invoke-Command -Session $mySession {Get-Host}
+            $result|Should Not BeNullOrEmpty
+            # Linux/MacOS to Windows: Disconnect-PSSession not works, error:"To support disconnecting, the remote computer must be running Windows PowerShell 3.0 or a later version of Windows PowerShell.", just skip it.
+            if($IsWindows)
+            {
+                Get-PSSession|Disconnect-PSSession
+            }
+            Get-PSSession|Remove-PSSession
         }
     }

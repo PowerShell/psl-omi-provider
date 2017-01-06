@@ -17,10 +17,10 @@ chmod +x ./installpowershell.sh
 
 redmondpassword=$1
 isMacOS=false
-omiversion="1.1.0-28"
+omiversion="1.1.0-52"
 psrpversion="3"
-powershellDir="/opt/microsoft/powershell/6.0.0-alpha.13"
-powershellDirForMac="/usr/local/microsoft/powershell/6.0.0-alpha.13"
+powershellDir="/opt/microsoft/powershell/6.0.0-alpha.14"
+powershellDirForMac="/usr/local/microsoft/powershell/6.0.0-alpha.14"
 realdataDir="//wsscnafiler43/ostcdata$"
 get_omifolder() {
     echo "/download/OSTCData/Builds/omi/develop/$1/$2/$3"
@@ -167,7 +167,7 @@ case "$OSTYPE" in
                 sudo rpm -i "./$psrppackage"
                 
                 echo "Copying omicli and psrpclient ..."
-                sudo cp -u libmi.so $powershellDir
+                #sudo cp -u libmi.so $powershellDir
                 sudo cp -u libpsrpclient.so $powershellDir
                 ;;
             ubuntu)
@@ -187,7 +187,7 @@ case "$OSTYPE" in
                 sudo dpkg -i "./$psrppackage" &> /dev/null
                 
                 echo "Copying omicli and psrpclient ..."
-                sudo cp -u libmi.so $powershellDir
+                #sudo cp -u libmi.so $powershellDir
                 sudo cp -u libpsrpclient.so $powershellDir
                 # Resolve dependencies
                 sudo apt-get install -f

@@ -7,8 +7,8 @@ trap '
   kill -s INT "$$"
 ' INT
 
-if [ $# -ne 1 ]; then 
-    echo -e "Need redmondpassword\nUsage:installPSRP.sh redmondpassword"
+if [ $# -ne 2 ]; then 
+    echo -e "Need redmondpassword with omiversion\nUsage:installPSRP.sh redmondpassword \"1.1.0-52\""
     exit 2
 fi
 
@@ -17,7 +17,7 @@ chmod +x ./installpowershell.sh
 
 redmondpassword=$1
 isMacOS=false
-omiversion="1.1.0-52"
+omiversion=$2
 psrpversion="3"
 powershellDir="/opt/microsoft/powershell/6.0.0-alpha.14"
 powershellDirForMac="/usr/local/microsoft/powershell/6.0.0-alpha.14"

@@ -8,5 +8,7 @@
 /src/*.so
 /src/*.dylib
 
+/installbuilder/nuget
+
 /intermediate
 /target

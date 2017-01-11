@@ -52,6 +52,9 @@ add_library(psrpomiprov SHARED
 
 target_link_libraries(psrpclient
 	mi
+	wsman
+	omi_error
+	xmlserializer
 	base
 	pal
 	${CMAKE_THREAD_LIBS_INIT}

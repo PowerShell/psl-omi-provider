@@ -22,6 +22,7 @@
 #include "Command.h"
 #include "DesiredStream.h"
 #include "Utilities.h"
+#include <wsman/wsbuf.h>
 
 /* Disable the provider APIs so we can use the provider RTTI */
 void MI_CALL Shell_Load(Shell_Self** self, MI_Module_Self* selfModule, MI_Context* context) {}
@@ -87,6 +88,7 @@ struct WSMAN_SHELL
     MI_Operation miDeleteShellOperation;
     MI_OperationOptions operationOptions;
     MI_Boolean didCreate;
+    MI_Char sessionId[WS_MSG_ID_SIZE];
 };
 
 struct WSMAN_COMMAND
@@ -835,6 +837,17 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
         __LOGD(("Resource URI = %s", tmpStr));
     }
 
+    /* Add a SessionId soap header to the request so the server knows disconnect is supported
+     * (or at least Windows as OMI server does not care)
+     * All operations in this shell need to use the same session ID.
+     */
+    WSBuf_GenerateMessageID(shell->sessionId);
+    if (MI_OperationOptions_SetString(&shell->operationOptions, "__MI_OPERATIONOPTIONS_SESSIONID", shell->sessionId, 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to sessionId in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
+
     if (startupInfo)
     {
         if (startupInfo->inputStreamSet && startupInfo->inputStreamSet->streamIDsCount)
@@ -1127,7 +1140,15 @@ MI_EXPORT void WINAPI WSManRunShellCommandEx(
         }
     }
 
-    MI_OperationOptions_SetString(&(*command)->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Command", 0);
+    if (MI_OperationOptions_SetString(&(*command)->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Command", 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to add action in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+    if (MI_OperationOptions_SetString(&(*command)->miOptions, "__MI_OPERATIONOPTIONS_SESSIONID", shell->sessionId, 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to add SessionId in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
     {
 
         (*command)->callbacks.instanceResult = CommandShellComplete;
@@ -1295,7 +1316,15 @@ MI_EXPORT void WINAPI WSManSignalShell(
         }
     }
 
-    MI_OperationOptions_SetString(&(*signalOperation)->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Signal", 0);
+    if (MI_OperationOptions_SetString(&(*signalOperation)->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Signal", 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to add Action in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+    if (MI_OperationOptions_SetString(&(*signalOperation)->miOptions, "__MI_OPERATIONOPTIONS_SESSIONID", shell->sessionId, 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to add SessionId in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
     {
 
         (*signalOperation)->callbacks.instanceResult = SignalShellComplete;
@@ -1743,7 +1772,15 @@ MI_EXPORT void WINAPI WSManReceiveShellOutput(
         }
     }
 
-    MI_OperationOptions_SetString(&(*receiveOperation)->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Receive", 0);
+    if (MI_OperationOptions_SetString(&(*receiveOperation)->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Receive", 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to add Action in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+    if (MI_OperationOptions_SetString(&(*receiveOperation)->miOptions, "__MI_OPERATIONOPTIONS_SESSIONID", shell->sessionId, 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to add SessionId in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
     {
 
         (*receiveOperation)->callbacks.instanceResult = ReceiveShellComplete;
@@ -1974,7 +2011,15 @@ MI_EXPORT void WINAPI WSManSendShellInput(
         }
     }
 
-    MI_OperationOptions_SetString(&(*sendOperation)->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Send", 0);
+    if (MI_OperationOptions_SetString(&(*sendOperation)->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Send", 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to add SessionId in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+    if (MI_OperationOptions_SetString(&(*sendOperation)->miOptions, "__MI_OPERATIONOPTIONS_SESSIONID", shell->sessionId, 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to add SessionId in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
     {
 
         (*sendOperation)->callbacks.instanceResult = SendShellComplete;
@@ -2092,7 +2137,15 @@ void MI_CALL CommandCloseShellComplete(
         GOTO_ERROR("Failed to allocate receive properties instance", miResult);
     }
 
-    MI_OperationOptions_SetString(&commandHandle->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Signal", 0);
+    if (MI_OperationOptions_SetString(&commandHandle->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Signal", 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to add SessionId in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+    if (MI_OperationOptions_SetString(&commandHandle->miOptions, "__MI_OPERATIONOPTIONS_SESSIONID", commandHandle->shell->sessionId, 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to add SessionId in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
 
     commandHandle->asyncCallback = *async;
 
@@ -2328,6 +2381,11 @@ MI_EXPORT void WINAPI WSManDisconnectShell(
     {
         GOTO_ERROR("Failed to set resource URI in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
+    if (MI_OperationOptions_SetString(&operationHandle->miOptions, "__MI_OPERATIONOPTIONS_SESSIONID", shell->sessionId, 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to add SessionId in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
 
     miResult = Instance_NewDynamic(&operationHandle->operationProperties, "Disconnect", MI_FLAG_PARAMETER, batch );
     if (miResult != MI_RESULT_OK)

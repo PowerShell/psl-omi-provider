@@ -233,6 +233,7 @@ MI_EXPORT MI_Uint32 WINAPI WSManCreateSession(
     char *errorMessage = NULL;
     Batch *batch = NULL;
     char *connection = NULL;
+    char *portNumber = NULL;
     char *httpUrl = NULL;
     char *username = NULL;
     char *password = NULL;
@@ -280,11 +281,27 @@ MI_EXPORT MI_Uint32 WINAPI WSManCreateSession(
     }
     (*session)->batch = batch;
 
+    miResult = MI_Application_NewDestinationOptions(&apiHandle->application, &(*session)->destinationOptions);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Destination options creation failed", miResult);
+    }
+
+    /* powershell uses HTTP unless otherwise stated */
+    miResult = MI_DestinationOptions_SetTransport(&(*session)->destinationOptions, MI_DESTINATIONOPTIONS_TRANSPORT_HTTP);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to default http transport", miResult);
+    }
+
     if (_connection && !Utf16LeToUtf8(batch, _connection, &connection))
     {
         GOTO_ERROR("Failed to convert connection name", MI_RESULT_SERVER_LIMITS_EXCEEDED);
     }
-    (*session)->hostname = connection;
+    else if (_connection == NULL)
+    {
+        connection = "localhost";
+    }
 
     /* Full format may be:
      *      <transport>://<computerName>:<port><httpUrl>
@@ -296,18 +313,80 @@ MI_EXPORT MI_Uint32 WINAPI WSManCreateSession(
      * For now, assume there is a http url at the end copy if off and remove so we just have the machine name in the connection string
      *
      */
+    if (strncmp(connection, "http://", 7) == 0)
+    {
+        miResult = MI_DestinationOptions_SetTransport(&(*session)->destinationOptions, MI_DESTINATIONOPTIONS_TRANSPORT_HTTP);
+        if (miResult != MI_RESULT_OK)
+        {
+            GOTO_ERROR("Failed to set transport to http", miResult);
+        }
+        /* If http:// connection string is used we need to default to port 80, rather than default wsman http port */
+        miResult = MI_DestinationOptions_SetDestinationPort(&(*session)->destinationOptions, 80);
+        if (miResult != MI_RESULT_OK)
+        {
+            GOTO_ERROR("Failed to set transport to http", miResult);
+        }
+        connection += 7;
+     }
+    else if (strncmp(connection, "https://", 8) == 0)
+    {
+        miResult = MI_DestinationOptions_SetTransport(&(*session)->destinationOptions, MI_DESTINATIONOPTIONS_TRANSPORT_HTTPS);
+        if (miResult != MI_RESULT_OK)
+        {
+            GOTO_ERROR("Failed to set transport to https", miResult);
+        }
+        /* If https:// connection string is used we need to default to port 443, rather than default wsman https port */
+        miResult = MI_DestinationOptions_SetDestinationPort(&(*session)->destinationOptions, 443);
+        if (miResult != MI_RESULT_OK)
+        {
+            GOTO_ERROR("Failed to set transport to http", miResult);
+        }
+        connection += 8;
+    }
+    else
+    {
+        /* Assume no prefix and starts with computer name */
+    }
+
+    (*session)->hostname = connection;
+
+    portNumber = strchr(connection, ':');
     httpUrl = strchr(connection, '/');
+
     if (httpUrl == NULL)
         httpUrl = "/wsman/";
     else
     {
+        /* Need to copy because we need the initial slash, but need to terminate the hostname at that location. */
         char *tmp = Batch_Tcsdup(batch, httpUrl);
         if (tmp == NULL)
         {
             GOTO_ERROR("Failed to convert connection name", MI_RESULT_SERVER_LIMITS_EXCEEDED);
         }
-        *httpUrl = '\0';
+        *httpUrl = '\0'; /* terminate hostname or port number string properly */
         httpUrl = tmp;
+    }
+    miResult = MI_DestinationOptions_SetHttpUrlPrefix(&(*session)->destinationOptions, httpUrl);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to add http prefix to destination options", miResult);
+    }
+
+
+    if ((portNumber && !httpUrl) || (portNumber && httpUrl && portNumber < httpUrl))
+    {
+        MI_Uint32 portNumberValue = 0;
+        *portNumber = '\0'; /* null terminate hostname in correct place */
+        portNumber ++;  /* move past : */
+        if (StrToUint32(portNumber, &portNumberValue) != 0)
+        {
+            GOTO_ERROR("Failed to parse port number in connection uri", MI_RESULT_INVALID_PARAMETER);
+        }
+        miResult = MI_DestinationOptions_SetDestinationPort(&(*session)->destinationOptions, portNumberValue);
+        if (miResult != MI_RESULT_OK)
+        {
+            GOTO_ERROR("Failed to set transport to http", miResult);
+        }
     }
 
     if (serverAuthenticationCredentials->userAccount.username && !Utf16LeToUtf8(batch, serverAuthenticationCredentials->userAccount.username, &username))
@@ -324,12 +403,6 @@ MI_EXPORT MI_Uint32 WINAPI WSManCreateSession(
     userCredentials.credentials.usernamePassword.username = username;
     userCredentials.credentials.usernamePassword.password = password;
 
-    miResult = MI_Application_NewDestinationOptions(&apiHandle->application, &(*session)->destinationOptions);
-    if (miResult != MI_RESULT_OK)
-    {
-        GOTO_ERROR("Destination options creation failed", miResult);
-    }
-
     if (MI_DestinationOptions_SetMaxEnvelopeSize(&(*session)->destinationOptions, 500))
     {
         GOTO_ERROR("Failed to add credentials to destination options", miResult);
@@ -340,18 +413,6 @@ MI_EXPORT MI_Uint32 WINAPI WSManCreateSession(
     {
         GOTO_ERROR("Failed to add credentials to destination options", miResult);
     }
-    miResult = MI_DestinationOptions_SetHttpUrlPrefix(&(*session)->destinationOptions, httpUrl);
-    if (miResult != MI_RESULT_OK)
-    {
-        GOTO_ERROR("Failed to add http prefix to destination options", miResult);
-    }
-
-    miResult = MI_DestinationOptions_SetTransport(&(*session)->destinationOptions, MI_DESTINATIONOPTIONS_TRANSPORT_HTTP);
-    if (miResult != MI_RESULT_OK)
-    {
-        GOTO_ERROR("Failed to default http transport", miResult);
-    }
-
     (*session)->api = apiHandle;
 
     LogFunctionEnd("WSManCreateSession", miResult);

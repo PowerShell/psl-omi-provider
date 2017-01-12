@@ -26,19 +26,19 @@ fi
 
 # We don't have any version information for PSRP, so use Jenkinds build number
 
-if [ -z "$BUILD_NUMBER" ]; then
-    echo "$0: Jenkins BUILD_NUMBER variable is not defined; run via Jenkins" 1>& 2
+if [ -z "$PARENT_BUILD_NUMBER" ]; then
+    echo "$0: Jenkins PARENT_BUILD_NUMBER variable is not defined; run via Jenkins" 1>& 2
 fi
 
 # Verify that we can access the build shares to get the packages we need
 
-if [ ! -d ${build_location}/${BUILD_NUMBER} ]; then
+if [ ! -d ${build_location}/${PARENT_BUILD_NUMBER} ]; then
     echo "$0: Unable to locate build share at ${build_location}" 1>& 2
     exit 1
 fi
 
-build_linux=${build_location}/${BUILD_NUMBER}/${subdir_linux}
-build_osx=${build_location}/${BUILD_NUMBER}/${subdir_osx}
+build_linux=${build_location}/${PARENT_BUILD_NUMBER}/${subdir_linux}
+build_osx=${build_location}/${PARENT_BUILD_NUMBER}/${subdir_osx}
 
 if [ ! -d ${build_linux} ]; then
     echo "$0: Unable to locate OMI Linux build at: ${build_linux}"
@@ -65,7 +65,7 @@ cat > psrp.nuspec <<EOF
 <package xmlns="http://schemas.microsoft.com/packaging/2011/10/nuspec.xsd">
   <metadata>
     <id>psrp</id>
-    <version>1.0.0-alpha${BUILD_NUMBER}</version>
+    <version>1.0.0-alpha${PARENT_BUILD_NUMBER}</version>
     <authors>Microsoft</authors>
     <owners>Microsoft</owners>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>

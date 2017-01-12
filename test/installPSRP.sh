@@ -7,8 +7,8 @@ trap '
   kill -s INT "$$"
 ' INT
 
-if [ $# -ne 2 ]; then 
-    echo -e "Need redmondpassword with omiversion\nUsage:installPSRP.sh redmondpassword \"1.1.0-52\""
+if [ $# -ne 3 ]; then 
+    echo -e "Need redmondpassword with omiversion psrpversion and \nUsage:installPSRP.sh redmondpassword \"1.1.0-63\" \"6\""
     exit 2
 fi
 
@@ -18,10 +18,10 @@ chmod +x ./installpowershell.sh
 redmondpassword=$1
 isMacOS=false
 omiversion=$2
-psrpversion="3"
+psrpversion=$3
 powershellDir="/opt/microsoft/powershell/6.0.0-alpha.14"
 powershellDirForMac="/usr/local/microsoft/powershell/6.0.0-alpha.14"
-realdataDir="//wsscnafiler43/ostcdata$"
+realdataDir="//osfiler/ostcdata$"
 get_omifolder() {
     echo "/download/OSTCData/Builds/omi/develop/$1/$2/$3"
 }
@@ -158,17 +158,20 @@ case "$OSTYPE" in
                     exit 1
                 fi
                 sudo rpm -i "./$omipackage"
-                
+                echo "Done installing omi ..."
+				
                 psrppackage=psrp-1.0.0-0.universal.x64.rpm
                 if [[ ! -r "$psrppackage" ]]; then
                     echo "ERROR: $psrppackage failed to download! Aborting..." >&2
                     exit 1
                 fi
                 sudo rpm -i "./$psrppackage"
-                
-                echo "Copying omicli and psrpclient ..."
+                echo "Done installing psrp ..."
+				
+                #echo "Copying omicli and psrpclient ..."
+				#libmi.so and libpsrpclient.so are integrated into powershell package, so needn't to copy them from build share folder
                 #sudo cp -u libmi.so $powershellDir
-                sudo cp -u libpsrpclient.so $powershellDir
+                #sudo cp -u libpsrpclient.so $powershellDir
                 ;;
             ubuntu)
                 # dpkg does not automatically resolve dependencies, but spouts ugly errors
@@ -178,6 +181,7 @@ case "$OSTYPE" in
                     exit 1
                 fi
                 sudo dpkg -i "./$omipackage"
+				echo "Done installing omi ..."
                 
                 psrppackage=psrp-1.0.0-0.universal.x64.deb
                 if [[ ! -r "$psrppackage" ]]; then
@@ -185,10 +189,12 @@ case "$OSTYPE" in
                     exit 1
                 fi
                 sudo dpkg -i "./$psrppackage" &> /dev/null
-                
-                echo "Copying omicli and psrpclient ..."
+                echo "Done installing psrp ..."
+				
+                #echo "Copying omicli and psrpclient ..."
+				#libmi.so and libpsrpclient.so are integrated into powershell package, so needn't to copy them from build share folder
                 #sudo cp -u libmi.so $powershellDir
-                sudo cp -u libpsrpclient.so $powershellDir
+                #sudo cp -u libpsrpclient.so $powershellDir
                 # Resolve dependencies
                 sudo apt-get install -f
                 ;;

@@ -32,14 +32,21 @@ Development Environment
 Toolchain Setup
 ---------------
 
-PSRP requires the following packages:
+PSRP has [OMI][OMI] as a submodule so install those dependencies first. Instructions are located in the [build-omi README.md][build-omi-readme].
 
+PSRP requires the following additional dependent packages:
+
+- On Ubuntu 14.04 and Ubuntu 16.04
 ```sh
-sudo apt-get install libpam0g-dev libssl-dev
+sudo apt-get install cmake
 ```
-
+- On CentOS 7.x
+```sh
+sudo yum install cmake
+```
 Also install [PowerShell][] from the latest release per their instructions.
 
+[build-omi-readme]: https://github.com/Microsoft/Build-omi/blob/master/README.md#dependencies-to-build-a-native-package
 [PowerShell]: https://github.com/PowerShell/PowerShell
 
 Git Setup

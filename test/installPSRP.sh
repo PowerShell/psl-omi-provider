@@ -8,7 +8,7 @@ trap '
 ' INT
 
 if [ $# -ne 3 ]; then 
-    echo -e "Need redmondpassword with omiversion psrpversion and \nUsage:installPSRP.sh redmondpassword \"1.1.0-63\" \"6\""
+    echo -e "Need redmondpassword with omiversion and psrpversion\nUsage:installPSRP.sh redmondpassword \"1.1.0-63\" \"6\""
     exit 2
 fi
 
@@ -196,7 +196,7 @@ case "$OSTYPE" in
                 #sudo cp -u libmi.so $powershellDir
                 #sudo cp -u libpsrpclient.so $powershellDir
                 # Resolve dependencies
-                sudo apt-get install -f
+                sudo apt-get install -f -y
                 ;;
             *)
         esac
@@ -208,6 +208,9 @@ esac
 success=$?
 
 if [[ "$success" != 0 ]]; then
-    echo "Congratulations! OMI and PSRP are installed." >&2
+    echo "OMI and PSRP install failed." >&2
     exit "$success"
+else
+    echo "Congratulations! OMI and PSRP are installed."
+	exit "$success"
 fi

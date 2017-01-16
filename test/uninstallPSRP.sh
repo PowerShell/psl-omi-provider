@@ -85,6 +85,9 @@ esac
 success=$?
 
 if [[ "$success" != 0 ]]; then
-    echo "Congratulations! PowerShell, OMI and PSRP are uninstalled." >&2
+    echo "PowerShell, OMI and PSRP uninstall failed." >&2
+    exit "$success"
+else
+    echo "Congratulations! PowerShell, OMI and PSRP are uninstalled."
     exit "$success"
 fi

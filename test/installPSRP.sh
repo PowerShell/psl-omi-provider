@@ -117,15 +117,15 @@ if [ "$isMacOS" = "true" ]; then
     # Mac OS don't have mount_cifs, so use mount_smbfs
     omifolder=$(get_omifolder "$omiversion" "$platfrom" "$opensslversion")
     echo "mounting from $realdataDir folder to omi folder: $omifolder"
-    sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:'"$redmondpassword"'@wsscnafiler43/ostcdata$' /download
+    sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:'"$redmondpassword"'@osfiler/ostcdata$' /download
     sudo cp -f $omifolder"omicli" /opt/omi/bin
     sudo cp -f $omifolder"libmi.dylib" /opt/omi/lib
-    sudo cp -f $omifolder"libmi.dylib" $powershellDir
+    #sudo cp -f $omifolder"libmi.dylib" $powershellDir
     sudo umount /download
 
     psrpfolder=$(get_psrpfolder "$psrpversion" "$platfrom")
     echo "mounting from $realdataDir folder to psrp folder: $psrpfolder"
-    sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:'"$redmondpassword"'@wsscnafiler43/ostcdata$' /download
+    sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:'"$redmondpassword"'@osfiler/ostcdata$' /download
     echo "Copying psrpclient ..."
     sudo cp -f $psrpfolder/libpsrpclient.dylib $powershellDir
     sudo umount /download

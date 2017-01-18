@@ -293,7 +293,13 @@ MI_EXPORT MI_Uint32 WINAPI WSManCreateSession(
     {
         GOTO_ERROR("Failed to default http transport", miResult);
     }
-
+    /* Packet privacy over HTTP by default unless otherwise stated */
+    miResult = MI_DestinationOptions_SetPacketPrivacy(&(*session)->destinationOptions, MI_TRUE);
+    if (miResult != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to set packet privacy", miResult);
+    }
+ 
     if (_connection && !Utf16LeToUtf8(batch, _connection, &connection))
     {
         GOTO_ERROR("Failed to convert connection name", MI_RESULT_SERVER_LIMITS_EXCEEDED);
@@ -540,6 +546,32 @@ MI_EXPORT MI_Uint32 WINAPI WSManSetSessionOption(
                (MI_DestinationOptions_SetMaxEnvelopeSize(&session->destinationOptions, data->number) != MI_RESULT_OK))
             {
                 GOTO_ERROR("Failed to add credentials to destination options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+            }
+            miResult = MI_RESULT_OK;
+            break;
+        case WSMAN_OPTION_UNENCRYPTED_MESSAGES:
+            __LOGD(("WSMAN_OPTION_UNENCRYPTED_MESSAGES=%u", data->number));
+            /* dword */
+            if (data->type == WSMAN_DATA_TYPE_DWORD)
+            {
+                if (data->number)
+                {
+                    if (MI_DestinationOptions_SetPacketPrivacy(&session->destinationOptions, MI_FALSE) != MI_RESULT_OK)
+                    {
+                        GOTO_ERROR("Failed to turn packet privacy off", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+                    }
+                }
+                else
+                {
+                    if (MI_DestinationOptions_SetPacketPrivacy(&session->destinationOptions, MI_TRUE) != MI_RESULT_OK)
+                    {
+                        GOTO_ERROR("Failed to turn packet privacy on", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+                    }
+                }
+            }
+            else
+            {
+                GOTO_ERROR("Failed to set packet privacy, invalid parameter", MI_RESULT_INVALID_PARAMETER);
             }
             miResult = MI_RESULT_OK;
             break;
@@ -895,6 +927,11 @@ MI_EXPORT void WINAPI WSManCreateShellEx(
         __LOGD(("Resource URI = %s", tmpStr));
     }
 
+    if (MI_OperationOptions_SetNumber(&shell->operationOptions, "__MI_OPERATIONOPTIONS_ISSHELL", 1, 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to set IsShell option", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
     if (startupInfo)
     {
         if (startupInfo->inputStreamSet && startupInfo->inputStreamSet->streamIDsCount)
@@ -1186,8 +1223,16 @@ MI_EXPORT void WINAPI WSManRunShellCommandEx(
             GOTO_ERROR("Failed to set resource URI in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
         }
     }
+    if (MI_OperationOptions_SetNumber(&(*command)->miOptions, "__MI_OPERATIONOPTIONS_ISSHELL", 1, 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to set IsShell option", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
 
-    MI_OperationOptions_SetString(&(*command)->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Command", 0);
+
+    if (MI_OperationOptions_SetString(&(*command)->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Command", 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to set action option", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
     {
 
         (*command)->callbacks.instanceResult = CommandShellComplete;
@@ -1354,8 +1399,17 @@ MI_EXPORT void WINAPI WSManSignalShell(
             GOTO_ERROR("Failed to set resource URI in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
         }
     }
+    if (MI_OperationOptions_SetNumber(&(*signalOperation)->miOptions, "__MI_OPERATIONOPTIONS_ISSHELL", 1, 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to set IsShell option", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
 
-    MI_OperationOptions_SetString(&(*signalOperation)->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Signal", 0);
+
+    if (MI_OperationOptions_SetString(&(*signalOperation)->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Signal", 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to set action option", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
     {
 
         (*signalOperation)->callbacks.instanceResult = SignalShellComplete;
@@ -1802,8 +1856,15 @@ MI_EXPORT void WINAPI WSManReceiveShellOutput(
             GOTO_ERROR("Failed to set resource URI in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
         }
     }
+    if (MI_OperationOptions_SetNumber(&(*receiveOperation)->miOptions, "__MI_OPERATIONOPTIONS_ISSHELL", 1, 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to set IsShell option", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
 
-    MI_OperationOptions_SetString(&(*receiveOperation)->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Receive", 0);
+    if (MI_OperationOptions_SetString(&(*receiveOperation)->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Receive", 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to set action option", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
     {
 
         (*receiveOperation)->callbacks.instanceResult = ReceiveShellComplete;
@@ -2033,8 +2094,16 @@ MI_EXPORT void WINAPI WSManSendShellInput(
             GOTO_ERROR("Failed to set resource URI in options", MI_RESULT_SERVER_LIMITS_EXCEEDED);
         }
     }
+    if (MI_OperationOptions_SetNumber(&(*sendOperation)->miOptions, "__MI_OPERATIONOPTIONS_ISSHELL", 1, 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to set IsShell option", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
 
-    MI_OperationOptions_SetString(&(*sendOperation)->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Send", 0);
+    if (MI_OperationOptions_SetString(&(*sendOperation)->miOptions, "__MI_OPERATIONOPTIONS_ACTION", "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Send", 0) != MI_RESULT_OK)
+    {
+        GOTO_ERROR("Failed to set action option", MI_RESULT_SERVER_LIMITS_EXCEEDED);
+    }
+
     {
 
         (*sendOperation)->callbacks.instanceResult = SendShellComplete;

@@ -73,6 +73,7 @@ struct WSMAN_SESSION
     Batch *batch;
     char *hostname;
     MI_DestinationOptions destinationOptions;
+    MI_Char *redirectLocation;
 };
 
 struct WSMAN_SHELL
@@ -189,7 +190,7 @@ MI_EXPORT MI_Uint32 WINAPI WSManGetErrorMessage(
     if ((messageLength == 0) || (message == NULL))
     {
         *messageLengthUsed = (MI_Uint32) resultStringLenth;
-        return 122; /* Windows error code ERROR_INSUFFICIENT_BUFFER */
+        return ERROR_INSUFFICIENT_BUFFER;
     }
 
     iconvData = iconv_open("UTF-16LE", "UTF-8" );
@@ -299,7 +300,7 @@ MI_EXPORT MI_Uint32 WINAPI WSManCreateSession(
     {
         GOTO_ERROR("Failed to set packet privacy", miResult);
     }
- 
+
     if (_connection && !Utf16LeToUtf8(batch, _connection, &connection))
     {
         GOTO_ERROR("Failed to convert connection name", MI_RESULT_SERVER_LIMITS_EXCEEDED);
@@ -620,10 +621,68 @@ MI_EXPORT MI_Uint32 WINAPI WSManGetSessionOptionAsString(
     _Out_writes_to_opt_(stringLength, *stringLengthUsed) MI_Char16* string,
     _Out_ MI_Uint32* stringLengthUsed)
 {
+    MI_Uint32 miResult = MI_RESULT_OK;
+
     LogFunctionStart("WSManGetSessionOptionAsString");
-    LogFunctionEnd("WSManGetSessionOptionAsString", MI_RESULT_NOT_SUPPORTED);
-    /* TODO */
-    return MI_RESULT_NOT_SUPPORTED;
+    switch (option)
+    {
+        case WSMAN_OPTION_REDIRECT_LOCATION:
+        {
+            if ((string == NULL) && (session->redirectLocation) && (stringLengthUsed))
+            {
+                *stringLengthUsed = Tcslen(session->redirectLocation) + 1;
+                __LOGD(("Redirect location: returning string length of %u", *stringLengthUsed));
+                miResult = ERROR_INSUFFICIENT_BUFFER;
+            }
+            else if (string && stringLengthUsed && (session->redirectLocation) && (stringLength > Tcslen(session->redirectLocation)))
+            {
+                size_t iconv_return;
+                iconv_t iconvData;
+                size_t tmpToStringLen;
+                size_t tmpFromStringLen;
+                char *tmpFromString = session->redirectLocation;
+                char *tmpToString = (char *)string;
+
+                iconvData = iconv_open("UTF-16LE", "UTF-8" );
+                if (iconvData == (iconv_t)-1)
+                {
+                    miResult = MI_RESULT_FAILED;
+                }
+                else
+                {
+                    tmpFromStringLen = (Tcslen(session->redirectLocation) + 1);
+                    tmpToStringLen = stringLength * 2;
+
+                    iconv_return = iconv(iconvData,
+                            &tmpFromString, &tmpFromStringLen,
+                            &tmpToString, &tmpToStringLen);
+                    if (iconv_return == (size_t) -1)
+                    {
+                        miResult = MI_RESULT_FAILED;
+                    }
+                    else
+                    {
+                        *stringLengthUsed = (MI_Uint32) Tcslen(session->redirectLocation) + 1;
+                        __LOGE(("Redirect location: returning location: %s (length %u)",session->redirectLocation,  Tcslen(session->redirectLocation) + 1));
+                    }
+
+                    iconv_close(iconvData);
+                }
+            }
+            else
+            {
+                /* invalid parameter */
+                miResult = MI_RESULT_INVALID_PARAMETER;
+                __LOGE(("Redirect location: Parameters not correct for retrieving string"));
+            }
+            break;
+        }
+        default:
+            miResult = MI_RESULT_NOT_SUPPORTED;
+            __LOGD(("unknown option %u", option));
+    }
+    LogFunctionEnd("WSManGetSessionOptionAsString", miResult);
+    return miResult;
 }
 MI_EXPORT MI_Uint32 WINAPI WSManCloseOperation(
     _Inout_opt_ WSMAN_OPERATION_HANDLE operationHandle,
@@ -710,6 +769,32 @@ void MI_CALL CreateShellComplete(
         else
         {
             resultCode = MI_RESULT_FAILED;
+        }
+    }
+    else if ((resultCode == MI_RESULT_NOT_SUPPORTED) && (errorDetails))
+    {
+        /* Check to see if this is a redirect error */
+        MI_Value value;
+        MI_Type type;
+        MI_Uint32 flags, index;
+        if ((MI_Instance_GetElement(errorDetails, MI_T("ProbableCauseDescription"),  &value, &type, &flags, &index) == MI_RESULT_OK) &&
+                (type == MI_STRING) &&
+                (value.string))
+        {
+            #define REDIRECT_LOCATION MI_T("REDIRECT_LOCATION: ")
+            if (Tcsncmp(REDIRECT_LOCATION, value.string, MI_COUNT(REDIRECT_LOCATION)-1) == 0)
+            {
+                shell->session->redirectLocation = Batch_Tcsdup(shell->session->batch, value.string + (MI_COUNT(REDIRECT_LOCATION)-1));
+                if (shell->session->redirectLocation == NULL)
+                {
+                    resultCode = MI_RESULT_SERVER_LIMITS_EXCEEDED;
+                    errorString = NULL;
+                }
+                else
+                {
+                    resultCode = ERROR_WSMAN_REDIRECT_REQUESTED;
+                }
+            }
         }
     }
 
@@ -2344,7 +2429,7 @@ MI_EXPORT void WINAPI WSManCloseShell(
     else
     {
         WSMAN_ERROR error = {0};
-        error.code = MI_RESULT_FAILED;
+        error.code = MI_RESULT_OK;
         shellHandle->asyncCallback.completionFunction(
                     shellHandle->asyncCallback.operationContext,
                     WSMAN_FLAG_CALLBACK_END_OF_OPERATION,

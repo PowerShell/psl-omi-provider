@@ -262,36 +262,11 @@ static const char* GetCommandId(CommonData *data)
 }
 
 
-/* retrieve the home directory of the effective user
- * caller must free returned pointer
- */
-static char* GetHomeDir()
-{
-    char* home = NULL;
-    size_t homelen;
-    struct passwd *pwd = NULL;
-
-    errno = 0;
-    /* geteuid() is always successful */
-    pwd = getpwuid(geteuid());
-    if (pwd == NULL)
-    {
-        __LOGE(("GetHomeDir - %s", strerror(errno)));
-        return NULL;
-    }
-
-    /* copy pw_dir since we do not own pwd */
-    homelen = strnlen(pwd->pw_dir, PAL_MAX_PATH_SIZE);
-    home = strndup(pwd->pw_dir, homelen);
-
-    return home;
-}
-
 
 /* set HOME environment variable to home of user
  * caller must free input pointer
  */
-static int SetHomeDir(char** home)
+static int SetHomeDir(const char** home)
 {
     int ret;
     if (*home == NULL)
@@ -378,7 +353,7 @@ struct _Shell_Self
 
     PwrshPluginWkr_Ptrs managedPointers;
 
-    char* home;
+    const char* home;
 
     void* hostHandle;
     unsigned int domainId;
@@ -525,7 +500,7 @@ void MI_CALL Shell_Unload(Shell_Self* self, MI_Context* context)
 
     if (self->home)
     {
-        free(self->home);
+        free((void*)self->home);
     }
     free(self);
 

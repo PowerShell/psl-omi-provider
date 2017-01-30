@@ -15,6 +15,8 @@
 
 /* Error codes needed for compatibility with Windows WinRM */
 #define ERROR_WSMAN_SERVICE_STREAM_DISCONNECTED 0x803381DE
+#define ERROR_WSMAN_REDIRECT_REQUESTED 0x80338199
+#define ERROR_INSUFFICIENT_BUFFER 122
 
 /* NOTE: All strings need to be UTF-16. */
 typedef void * HANDLE;

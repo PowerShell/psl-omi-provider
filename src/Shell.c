@@ -500,7 +500,7 @@ void MI_CALL Shell_Unload(Shell_Self* self, MI_Context* context)
 
     if (self->home)
     {
-        free((void*)self->home);
+        PAL_Free((void*)self->home);
     }
     free(self);
 

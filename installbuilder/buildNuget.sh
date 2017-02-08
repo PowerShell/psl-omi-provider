@@ -65,7 +65,7 @@ cat > psrp.nuspec <<EOF
 <package xmlns="http://schemas.microsoft.com/packaging/2011/10/nuspec.xsd">
   <metadata>
     <id>psrp</id>
-    <version>1.0.0-alpha${PARENT_BUILD_NUMBER}</version>
+    <version>1.1.0-alpha${PARENT_BUILD_NUMBER}</version>
     <authors>Microsoft</authors>
     <owners>Microsoft</owners>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
@@ -73,7 +73,7 @@ cat > psrp.nuspec <<EOF
     <copyright>Copyright 2017 Microsoft</copyright>
     <dependencies>
       <group targetFramework=".NETStandard1.6">
-        <dependency id="libmi" version="1.0.0-*" />
+        <dependency id="libmi" version="1.2.0-*" />
       </group>
     </dependencies>
   </metadata>

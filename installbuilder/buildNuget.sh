@@ -28,6 +28,7 @@ fi
 
 if [ -z "$PARENT_BUILD_NUMBER" ]; then
     echo "$0: Jenkins PARENT_BUILD_NUMBER variable is not defined; run via Jenkins" 1>& 2
+    exit 1
 fi
 
 # Verify that we can access the build shares to get the packages we need
@@ -47,6 +48,17 @@ fi
 
 if [ ! -d ${build_osx} ]; then
     echo "$0: Unable to locate OMI OS/X build at: ${build_osx}"
+    exit 1
+fi
+
+#
+# Load the omi.version file to get OMI version information
+#
+
+. ./omi.version
+
+if [ -z "$OMI_BUILDVERSION_NUGET" ]; then
+    echo "Unable to determine nuget version number from omi.version file" 1>& 2
     exit 1
 fi
 
@@ -73,7 +85,7 @@ cat > psrp.nuspec <<EOF
     <copyright>Copyright 2017 Microsoft</copyright>
     <dependencies>
       <group targetFramework=".NETStandard1.6">
-        <dependency id="libmi" version="1.2.0-*" />
+        <dependency id="libmi" version="$OMI_BUILDVERSION_NUGET" />
       </group>
     </dependencies>
   </metadata>

@@ -8,7 +8,7 @@ trap '
 ' INT
 
 if [ $# -ne 3 ]; then 
-    echo -e "Need redmondpassword with omiversion and psrpversion\nUsage:installPSRP.sh redmondpassword \"1.1.0-63\" \"6\""
+    echo -e "Need redmondpassword with omiversion and psrpversion\nUsage:installPSRP.sh redmondpassword \"1.2.0-23\" \"13\""
     exit 2
 fi
 
@@ -19,8 +19,8 @@ redmondpassword=$1
 isMacOS=false
 omiversion=$2
 psrpversion=$3
-powershellDir="/opt/microsoft/powershell/6.0.0-alpha.14"
-powershellDirForMac="/usr/local/microsoft/powershell/6.0.0-alpha.14"
+powershellDir="/opt/microsoft/powershell/6.0.0-alpha.16"
+powershellDirForMac="/usr/local/microsoft/powershell/6.0.0-alpha.16"
 realdataDir="//osfiler/ostcdata$"
 get_omifolder() {
     echo "/download/OSTCData/Builds/omi/develop/$1/$2/$3"
@@ -117,7 +117,8 @@ if [ "$isMacOS" = "true" ]; then
     # Mac OS don't have mount_cifs, so use mount_smbfs
     omifolder=$(get_omifolder "$omiversion" "$platfrom" "$opensslversion")
     echo "mounting from $realdataDir folder to omi folder: $omifolder"
-    sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:'"$redmondpassword"'@osfiler/ostcdata$' /download
+    #sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:'"$redmondpassword"'@osfiler/ostcdata$' /download
+	sudo mount osfiler.scx.com:/OSTCData/OSTCData /download
     sudo cp -f $omifolder"omicli" /opt/omi/bin
     sudo cp -f $omifolder"libmi.dylib" /opt/omi/lib
     #sudo cp -f $omifolder"libmi.dylib" $powershellDir
@@ -125,7 +126,8 @@ if [ "$isMacOS" = "true" ]; then
 
     psrpfolder=$(get_psrpfolder "$psrpversion" "$platfrom")
     echo "mounting from $realdataDir folder to psrp folder: $psrpfolder"
-    sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:'"$redmondpassword"'@osfiler/ostcdata$' /download
+    #sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:'"$redmondpassword"'@osfiler/ostcdata$' /download
+	sudo mount osfiler.scx.com:/OSTCData/OSTCData /download
     echo "Copying psrpclient ..."
     sudo cp -f $psrpfolder/libpsrpclient.dylib $powershellDir
     sudo umount /download
@@ -171,7 +173,7 @@ case "$OSTYPE" in
                 #echo "Copying omicli and psrpclient ..."
 				#libmi.so and libpsrpclient.so are integrated into powershell package, so needn't to copy them from build share folder
                 #sudo cp -u libmi.so $powershellDir
-                #sudo cp -u libpsrpclient.so $powershellDir
+                sudo cp -u libpsrpclient.so $powershellDir
                 ;;
             ubuntu)
                 # dpkg does not automatically resolve dependencies, but spouts ugly errors
@@ -194,7 +196,7 @@ case "$OSTYPE" in
                 #echo "Copying omicli and psrpclient ..."
 				#libmi.so and libpsrpclient.so are integrated into powershell package, so needn't to copy them from build share folder
                 #sudo cp -u libmi.so $powershellDir
-                #sudo cp -u libpsrpclient.so $powershellDir
+                sudo cp -u libpsrpclient.so $powershellDir
                 # Resolve dependencies
                 sudo apt-get install -f -y
                 ;;

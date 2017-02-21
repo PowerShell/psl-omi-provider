@@ -7,10 +7,10 @@ trap '
   kill -s INT "$$"
 ' INT
 
-releaseversion="6.0.0-alpha.14"
-centosreleaseversion="6.0.0_alpha.14"
+releaseversion="6.0.0-alpha.16"
+centosreleaseversion="6.0.0_alpha.16"
 get_url() {
-    release=v6.0.0-alpha.14
+    release=v6.0.0-alpha.16
     echo "https://github.com/PowerShell/PowerShell/releases/download/$release/$1"
 }
 

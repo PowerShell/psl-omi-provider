@@ -171,8 +171,7 @@ case "$OSTYPE" in
                 echo "Done installing psrp ..."
 				
                 #echo "Copying omicli and psrpclient ..."
-				#libmi.so and libpsrpclient.so are integrated into powershell package, so needn't to copy them from build share folder
-                #sudo cp -u libmi.so $powershellDir
+                sudo cp -u libmi.so $powershellDir
                 sudo cp -u libpsrpclient.so $powershellDir
                 ;;
             ubuntu)
@@ -194,8 +193,7 @@ case "$OSTYPE" in
                 echo "Done installing psrp ..."
 				
                 #echo "Copying omicli and psrpclient ..."
-				#libmi.so and libpsrpclient.so are integrated into powershell package, so needn't to copy them from build share folder
-                #sudo cp -u libmi.so $powershellDir
+                sudo cp -u libmi.so $powershellDir
                 sudo cp -u libpsrpclient.so $powershellDir
                 # Resolve dependencies
                 sudo apt-get install -f -y

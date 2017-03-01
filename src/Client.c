@@ -1643,7 +1643,7 @@ error:
 MI_Result DecodeReceiveCommandState(WSMAN_OPERATION_HANDLE operation, const MI_Instance *commandStateInstance, MI_Boolean *done)
 {
     Batch *batch;
-    WSMAN_RESPONSE_DATA responseData = {0};
+    WSMAN_RESPONSE_DATA responseData = {{0}};
     WSMAN_ERROR error = {0};
     const char *commandId = NULL;
     const char *state = NULL;
@@ -2405,10 +2405,6 @@ MI_EXPORT void WINAPI WSManCloseShell(
     MI_Uint32 flags,
     _In_ WSMAN_SHELL_ASYNC *async)
 {
-    MI_Result miResult;
-    char *errorMessage = NULL;
-    MI_Value value;
-
     LogFunctionStart("WSManCloseShell");
 
     shellHandle->asyncCallback = *async;

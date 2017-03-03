@@ -8,7 +8,7 @@ trap '
 ' INT
 
 if [ $# -ne 3 ]; then 
-    echo -e "Need redmondpassword with omiversion and psrpversion\nUsage:installPSRP.sh redmondpassword \"1.2.0-23\" \"13\""
+    echo -e "Need redmondpassword with omiversion and psrpversion\nUsage:installPSRP.sh redmondpassword \"1.2.0-35\" \"18\""
     exit 2
 fi
 
@@ -72,7 +72,7 @@ case "$OSTYPE" in
                         platfrom=Linux_ULINUX_1.0_x64_64_Release
                         ;;
                     *)
-                        echo "Ubuntu $VERSION_ID is not supported!" >&2
+                        echo "Ubuntu $VERSION_ID is not supported!"
                         exit 2
                 esac
                 
@@ -83,7 +83,7 @@ case "$OSTYPE" in
                 esac
                 ;;
             *)
-                echo "$NAME is not supported!" >&2
+                echo "$NAME is not supported!"
                 exit 2
         esac
         ;;
@@ -95,7 +95,7 @@ case "$OSTYPE" in
         powershellDir=$powershellDirForMac
         ;;
     *)
-        echo "$OSTYPE is not supported!" >&2
+        echo "$OSTYPE is not supported!"
         exit 2
         ;;
 esac
@@ -156,7 +156,7 @@ case "$OSTYPE" in
                 # yum automatically resolves dependencies for local packages
                 omipackage=omi-$omiversion.ulinux.x64.rpm
                 if [[ ! -r "$omipackage" ]]; then
-                    echo "ERROR: $omipackage failed to download! Aborting..." >&2
+                    echo "ERROR: $omipackage failed to download! Aborting..."
                     exit 1
                 fi
                 sudo rpm -i "./$omipackage"
@@ -164,7 +164,7 @@ case "$OSTYPE" in
 				
                 psrppackage=psrp-1.0.0-$psrpversion.universal.x64.rpm
                 if [[ ! -r "$psrppackage" ]]; then
-                    echo "ERROR: $psrppackage failed to download! Aborting..." >&2
+                    echo "ERROR: $psrppackage failed to download! Aborting..."
                     exit 1
                 fi
                 sudo rpm -i "./$psrppackage"
@@ -178,7 +178,7 @@ case "$OSTYPE" in
                 # dpkg does not automatically resolve dependencies, but spouts ugly errors
                 omipackage=omi-$omiversion.ulinux.x64.deb
                 if [[ ! -r "$omipackage" ]]; then
-                    echo "ERROR: $omipackage failed to download! Aborting..." >&2
+                    echo "ERROR: $omipackage failed to download! Aborting..."
                     exit 1
                 fi
                 sudo dpkg -i "./$omipackage"
@@ -186,10 +186,10 @@ case "$OSTYPE" in
                 
                 psrppackage=psrp-1.0.0-$psrpversion.universal.x64.deb
                 if [[ ! -r "$psrppackage" ]]; then
-                    echo "ERROR: $psrppackage failed to download! Aborting..." >&2
+                    echo "ERROR: $psrppackage failed to download! Aborting..."
                     exit 1
                 fi
-                sudo dpkg -i "./$psrppackage" &> /dev/null
+                sudo dpkg -i "./$psrppackage"
                 echo "Done installing psrp ..."
 				
                 #echo "Copying omicli and psrpclient ..."
@@ -208,7 +208,7 @@ esac
 success=$?
 
 if [[ "$success" != 0 ]]; then
-    echo "OMI and PSRP install failed." >&2
+    echo "OMI and PSRP install failed."
     exit "$success"
 else
     echo "Congratulations! OMI and PSRP are installed."

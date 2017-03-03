@@ -1,8 +1,8 @@
 #Basic variables initial
 $DownloadFolder = "https://github.com/PowerShell/PowerShell/releases/download/"
-$ReleaseTag = "v6.0.0-alpha.14"
-$Endfix = $ReleaseTag.Substring($ReleaseTag.LastIndexOf(".")+1,$ReleaseTag.Length - $ReleaseTag.LastIndexOf(".")-1)
-$MSIversion = $ReleaseTag.Substring(1,$ReleaseTag.Length -1 ).Replace("-",".$Endfix-")
+$ReleaseTag = "v6.0.0-alpha.16"
+#$Endfix = $ReleaseTag.Substring($ReleaseTag.LastIndexOf(".")+1,$ReleaseTag.Length - $ReleaseTag.LastIndexOf(".")-1)
+$MSIversion = $ReleaseTag.Substring(1,$ReleaseTag.Length -1 ).Replace("-","-")
 $version = $MSIversion.Substring(0,$MSIversion.IndexOf("-"))
 $ReleaseFolder = $DownloadFolder + $ReleaseTag
 $powershell = "C:\Program Files\PowerShell\$version\powershell.exe"
@@ -33,12 +33,12 @@ function Start-PSRPInstall {
         }
         elseif($Runtime -eq "win81-x64" -or ($Runtime -eq "WS2012R2-x64"))
         {
-            $msiFile = "PowerShell_$MSIversion-win81-x64.msi"
+            $msiFile = "PowerShell_$MSIversion-win81-win2012r2-x64.msi"
             $msiURLFile = $ReleaseFolder+"/"+$msiFile
         }
         elseif($Runtime -eq "win10-x64" -or ($Runtime -eq "WS2016-x64"))
         {
-            $msiFile = "PowerShell_$MSIversion-win10-x64.msi"
+            $msiFile = "PowerShell_$MSIversion-win10-win2016-x64.msi"
             $msiURLFile = $ReleaseFolder+"/"+$msiFile
         }
         else
@@ -65,7 +65,8 @@ function Start-PSRPInstall {
                      "win7-x86",
                      "win81-x64",
                      "win10-x64",
-                     "osx.10.11-x64")]
+                     "WS2012R2-x64",
+                     "WS2016-x64")]
         [Parameter(ParameterSetName='CoreCLR')]
         [string]$Runtime
     )

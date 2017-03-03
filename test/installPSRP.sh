@@ -162,7 +162,7 @@ case "$OSTYPE" in
                 sudo rpm -i "./$omipackage"
                 echo "Done installing omi ..."
 				
-                psrppackage=psrp-1.0.0-0.universal.x64.rpm
+                psrppackage=psrp-1.0.0-$psrpversion.universal.x64.rpm
                 if [[ ! -r "$psrppackage" ]]; then
                     echo "ERROR: $psrppackage failed to download! Aborting..." >&2
                     exit 1
@@ -184,7 +184,7 @@ case "$OSTYPE" in
                 sudo dpkg -i "./$omipackage"
 				echo "Done installing omi ..."
                 
-                psrppackage=psrp-1.0.0-0.universal.x64.deb
+                psrppackage=psrp-1.0.0-$psrpversion.universal.x64.deb
                 if [[ ! -r "$psrppackage" ]]; then
                     echo "ERROR: $psrppackage failed to download! Aborting..." >&2
                     exit 1

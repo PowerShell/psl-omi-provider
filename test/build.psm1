@@ -13,7 +13,9 @@ function Start-PSRPInstall {
         [ValidateSet("win7-x64",
                      "win7-x86",
                      "win81-x64",
-                     "win10-x64")]
+                     "win10-x64",
+                     "WS2012R2-x64",
+                     "WS2016-x64")]
         [Parameter(ParameterSetName='CoreCLR')]
         [string]$Runtime
     )

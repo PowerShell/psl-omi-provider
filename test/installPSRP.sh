@@ -8,7 +8,7 @@ trap '
 ' INT
 
 if [ $# -ne 3 ]; then 
-    echo -e "Need redmondpassword with omiversion and psrpversion\nUsage:installPSRP.sh redmondpassword \"1.1.0-63\" \"6\""
+    echo -e "Need redmondpassword with omiversion and psrpversion\nUsage:installPSRP.sh redmondpassword \"1.2.0-35\" \"18\""
     exit 2
 fi
 
@@ -19,8 +19,8 @@ redmondpassword=$1
 isMacOS=false
 omiversion=$2
 psrpversion=$3
-powershellDir="/opt/microsoft/powershell/6.0.0-alpha.14"
-powershellDirForMac="/usr/local/microsoft/powershell/6.0.0-alpha.14"
+powershellDir="/opt/microsoft/powershell/6.0.0-alpha.16"
+powershellDirForMac="/usr/local/microsoft/powershell/6.0.0-alpha.16"
 realdataDir="//osfiler/ostcdata$"
 get_omifolder() {
     echo "/download/OSTCData/Builds/omi/develop/$1/$2/$3"
@@ -72,7 +72,7 @@ case "$OSTYPE" in
                         platfrom=Linux_ULINUX_1.0_x64_64_Release
                         ;;
                     *)
-                        echo "Ubuntu $VERSION_ID is not supported!" >&2
+                        echo "Ubuntu $VERSION_ID is not supported!"
                         exit 2
                 esac
                 
@@ -83,7 +83,7 @@ case "$OSTYPE" in
                 esac
                 ;;
             *)
-                echo "$NAME is not supported!" >&2
+                echo "$NAME is not supported!"
                 exit 2
         esac
         ;;
@@ -95,7 +95,7 @@ case "$OSTYPE" in
         powershellDir=$powershellDirForMac
         ;;
     *)
-        echo "$OSTYPE is not supported!" >&2
+        echo "$OSTYPE is not supported!"
         exit 2
         ;;
 esac
@@ -117,15 +117,17 @@ if [ "$isMacOS" = "true" ]; then
     # Mac OS don't have mount_cifs, so use mount_smbfs
     omifolder=$(get_omifolder "$omiversion" "$platfrom" "$opensslversion")
     echo "mounting from $realdataDir folder to omi folder: $omifolder"
-    sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:'"$redmondpassword"'@osfiler/ostcdata$' /download
+    #sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:'"$redmondpassword"'@osfiler/ostcdata$' /download
+	sudo mount osfiler.scx.com:/OSTCData /download
     sudo cp -f $omifolder"omicli" /opt/omi/bin
     sudo cp -f $omifolder"libmi.dylib" /opt/omi/lib
-    #sudo cp -f $omifolder"libmi.dylib" $powershellDir
+	sudo cp -f $omifolder"libmi.dylib" $powershellDir
     sudo umount /download
 
     psrpfolder=$(get_psrpfolder "$psrpversion" "$platfrom")
     echo "mounting from $realdataDir folder to psrp folder: $psrpfolder"
-    sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:'"$redmondpassword"'@osfiler/ostcdata$' /download
+    #sudo mount -t smbfs '//redmond.corp.microsoft.com;scxsvc:'"$redmondpassword"'@osfiler/ostcdata$' /download
+	sudo mount osfiler.scx.com:/OSTCData /download
     echo "Copying psrpclient ..."
     sudo cp -f $psrpfolder/libpsrpclient.dylib $powershellDir
     sudo umount /download
@@ -154,47 +156,45 @@ case "$OSTYPE" in
                 # yum automatically resolves dependencies for local packages
                 omipackage=omi-$omiversion.ulinux.x64.rpm
                 if [[ ! -r "$omipackage" ]]; then
-                    echo "ERROR: $omipackage failed to download! Aborting..." >&2
+                    echo "ERROR: $omipackage failed to download! Aborting..."
                     exit 1
                 fi
                 sudo rpm -i "./$omipackage"
                 echo "Done installing omi ..."
 				
-                psrppackage=psrp-1.0.0-0.universal.x64.rpm
+                psrppackage=psrp-1.0.0-$psrpversion.universal.x64.rpm
                 if [[ ! -r "$psrppackage" ]]; then
-                    echo "ERROR: $psrppackage failed to download! Aborting..." >&2
+                    echo "ERROR: $psrppackage failed to download! Aborting..."
                     exit 1
                 fi
                 sudo rpm -i "./$psrppackage"
                 echo "Done installing psrp ..."
 				
                 #echo "Copying omicli and psrpclient ..."
-				#libmi.so and libpsrpclient.so are integrated into powershell package, so needn't to copy them from build share folder
-                #sudo cp -u libmi.so $powershellDir
-                #sudo cp -u libpsrpclient.so $powershellDir
+                sudo cp -u libmi.so $powershellDir
+                sudo cp -u libpsrpclient.so $powershellDir
                 ;;
             ubuntu)
                 # dpkg does not automatically resolve dependencies, but spouts ugly errors
                 omipackage=omi-$omiversion.ulinux.x64.deb
                 if [[ ! -r "$omipackage" ]]; then
-                    echo "ERROR: $omipackage failed to download! Aborting..." >&2
+                    echo "ERROR: $omipackage failed to download! Aborting..."
                     exit 1
                 fi
                 sudo dpkg -i "./$omipackage"
 				echo "Done installing omi ..."
                 
-                psrppackage=psrp-1.0.0-0.universal.x64.deb
+                psrppackage=psrp-1.0.0-$psrpversion.universal.x64.deb
                 if [[ ! -r "$psrppackage" ]]; then
-                    echo "ERROR: $psrppackage failed to download! Aborting..." >&2
+                    echo "ERROR: $psrppackage failed to download! Aborting..."
                     exit 1
                 fi
-                sudo dpkg -i "./$psrppackage" &> /dev/null
+                sudo dpkg -i "./$psrppackage"
                 echo "Done installing psrp ..."
 				
                 #echo "Copying omicli and psrpclient ..."
-				#libmi.so and libpsrpclient.so are integrated into powershell package, so needn't to copy them from build share folder
-                #sudo cp -u libmi.so $powershellDir
-                #sudo cp -u libpsrpclient.so $powershellDir
+                sudo cp -u libmi.so $powershellDir
+                sudo cp -u libpsrpclient.so $powershellDir
                 # Resolve dependencies
                 sudo apt-get install -f -y
                 ;;
@@ -208,7 +208,7 @@ esac
 success=$?
 
 if [[ "$success" != 0 ]]; then
-    echo "OMI and PSRP install failed." >&2
+    echo "OMI and PSRP install failed."
     exit "$success"
 else
     echo "Congratulations! OMI and PSRP are installed."

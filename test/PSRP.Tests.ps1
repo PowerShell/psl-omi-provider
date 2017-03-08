@@ -120,7 +120,7 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
         }
 
         #omicli pending when using bad username
-        It "Remoting from Linux/MacOS to Linux with basic authentication with omicli with bad username over https should throw exception" -Skip:($IsWindows) -Pending:($IsLinux -Or $IsOSX) {
+        It "Remoting from Linux/MacOS to Linux with basic authentication with omicli with bad username over https should throw exception" -Pending:$true {
             $hostname = $LinuxHostName
             $User = $badUserName
 
@@ -143,7 +143,7 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
         }
 
         #omicli pending when using bad password
-        It "Remoting from Linux/MacOS to Linux with basic authentication with omicli with bad password over https should throw exception" -Skip:($IsWindows) -Pending:($IsLinux -Or $IsOSX) {
+        It "Remoting from Linux/MacOS to Linux with basic authentication with omicli with bad password over https should throw exception" -Pending:$true {
             $hostname = $LinuxHostName
             $User = $LinuxUserName
             $result = /opt/omi/bin/omicli id -u $User -p $badPassword --auth Basic --hostname $hostname --port $Port --encryption https

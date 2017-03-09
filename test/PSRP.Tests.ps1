@@ -29,7 +29,7 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
             Get-PSSession|Remove-PSSession
         }
 
-        It "Remoting from Windows/Linux/MacOS to Linux with basic authentication with omicli over https should work" {
+        It "WSMan from Windows/Linux/MacOS to Linux with basic authentication with omicli over https should work" {
             $hostname = $LinuxHostName
             $User = $LinuxUserName
             if($IsLinux -Or $IsOSX)
@@ -120,7 +120,7 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
         }
 
         #omicli pending when using bad username
-        It "Remoting from Linux/MacOS to Linux with basic authentication with omicli with bad username over https should throw exception" -Pending:$true {
+        It "WSMan from Linux/MacOS to Linux with basic authentication with omicli with bad username over https should throw exception" -Pending:$true {
             $hostname = $LinuxHostName
             $User = $badUserName
 
@@ -143,7 +143,7 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
         }
 
         #omicli pending when using bad password
-        It "Remoting from Linux/MacOS to Linux with basic authentication with omicli with bad password over https should throw exception" -Pending:$true {
+        It "WSMan from Linux/MacOS to Linux with basic authentication with omicli with bad password over https should throw exception" -Pending:$true {
             $hostname = $LinuxHostName
             $User = $LinuxUserName
             $result = /opt/omi/bin/omicli id -u $User -p $badPassword --auth Basic --hostname $hostname --port $Port --encryption https
@@ -165,7 +165,7 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
         }
 
         #Skip Windows to Windows because of not support.
-        It "Remoting from Linux/MacOS to Windows with basic authentication over http should work" -Skip:($IsWindows) {
+        It "PowerShell from Linux/MacOS to Windows with basic authentication over http should work" -Skip:($IsWindows) {
             $hostname = $WindowsHostName
             $User = $WindowsUserName
             $PWord = Convertto-SecureString $windowsPasswordString -AsPlainText -Force
@@ -182,7 +182,7 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
             Get-PSSession|Remove-PSSession
         }
 
-        It "Remoting from Linux/MacOS to Windows with basic authentication by omicli over http should work" -Skip:($IsWindows) {
+        It "WSMan from Linux/MacOS to Windows with basic authentication by omicli over http should work" -Skip:($IsWindows) {
             $hostname = $WindowsHostName
             $User = $WindowsUserName
             $HTTPPort=5985
@@ -208,7 +208,7 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
             Get-PSSession|Remove-PSSession
         }
 
-        It "Remoting from Linux/MacOS to Linux with negotiate authentication with omicli over https should work" -SKip:($IsWindows) {
+        It "WSMan from Linux/MacOS to Linux with negotiate authentication with omicli over https should work" -SKip:($IsWindows) {
             $hostname = $LinuxHostName
             $User = $LinuxUserName
             if($IsLinux -Or $IsOSX)

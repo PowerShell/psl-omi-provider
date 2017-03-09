@@ -133,7 +133,7 @@ We are currently working on Kerberos protocol support which will allow SPNEGO or
 older Linux distributions.
 
 In order to perform NTLM authentication there must be matching credentials on both ends of the transaction. The necessary setup of the ntlm credentials
-for both server and client is described in the document [setup-ntlm-omi]( https://github.com/Microsoft/omi/doc/setup-ntlm-omi.md). 
+for both server and client is described in the document [setup-ntlm-omi]( https://github.com/Microsoft/omi/blob/master/Unix/doc/setup-ntlm-omi.md). 
 
 If you are not using SPNEGO authentication, or wish to use basic authentication on http, the WinRM server needs to be configured to allow unencrypted traffic
 and accept basic authentication for inbound connections. *Note that this sends passwords over unencrypted http. We do not recommend it*.  If the http socket is enabled

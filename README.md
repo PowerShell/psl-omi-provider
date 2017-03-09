@@ -123,21 +123,31 @@ ip -f inet addr show dev eth0
 Connecting from Linux to Windows
 --------------------------------
 
-*NOTE: This is pre-release and does have plenty of known problems. We are pushing it to master so you can try it out.*
-*Please don't file issues on crashes or hangs yet as it is probably already known about.*
+For Centos 7.3 and later, and Ubuntu 16.04 or later, Powershell supports Secure Protected Negotiated authentication (SPNEGO). 
+This allows the use of NTLM based authentication and encryption of traffic over the http connection.  Use of SPNEGO authentication is
+more secure than basic authentication on http, and less complex than https.  Support of NTLM authentication on MacOS is deprecated by apple. 
+We are currently working on Kerberos protocol support which will allow SPNEGO or direct Kerberos authentication on MacOS as well as at least some
+older Linux distributions.
 
-WinRM server needs to be configured to allow unencrypted traffic and accept basic authentication for inbound connections.
-*NOTE: This sends passwords over unencrypted http.*
+In order to perform NTLM authentication there must be matching credentials on both ends of the transaction. The necessary setup of the ntlm credentials
+for both server and client is described in the document [setup-ntlm-omi]( https://github.com/Microsoft/omi/doc/setup-ntlm-omi.md). 
 
-We are working on SPNEGO authentication with encryption over HTTP and this will hopefully be in place soon.
+If you are not using SPNEGO authentication, or wish to use basic authentication on http, the WinRM server needs to be configured to allow unencrypted traffic
+and accept basic authentication for inbound connections. *Note that this sends passwords over unencrypted http. We do not recommend it*.  If the http socket is enabled
+and basic authentication is allowed, there is currently no way to prevent the use of basic authentication over http, which exposes passwords.  
 
-On Windows in an administrative command prompt run:
+To enable basic auth, on Windows in an administrative command prompt run:
 ```cmd
-winrm set winrm/config/Service @{AllowUnencrypted="true"}
 winrm set winrm/config/Service/Auth @{Basic="true"}
 ```
+Basic authentication has acceptable security over https, but all communications using basic authentication over http are unencrypted. Connections using 
+SPNEGO authentication are encrypted, and have acceptable security. 
 
-Basic authentication with WinRM can only access local machine accounts so you will need to create a local account on your Windows machine that is part of the administrator group.
+To enable unencrypted communication over http on Windows in an administrative command prompt you must also run:
+```cmd
+winrm set winrm/config/Service @{AllowUnencrypted="true")
+```
+Basic authentication with WinRM can only access local machine accounts so you will need to create a local account on your Windows machine that is part of the administrator group.a SPNEGO connections can use domain credentials. 
 
 
 Building this repository generates two new binaries that need to be picked up instead of the ones included by PowerShell for Linux itself. 

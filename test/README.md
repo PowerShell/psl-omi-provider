@@ -4,6 +4,10 @@ Pester Testing Test Guide for PSRP
 Also see the [Writing Pester Tests](https://github.com/PowerShell/PowerShell/blob/master/docs/testing-guidelines/WritingPesterTests.md)
 document.
 
+Test Design Specification for PSRP is here: [TestDesignSpecificationForPSRP]
+
+[TestDesignSpecificationForPSRP]: https://github.com/PowerShell/psl-omi-provider/blob/AutomationTest/test/TestDesign/TestDesignSpecificationForPSRP.md
+
 Install PSRP
 --------------------
 

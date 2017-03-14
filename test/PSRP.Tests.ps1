@@ -29,7 +29,7 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
             Get-PSSession|Remove-PSSession
         }
 
-        It "WSMan from Windows/Linux/MacOS to Linux with basic authentication with omicli over https should work" {
+        It "WSMan from Linux/MacOS to Linux with basic authentication with omicli over https should work" {
             $hostname = $LinuxHostName
             $User = $LinuxUserName
             if($IsLinux -Or $IsOSX)
@@ -47,7 +47,7 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
             $result.Length|Should BeGreaterThan 1
         }
 
-        It "PowerShell from Windows/Linux/MacOS to Linux with basic authentication with bad username over https should throw exception" -Skip:$IsWindows {
+        It "PowerShell from Linux/MacOS to Linux with basic authentication with bad username over https should throw exception" -Skip:$IsWindows {
             $hostname = $LinuxHostName
             $User = $badUserName
             $password=$linuxPasswordString
@@ -66,7 +66,7 @@ Describe " PowerShell Remoting basic functional tests" -Tag @("CI") {
             }
         }
 
-        It "PowerShell from Windows/Linux/MacOS to Linux with basic authentication with bad username over https should throw exception" -Skip:($IsLinux -Or $IsOSX) {
+        It "PowerShell from Windows to Linux with basic authentication with bad username over https should throw exception" -Skip:($IsLinux -Or $IsOSX) {
             $hostname = $LinuxHostName
             $User = $badUserName
             $password=$linuxPasswordString

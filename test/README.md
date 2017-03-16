@@ -6,7 +6,7 @@ document.
 
 Test Design Specification for PSRP is here: [TestDesignSpecificationForPSRP]
 
-[TestDesignSpecificationForPSRP]: https://github.com/PowerShell/psl-omi-provider/blob/AutomationTest/test/TestDesign/TestDesignSpecificationForPSRP.md
+[TestDesignSpecificationForPSRP]: https://github.com/PowerShell/psl-omi-provider/blob/master/test/TestDesign/TestDesignSpecificationForPSRP.md
 
 Install PSRP
 --------------------

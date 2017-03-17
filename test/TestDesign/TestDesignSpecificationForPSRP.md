@@ -19,9 +19,9 @@
 		* [ Basic authentication Test](#3.2.1)
 		* [ Negotiate authentication Test](#3.2.2)
 
-##<a name="1"> Test Environment
+## Test Environment
 
-###<a name="1.1"> Windows Test Environment
+### Windows Test Environment
 
 Current Supported Windows Operating Systems
 
@@ -31,7 +31,7 @@ Current Supported Windows Operating Systems
 | Windows Server 2016    | PSRP-W2016-NO                   |
 
 
-###<a name="1.2"> Linux Test Environment
+### Linux Test Environment
 
 Current Supported Linux Operating Systems
 
@@ -42,7 +42,7 @@ Current Supported Linux Operating Systems
 | Ubuntu14X64            | psl-ub14x64-NO                  |
 
 
-###<a name="1.3"> Mac Test Environment
+### Mac Test Environment
 
 Current Supported Mac Operating Systems
 
@@ -51,26 +51,26 @@ Current Supported Mac Operating Systems
 | Mac 1011               | psl-mac1011-NO                 |
 
 
-##<a name="2"> Test Scope
-###<a name="2.1"> Test Target
+## Test Scope
+### Test Target
 This test suite will test the server remote access of Windows and Linux, and test suite acts as client role (Which can be Windows, Linux and Mac platforms).
 
-###<a name="2.2"> Test Protocols
+### Test Protocols
 This test suite includes Basic Authentication and Negotiate Authentication between client and server to remote destination machine.
 1.	Basic authentication
 2.	Negotiate authentication
 
-###<a name="2.3"> Restrictions
+### Restrictions
 1.  Mac machines are not supported in Negotiate Mode, They can only act as a client in Basic Mode.
 2.  Ubuntu14X64 machines are not supported in Negotiate Mode, They can only act in Basic mode as both the client and server.
 
-###<a name="2.4"> Dependencies
+### Dependencies
 PowerShell and OMI
 Before we install the PSRP for test, we have to install related PowerShell and OMI providers first. 
 		
-##<a name="3"> Test Suite Design
+## Test Suite Design
 
-###<a name="3.1"> Test Matrix
+### Test Matrix
 
 We logon the client and connect to the server remotely.
 
@@ -83,7 +83,7 @@ We logon the client and connect to the server remotely.
 | Mac               | Windows                 |
 
 If we divide the client and server into different platforms according to the test environments we mentioned above the matrix will be like below:
-####<a name="3.1.1"> Basic authentication Mode
+#### Basic authentication Mode
 
 |**NO**| **Client**   | **Server**            |
 |---|----------|---------------------------|
@@ -114,7 +114,7 @@ If we divide the client and server into different platforms according to the tes
 |25|Mac | WindowsServer2012R2|
 |26|Mac | WindowsServer2016|
 
-####<a name="3.1.2"> Negotiate authentication Mode
+#### Negotiate authentication Mode
 
 |**NO**| **Client**   | **Server**           |
 |-----|--------------|---------------------|
@@ -131,11 +131,11 @@ If we divide the client and server into different platforms according to the tes
 |11|WindowsServer2016 | Cent7X64|
 |12|WindowsServer2016 | Ub16X64|
 
-###<a name="3.2"> Test Cases
+### Test Cases
  
 **You can refer to the implemented test cases in github: [PSRP Test Cases](https://github.com/PowerShell/psl-omi-provider/blob/master/test/PSRP.Tests.ps1)**
 	 
-####<a name="3.2.1"> Basic Authentication Test
+#### Basic Authentication Test
 |**ID**| **Case Title** | **Pester Test Title** |
 |-----|--------------|---------------------|
 1 |[BasicModeToLinux] Powershell remoting over https with valid credentials should work |PowerShell from Windows/Linux/MacOS to Linux with basic authentication over https should work|
@@ -154,7 +154,7 @@ If we divide the client and server into different platforms according to the tes
 14 |[BasicModeToWindows] WSMan remoting over http with omicli  with bad user should throw exception |  Need implement|
 15 |[BasicModeToWindows] WSMan remoting over http with omicli  with bad password  should throw exception |  Need implement|
 
-####<a name="3.2.2"> Negotiate Authentication Test
+#### Negotiate Authentication Test
 |**ID**| **Case Title** | **Pester Test Title** |
 |-----|--------------|---------------------|
 16 |[NegotiateModeToLinux]  Powershell remoting over https with valid credentials should work |PowerShell from Windows/Linux/MacOS to Linux with negotiate authentication over https should work|

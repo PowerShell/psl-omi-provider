@@ -7,7 +7,7 @@ trap '
   kill -s INT "$$"
 ' INT
 
-if [ $# -ne 3 ]; then 
+if [ $# -ne 3 ]; then
     echo -e "Need redmondpassword with omiversion and psrpversion\nUsage:installPSRP.sh redmondpassword \"1.2.0-35\" \"18\""
     exit 2
 fi
@@ -19,8 +19,8 @@ redmondpassword=$1
 isMacOS=false
 omiversion=$2
 psrpversion=$3
-powershellDir="/opt/microsoft/powershell/6.0.0-alpha.16"
-powershellDirForMac="/usr/local/microsoft/powershell/6.0.0-alpha.16"
+powershellDir="/opt/microsoft/powershell/6.0.0-beta.3"
+powershellDirForMac="/usr/local/microsoft/powershell/6.0.0-beta.3"
 realdataDir="//osfiler/ostcdata$"
 get_omifolder() {
     echo "/download/OSTCData/Builds/omi/develop/$1/$2/$3"
@@ -40,7 +40,7 @@ case "$OSTYPE" in
                     echo "openssl not found, installing..."
                     sudo yum install -y openssl
                 fi
-                
+
                 if ! hash mount.cifs 2>/dev/null; then
                     echo "mount.cifs not found, installing..."
                     sudo yum install -y cifs-utils
@@ -58,7 +58,7 @@ case "$OSTYPE" in
                     echo "openssl not found, installing..."
                     sudo apt-get install -y openssl
                 fi
-                
+
                 if ! hash mount.cifs 2>/dev/null; then
                     echo "mount.cifs not found, installing..."
                     sudo apt-get install -y cifs-utils
@@ -75,7 +75,7 @@ case "$OSTYPE" in
                         echo "Ubuntu $VERSION_ID is not supported!"
                         exit 2
                 esac
-                
+
                 ov=`openssl version|cut -d' ' -f2|cut -c1`
                 case "$ov" in
                  1) opensslversion="openssl_1.0.0" ;;
@@ -161,7 +161,7 @@ case "$OSTYPE" in
                 fi
                 sudo rpm -i "./$omipackage"
                 echo "Done installing omi ..."
-				
+
                 psrppackage=psrp-1.0.0-$psrpversion.universal.x64.rpm
                 if [[ ! -r "$psrppackage" ]]; then
                     echo "ERROR: $psrppackage failed to download! Aborting..."
@@ -169,7 +169,7 @@ case "$OSTYPE" in
                 fi
                 sudo rpm -i "./$psrppackage"
                 echo "Done installing psrp ..."
-				
+
                 #echo "Copying omicli and psrpclient ..."
                 sudo cp -u libmi.so $powershellDir
                 sudo cp -u libpsrpclient.so $powershellDir
@@ -183,7 +183,7 @@ case "$OSTYPE" in
                 fi
                 sudo dpkg -i "./$omipackage"
 				echo "Done installing omi ..."
-                
+
                 psrppackage=psrp-1.0.0-$psrpversion.universal.x64.deb
                 if [[ ! -r "$psrppackage" ]]; then
                     echo "ERROR: $psrppackage failed to download! Aborting..."
@@ -191,7 +191,7 @@ case "$OSTYPE" in
                 fi
                 sudo dpkg -i "./$psrppackage"
                 echo "Done installing psrp ..."
-				
+
                 #echo "Copying omicli and psrpclient ..."
                 sudo cp -u libmi.so $powershellDir
                 sudo cp -u libpsrpclient.so $powershellDir

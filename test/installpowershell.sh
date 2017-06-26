@@ -7,10 +7,10 @@ trap '
   kill -s INT "$$"
 ' INT
 
-releaseversion="6.0.0-alpha.16"
-centosreleaseversion="6.0.0_alpha.16"
+releaseversion="6.0.0-beta.3"
+centosreleaseversion="6.0.0_beta.3"
 get_url() {
-    release=v6.0.0-alpha.16
+    release=v6.0.0-beta.3
     echo "https://github.com/PowerShell/PowerShell/releases/download/$release/$1"
 }
 
@@ -26,7 +26,7 @@ case "$OSTYPE" in
                     sudo yum install -y curl
                 fi
 
-                package=powershell-$centosreleaseversion-1.el7.centos.x86_64.rpm
+                package=powershell-$centosreleaseversion-1.el7.x86_64.rpm
                 ;;
             ubuntu)
                 if ! hash curl 2>/dev/null; then
@@ -53,7 +53,7 @@ case "$OSTYPE" in
         ;;
     darwin*)
         # We don't check for curl as macOS should have a system version
-        package=powershell-$releaseversion.pkg
+        package=powershell-$releaseversion-osx.10.12-x64.pkg
         ;;
     *)
         echo "$OSTYPE is not supported!" >&2

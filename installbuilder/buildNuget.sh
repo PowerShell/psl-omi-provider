@@ -14,7 +14,7 @@ set -e
 build_location=/mnt/ostcdata/OSTCData/Builds/psrp/develop
 
 subdir_linux=Linux_ULINUX_1.0_x64_64_Release
-subdir_osx=Darwin_10.11_x64_64_Release
+subdir_osx=Darwin_10.12_x64_64_Release
 
 # We should be built from omi/Unix directory, which means that
 # the "installbuilder" directory should live here.

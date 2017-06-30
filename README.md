@@ -148,7 +148,7 @@ SPNEGO authentication are encrypted, and have acceptable security.
 
 To enable unencrypted communication over http on Windows in an administrative command prompt you must also run:
 ```cmd
-winrm set winrm/config/Service @{AllowUnencrypted="true")
+winrm set winrm/config/Service @{AllowUnencrypted="true"}
 ```
 Basic authentication with WinRM can only access local machine accounts so you will need to create a local account on your Windows machine that is part of the administrator group.a SPNEGO connections can use domain credentials. 
 

@@ -62,6 +62,11 @@ if [ -z "$OMI_BUILDVERSION_NUGET" ]; then
     exit 1
 fi
 
+if [ -z "$PSRP_BUILDVERSION" ]; then
+    echo "Unable to determine PSRP_BUILDVERSION nuget version number from omi.version file" 1>& 2
+    exit 1
+fi
+
 #
 # Write out the spec file
 #
@@ -77,7 +82,7 @@ cat > psrp.nuspec <<EOF
 <package xmlns="http://schemas.microsoft.com/packaging/2011/10/nuspec.xsd">
   <metadata>
     <id>psrp</id>
-    <version>1.1.0-alpha${PARENT_BUILD_NUMBER}</version>
+    <version>$PSRP_BUILDVERSION-{PARENT_BUILD_NUMBER}</version>
     <authors>Microsoft</authors>
     <owners>Microsoft</owners>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>

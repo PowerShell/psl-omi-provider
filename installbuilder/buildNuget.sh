@@ -62,8 +62,13 @@ if [ -z "$OMI_BUILDVERSION_NUGET" ]; then
     exit 1
 fi
 
+#
+# Load the psrp.version file to get PSRP version information
+#
+. ./psrp.version
+
 if [ -z "$PSRP_BUILDVERSION" ]; then
-    echo "Unable to determine PSRP_BUILDVERSION nuget version number from omi.version file" 1>& 2
+    echo "Unable to determine PSRP_BUILDVERSION nuget version number from psrp.version file" 1>& 2
     exit 1
 fi
 
@@ -103,7 +108,7 @@ EOF
 # Note, up above, that we are now in the installbuilder/nuget directory
 #
 
-mkdir -p runtimes/linux-x64/native runtimes/osx/native 
+mkdir -p runtimes/linux-x64/native runtimes/osx/native
 
 # Copy the appropriate files in place
 

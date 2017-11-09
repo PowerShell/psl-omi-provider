@@ -87,7 +87,7 @@ cat > psrp.nuspec <<EOF
 <package xmlns="http://schemas.microsoft.com/packaging/2011/10/nuspec.xsd">
   <metadata>
     <id>psrp</id>
-    <version>$PSRP_BUILDVERSION-{PARENT_BUILD_NUMBER}</version>
+    <version>$PSRP_BUILDVERSION-${PARENT_BUILD_NUMBER}</version>
     <authors>Microsoft</authors>
     <owners>Microsoft</owners>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>

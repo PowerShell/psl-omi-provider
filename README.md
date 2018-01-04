@@ -19,7 +19,7 @@ You can download and install PSRP-Server from following links:
 | Linux        | RPM                | [psrp-1.4.1-28.universal.x64.rpm] |
 
 [psrp-1.4.1-28.universal.x64.deb]: https://github.com/PowerShell/psl-omi-provider/releases/download/v1.4.1-28/psrp-1.4.1-28.universal.x64.deb
-psrp-1.4.1-28.universal.x64.rpm]: https://github.com/PowerShell/psl-omi-provider/releases/download/v1.4.1-28/psrp-1.4.1-28.universal.x64.rpm
+[psrp-1.4.1-28.universal.x64.rpm]: https://github.com/PowerShell/psl-omi-provider/releases/download/v1.4.1-28/psrp-1.4.1-28.universal.x64.rpm
 
 Alternatively, you can now also download from Microsoft Repo. Instructions
 on setting this up can be found [here](https://technet.microsoft.com/en-us/windows-server-docs/compute/Linux-Package-Repository-for-Microsoft-Software).  Follow the instructions for your platform.  You can then use your platform's package tool to install OMI (i.e. "sudo apt-get install omi-psrp-server", or "sudo yum install omi-psrp-server").

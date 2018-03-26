@@ -2362,9 +2362,11 @@ error:
     return;
 }
 
-void MI_CALL CloseSessionComplete(
-    __LOGD(("%s: END", "CloseSessionComplete"));
+void MI_CALL CloseSessionComplete(_In_opt_ void *competionContext
 )
+{
+    __LOGD(("%s: END", "CloseSessionComplete"));
+}
 
 void MI_CALL CloseShellComplete(
     _In_opt_     MI_Operation *miOperation,

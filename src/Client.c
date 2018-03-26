@@ -2362,6 +2362,10 @@ error:
     return;
 }
 
+void MI_CALL CloseSessionComplete(
+    __LOGD(("%s: END", "CloseSessionComplete"));
+)
+
 void MI_CALL CloseShellComplete(
     _In_opt_     MI_Operation *miOperation,
     _In_     void *callbackContext,
@@ -2397,7 +2401,8 @@ void MI_CALL CloseShellComplete(
                 NULL,
                 NULL);
     MI_Operation_Close(miOperation);
-    MI_Session_Close(&shell->miSession, NULL, NULL);
+    __LOGD(("%s: START", "CloseSessionComplete"));
+    MI_Session_Close(&shell->miSession, NULL, CloseSessionComplete);
     __LOGD(("%s: END, errorCode=%u", "CloseShellComplete", resultCode));
 }
 MI_EXPORT void WINAPI WSManCloseShell(

@@ -6,7 +6,7 @@ ifeq ($(PF),Linux)
 DISTRO_TYPE = $(PF)_$(PF_DISTRO)
 endif
 
-PSRP_VERSION = 1.4.1
+PSRP_VERSION = 1.4.2
 PSRP_PATCH_LEVEL = $(shell if [ -z "$$BUILD_NUMBER" ]; then echo "0"; else echo $$BUILD_NUMBER; fi)
 
 INTERMEDIATE_DIR = $(TOP)/intermediate

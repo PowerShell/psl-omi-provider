@@ -25,6 +25,6 @@ release :
 	cd installbuilder/; make
 	
 clean :
-	cd omi/Unix; make clean; rm -rf output/ output_openssl_1.0.0/ GNUmakefile
+	cd omi/Unix; make clean; rm -rf output/ output_openssl_1.0.0/ output_openssl_1.1.0/ GNUmakefile
 	cd src; make clean
 	rm -rf target/

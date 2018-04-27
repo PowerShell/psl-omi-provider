@@ -135,6 +135,8 @@ older Linux distributions.
 In order to perform NTLM authentication there must be matching credentials on both ends of the transaction. The necessary setup of the ntlm credentials
 for both server and client is described in the document [setup-ntlm-omi]( https://github.com/Microsoft/omi/blob/master/Unix/doc/setup-ntlm-omi.md). 
 
+Note that the server side will need an additional registry setting to enable administrators, other than the built in administrator, to connect using NTLM. Refer to the LocalAccountTokenFilterPolicy registry setting under Negotiate Authentication in [Authentication for Remote Connections]( https://msdn.microsoft.com/en-us/library/aa384295(v=vs.85).aspx )
+
 If you are not using SPNEGO authentication, or wish to use basic authentication on http, the WinRM server needs to be configured to allow unencrypted traffic
 and accept basic authentication for inbound connections. *Note that this sends passwords over unencrypted http. We do not recommend it*.  If the http socket is enabled
 and basic authentication is allowed, there is currently no way to prevent the use of basic authentication over http, which exposes passwords.  

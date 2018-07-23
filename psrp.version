@@ -3,5 +3,5 @@
 # This version should match the PSRP_VERSION value in installbuilder/GNUmakefile
 # NOTE: omi.version is copied from https://github.com/Microsoft/Build-omi
 
-PSRP_BUILDVERSION=1.4.3
+PSRP_BUILDVERSION=1.4.5
 

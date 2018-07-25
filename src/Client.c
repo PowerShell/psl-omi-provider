@@ -1605,9 +1605,9 @@ MI_Result DecodeReceiveStream(WSMAN_OPERATION_HANDLE operation, const MI_Instanc
 
     /* TODO!! Support compression */
     responseData.receiveData.exitCode = 0;
-    responseData.receiveData.streamData.type = WSMAN_DATA_TYPE_TEXT;
-    responseData.receiveData.streamData.text.buffer = (MI_Char16*) decodedBuffer.buffer;
-    responseData.receiveData.streamData.text.bufferLength = decodedBuffer.bufferUsed;
+    responseData.receiveData.streamData.type = WSMAN_DATA_TYPE_BINARY;
+    responseData.receiveData.streamData.binaryData.data = (MI_Uint8*) decodedBuffer.buffer;
+    responseData.receiveData.streamData.binaryData.dataLength = decodedBuffer.bufferUsed;
 
     flags = 0;
     if (streamComplete)

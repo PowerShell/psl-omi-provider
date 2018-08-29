@@ -31,23 +31,27 @@ function SetupTests
         throw 'Expected env:PSRPPassword setting not found'
     }
 
-    $testContent = @"
-    a
-    b
-    c
-    d
-    e
-    f
-    g
-"@
-    $SourceFile = Join-Path -Path $TestDrive -ChildPath 'LinuxToWindows.TestContent.txt'
-    Set-Content -Value $testContent -Path $testFile -ErrorAction Stop
-
     return @{
         HostName = $env:PSRPHost
         Credential = [PSCredential]::new($env:PSRPUserName,  [System.Net.NetworkCredential]::new('', $env:PSRPPassword).SecurePassword)
-        SourceFile = $SourceFile
     }
+}
+
+function New-TestFile
+{
+    param
+    (
+        [string] $File,
+        [int] $Size
+    )
+    if (Test-Path -Path $File)
+    {
+        Remove-Item -Path $File -Force
+    }
+    $bytes = [byte[]]::new($Size)
+    $random = [System.Random]::new()
+    $random.NextBytes($bytes)
+    [System.IO.File]::WriteAllBytes($bytes)
 }
 
 Describe 'Connect to Windows Server from Linux' {
@@ -98,6 +102,12 @@ Describe 'Connect to Windows Server from Linux' {
 
             $sessionInfo = Invoke-Command -Session $session -ScriptBlock {Get-Item -Path variable:PSSenderInfo}
             $sessionInfo | Should Not Be $null
+        }
+    }
+
+    Context 'Connect with SSH' {
+        BeforeAll {
+
         }
     }
 }

@@ -26,36 +26,46 @@
     KeyFileName - the path to the private key to use for ssh connections
                SSH tests are skipped if not set.
 #>
-function Get-TestVariables
+function Get-TestVariables([ref] [string] $error)
 {
-    if (!(Test-Path -Path env:PSRPHost))
-    {
-        throw 'Expected env:PSRPHost setting not found'
-    }
-    if (!(Test-Path -Path env:PSRPUserName))
-    {
-        throw 'Expected env:PSRPUserName setting not found'
-    }
-    if (!(Test-Path -Path env:PSRPPassword))
-    {
-        throw 'Expected env:PSRPPassword setting not found'
-    }
+    $vars = @{}
 
-    $vars = @{
-        HostName = $env:PSRPHost
-        UserName = $env:PSRPUserName
-        Credential = [PSCredential]::new($env:PSRPUserName,  [System.Net.NetworkCredential]::new('', $env:PSRPPassword).SecurePassword)
-    }
+    do
+    {
+        if (!(Test-Path -Path env:PSRPHost))
+        {
+            $error.Value = '$env:PSRPHost was not found'
+            break
+        }
 
-    if (Test-Path -Path env:PSRPKeyFilePath)
-    {
-        $vars.Add('KeyFilePath') = env:PSRPKeyFilePath
-        $vars.Add('SkipSSH', $false)
-    }
-    else
-    {
-        $vars.Add('SkipSSH', $true)
-    }
+        if (!(Test-Path -Path env:PSRPUserName))
+        {
+            $error.Value = '$env:PSRPUserName was not found'
+            break
+        }
+
+        if (!(Test-Path -Path env:PSRPPassword))
+        {
+            $error.Value = '$env:PSRPPassword was not found'
+            break
+        }
+
+        $vars.Add('HostName', $env:PSRPHost)
+        $vars.Add('UserName', $env:PSRPUserName)
+        $vars.Add('Credential', [PSCredential]::new($env:PSRPUserName,  [System.Net.NetworkCredential]::new('', $env:PSRPPassword).SecurePassword))
+
+        if (Test-Path -Path env:PSRPKeyFilePath)
+        {
+            $vars.Add('KeyFilePath', $env:PSRPKeyFilePath)
+            $vars.Add('SkipSSH', $false)
+        }
+        else
+        {
+            $vars.Add('SkipSSH', $true)
+        }
+
+    } while ($false)
+
 
     return $vars
 }
@@ -113,7 +123,7 @@ function Test-CopyItem
     $destfile = "c:\users\$($TestVars.UserName)\$testFileName"
 
     Copy-Item -Path $sourceFile -Destination $destfile -ToSession $Session -ErrorAction Stop -Force
-    Invoke-Command -Session $Session -ScriptBlock {Test-Path -Path $args[0]} -Args $destFile | Should Be $true
+    Invoke-Command -Session $Session -ScriptBlock {Test-Path -Path $args[0]} -Args $destFile | Should -Be $true
 }
 
 <#
@@ -129,7 +139,7 @@ function Test-InvokeCommand
         [System.Management.Automation.Runspaces.PSSession] $session
     )
     $sessionInfo = Invoke-Command -Session $session -ScriptBlock {Get-Item -Path variable:PSSenderInfo}
-    $sessionInfo | Should Not Be $null
+    $sessionInfo | Should -Not -Be $null
 }
 
 #endregion Test Implementation
@@ -137,7 +147,8 @@ function Test-InvokeCommand
 Describe 'Connect to Windows Server from Linux' {
 
     BeforeAll {
-        $TestVariables = Get-TestVariables
+        [string] $DescribeError = ''
+        $TestVariables = Get-TestVariables([ref] $DescribeError)
     }
 
     BeforeEach {
@@ -151,20 +162,33 @@ Describe 'Connect to Windows Server from Linux' {
     Context 'Connect With -Authentication Negotiate (NTLM)' {
 
         BeforeEach {
-            $session = New-PSSession -ComputerName $TestVariables.Hostname -Credential $TestVariables.Credential -Authentication Negotiate
+            [string] $ContextError = $DescribeError
+            if (!$ContextError)
+            {
+                $session = New-PSSession -ComputerName $TestVariables.Hostname -Credential $TestVariables.Credential -Authentication Negotiate
+                if ($null -eq $session)
+                {
+                    $ContextError = "Could not create Negotiate PSSession to $($TestVariables.HostName)"
+                }
+            }
+        }
+
+        AfterEach {
+            $ContextError = ''
         }
 
         It 'Verifies New-PSSession -Authentication Negotiate connects with no errors' {
-            $session | Should Not Be $null
+            $ContextError | Should -BeNullOrEmpty
+            $session | Should -Not -Be $null
         }
 
         It 'Verifies Enter-PSSession -Authentication Negotiate succeeds' {
-            $session | Should Not Be $null
+            $ContextError | Should -BeNullOrEmpty
             Test-InvokeCommand -Session $session
         }
 
         It 'Verifies content can be copied to a Negotiate PSSession' {
-            $session | Should Not Be $null
+            $ContextError | Should -BeNullOrEmpty
             Test-CopyItem -Session $session -TestFileName 'CopyItemOverNTLM.bin' -TestVars $TestVariables
         }
     }
@@ -172,43 +196,66 @@ Describe 'Connect to Windows Server from Linux' {
     Context 'Connect with -UseSSL' {
 
         BeforeEach {
-            $session = New-PSSession -ComputerName $TestVariables.Hostname -Credential $TestVariables.Credential -Authentication Basic -UseSSL
+            [string] $ContextError = $DescribeError
+            if (!$ContextError)
+            {
+                $session = New-PSSession -ComputerName $TestVariables.Hostname -Credential $TestVariables.Credential -Authentication Basic -UseSSL
+                if ($null -eq $session)
+                {
+                    $ContextError = "Could not create SSL PSSession to $($TestVariables.HostName)"
+                }
+            }
+        }
+
+        AfterEach {
+            $ContextError = ''
         }
 
         It 'Verifies New-PSSession -UseSSL connects with no errors' {
-            $session | Should Not Be $null
+            $ContextError | Should -BeNullOrEmpty
+            $session | Should -Not -Be $null
         }
 
         It 'Verifies Invoke-Command succeeds with a -UseSSL PSSession' {
-            $session | Should Not Be $null
+            $ContextError | Should -BeNullOrEmpty
             Test-InvokeCommand -Session $session
         }
 
         It 'Verifies content can be copied to a -UseSSL PSSession' {
-            $session | Should Not Be $null
+            $ContextError | Should -BeNullOrEmpty
             Test-CopyItem -Session $session -TestFileName 'CopyItemOverNTLM.bin' -TestVars $TestVariables
         }
     }
 
     Context 'Connect with SSH' {
         BeforeEach {
-            if (!$TestVariables.SkipSSH)
+            [string] $ContextError = $DescribeError
+            if (!$TestVariables.SkipSSH -and !$DescribeError)
             {
                 $session = New-PSSession -HostName $TestVariables.Hostname -UserName $TestVariables.UserName -KeyFilePath $TestVariables.KeyFilePath
+                if ($null -eq $session)
+                {
+                    $ContextError = "Could not create SSH PSSession to $($TestVariables.HostName)"
+                }
             }
         }
 
+        AfterEach {
+            $ContextError = ''
+        }
+
         It 'Verifies New-PSSession over SSH connects with no errors' -Skip:$TestVariables.SkipSSH {
-            $session | Should Not Be $null
+            $ContextError | Should -BeNullOrEmpty
+            $session | Should -Not -Be $null
         }
 
         It 'Verifies Invoke-Command succeeds with an SSH PSSession' -Skip:$TestVariables.SkipSSH {
-            $session | Should Not Be $null
+            $ContextError | Should -BeNullOrEmpty
             Test-InvokeCommand -Session $session
         }
 
         It 'Verifies content can be copied to an SSH PSSession'  -Skip:$TestVariables.SkipSSH {
-            $session | Should Not Be $null
+            $ContextError | Should -BeNullOrEmpty
             Test-CopyItem -Session $session -TestFileName 'CopyItemOverNTLM.bin' -TestVars $TestVariables
         }
     }

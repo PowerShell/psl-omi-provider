@@ -234,7 +234,8 @@ Describe 'Connect to Windows Server from Linux' {
 
         It 'Verifies New-PSSession -Authentication Negotiate connects with no errors' -Skip:$Skip {
             $ContextError | Should -BeNullOrEmpty
-            $session | Should -Not -Be $null
+            $session.ComputerName | Should -BeExactly $TestVariables.Hostname
+            $session.Transport | Should -BeExactly 'WSMan'
         }
 
         It 'Verifies Enter-PSSession -Authentication Negotiate succeeds' -Skip:$Skip {
@@ -273,7 +274,8 @@ Describe 'Connect to Windows Server from Linux' {
 
         It 'Verifies New-PSSession -UseSSL connects with no errors' -Skip:$Skip {
             $ContextError | Should -BeNullOrEmpty
-            $session | Should -Not -Be $null
+            $session.ComputerName | Should -BeExactly $TestVariables.Hostname
+            $session.Transport | Should -BeExactly 'WSMan'
         }
 
         It 'Verifies Invoke-Command succeeds with a -UseSSL PSSession' -Skip:$Skip {
@@ -291,22 +293,9 @@ Describe 'Connect to Windows Server from Linux' {
 
         BeforeAll {
             [bool] $Skip = !($TestVariables.IsSupportedEnvironment -and $TestVariables.SupportsSSH)
-            [string] $ContextError = $DescribeError
-            if (!$Skip -and !$ContextError)
-            {
-                # ISSUE: Only creating the session once for all tests due to
-                # recurring connection timeout issues with the target server.
-                # Move this to BeforeEach once this is resolved.
-                $session = New-PSSession -HostName $TestVariables.Hostname -UserName $TestVariables.UserName -KeyFilePath $TestVariables.KeyFilePath
-                if ($null -eq $session)
-                {
-                    $ContextError = "Could not create SSH PSSession to $($TestVariables.HostName)"
-                }
-            }
         }
 
         BeforeEach {
-        <# Re-enable once connection time issues resolved with the target Windows Server 2016
             [string] $ContextError = $DescribeError
             if (!$Skip -and !$ContextError)
             {
@@ -316,16 +305,16 @@ Describe 'Connect to Windows Server from Linux' {
                     $ContextError = "Could not create SSH PSSession to $($TestVariables.HostName)"
                 }
             }
-        #>
         }
 
-        AfterAll {
+        AfterEach {
             Get-PSSession | Remove-PSSession
         }
 
         It 'Verifies New-PSSession over SSH connects with no errors' -Skip:$Skip {
             $ContextError | Should -BeNullOrEmpty
-            $session | Should -Not -Be $null
+            $session.ComputerName | Should -BeExactly $TestVariables.Hostname
+            $session.Transport | Should -BeExactly 'SSH'
         }
 
         It 'Verifies Invoke-Command succeeds with an SSH PSSession' -Skip:$Skip {

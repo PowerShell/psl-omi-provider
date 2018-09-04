@@ -49,7 +49,7 @@ function Get-OSInfo
         $script:OsInfo += @{'IsSLES' = $LinuxInfo.ID -match 'sles'}
         $script:OsInfo += @{'IsRedHat' = $LinuxInfo.ID -match 'rhel'}
         $script:OsInfo += @{'IsRedHat7' = $script:OsInfo.IsRedHat -and $LinuxInfo.VERSION_ID -match '7' }
-        $script:OsInfo += @{'IsOpenSUSE13' = $Environmenst.IsOpenSUSE -and $LinuxInfo.VERSION_ID  -match '13'}
+        $script:OsInfo += @{'IsOpenSUSE13' = $script:OsInfo.IsOpenSUSE -and $LinuxInfo.VERSION_ID  -match '13'}
         $script:OsInfo += @{'IsOpenSUSE42.1' = $script:OsInfo.IsOpenSUSE -and $LinuxInfo.VERSION_ID  -match '42.1'}
         $script:OsInfo += @{'IsRedHatFamily' = $script:OsInfo.IsCentOS -or $script:OsInfo.IsFedora -or $script:OsInfo.IsRedHat}
         $script:OsInfo += @{'IsSUSEFamily' = $script:OsInfo.IsSLES -or $script:OsInfo.IsOpenSUSE}

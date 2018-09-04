@@ -34,6 +34,7 @@ function Get-OSInfo
 
     if ($IsLinux)
     {
+        $LinuxInfo = Get-Content /etc/os-release -Raw | ConvertFrom-StringData
         $script:OsInfo += @{'IsDebian' = $LinuxInfo.ID -match 'debian'}
         $script:OsInfo += @{'IsDebian8' = $script:OsInfo.IsDebian -and $LinuxInfo.VERSION_ID -match '8'}
         $script:OsInfo += @{'IsDebian9' = $script:OsInfo.IsDebian -and $LinuxInfo.VERSION_ID -match '9'}

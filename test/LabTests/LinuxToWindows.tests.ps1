@@ -1,3 +1,8 @@
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+Import-Module (Join-Path -Path $PSScriptRoot -ChildPath 'PSRPTests.Common.psm1') -Force
+
 <#
     Dependencies
 
@@ -10,110 +15,7 @@
         PSRPKeyFilePath - The private key file to use for SSH connections
 #>
 
-<#
-.Synopsis
-    Creates a hash table of test variables
-
-.Notes
-    The table contains the following items:
-
-    HostName - the value of env:PSRPHost
-                Fatal error if not found
-    UserName - the value of env:PSRPUserName
-                Fatal error if not found
-    Password - the value of env:PSRPPassword
-               Fatal error if not found
-    KeyFilePath - the path to the private key to use for ssh connections
-               SSH tests are skipped if not set.
-    IsSupportedEnviroment - $true if the current system supports these tests
-    SupportsNTLM - $true if the system supports NTLM authentication.
-                 - Currently, MacOS does not.
-#>
-function Get-TestVariables([ref] [string] $error)
-{
-    $vars = @{}
-    $err = [System.Text.StringBuilder]::new()
-
-    do
-    {
-        if (!(Test-Path -Path env:PSRPHost))
-        {
-            $null = $err.AppendLine('$env:PSRPHost was not found')
-        }
-
-        if (!(Test-Path -Path env:PSRPUserName))
-        {
-            $null = $err.AppendLine('$env:PSRPUserName was not found')
-        }
-
-        if (!(Test-Path -Path env:PSRPPassword))
-        {
-            $null = $err.AppendLine('$env:PSRPPassword was not found')
-        }
-
-        if (Test-Path -Path env:PSRPKeyFilePath)
-        {
-            $vars.Add('SupportsSSH', [bool] $true)
-            $vars.Add('KeyFilePath', $env:PSRPKeyFilePath)
-            if (!(Test-Path -Path $env:PSRPKeyFilePath))
-            {
-                $null = $err.AppendLine("$env:PSRPKeyFilePath was not found")
-            }
-        }
-        else
-        {
-            # Must have a private key file to avoid prompting for a password
-            $vars.Add('SupportsSSH', [bool] $false)
-        }
-
-        if ($err.Length -gt 0)
-        {
-            $error.Value = $err.ToString()
-            break
-        }
-
-        $vars.Add('HostName', $env:PSRPHost)
-        $vars.Add('UserName', $env:PSRPUserName)
-        $vars.Add('Credential', [PSCredential]::new($env:PSRPUserName,  [System.Net.NetworkCredential]::new('', $env:PSRPPassword).SecurePassword))
-
-        $vars.Add('IsSupportedEnvironment', [bool] $IsLinux)
-        $vars.Add('SupportsNTLM', [bool] (!$IsMacOS -and $IsLinux))
-
-    } while ($false)
-
-
-    return $vars
-}
-
 #region Test Implementation
-
-<#
-.Synopsis
-    Creates a binary file of the specified size on the test drive.
-.Parameter File
-    The fully qualified binary file to create.
-    If the file already exists, it will be removed.
-.Parameter Size
-    The size, in bytes, of the file.
-.Notes
-    Used by Copy-Item tests
-#>
-function New-TestFile
-{
-    param
-    (
-        [string] $File,
-        [int] $Size
-    )
-    if (Test-Path -Path $File)
-    {
-        Remove-Item -Path $File -Force
-    }
-    $bytes = [byte[]]::new($Size)
-    $random = [System.Random]::new()
-    $random.NextBytes($bytes)
-    [System.IO.File]::WriteAllBytes($File, $bytes)
-}
 
 <#
 .Synopsis

@@ -28,7 +28,14 @@ Describe 'Connect with office365' {
     }
 
     AfterEach {
-        Get-PSSession | Remove-PSSession
+        try
+        {
+            Get-PSSession | Remove-PSSession
+        }
+        catch
+        {
+            # ISSUE: ObjectDisposedException: Cannot access a closed file.
+        }
     }
 
     It 'Verifies New-PSSession connects to Office365 with no errors' -Skip:$Skip {

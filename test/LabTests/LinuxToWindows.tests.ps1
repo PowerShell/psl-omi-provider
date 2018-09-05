@@ -111,6 +111,17 @@ Describe 'Connect to Windows Server from Linux' {
         [System.Management.Automation.Runspaces.PSSession] $session = $null
     }
 
+    AfterEach {
+        try
+        {
+            Get-PSSession | Remove-PSSession
+        }
+        catch
+        {
+            # ISSUE: ObjectDisposedException: Cannot access a closed file.
+        }
+    }
+
     Context 'Connect With -Authentication Negotiate (NTLM)' {
 
         BeforeAll {
@@ -128,10 +139,6 @@ Describe 'Connect to Windows Server from Linux' {
                     $ContextError = "Could not create Negotiate PSSession to $($TestVariables.HostName)"
                 }
             }
-        }
-
-        AfterEach {
-            Get-PSSession | Remove-PSSession
         }
 
         It 'Verifies New-PSSession -Authentication Negotiate connects with no errors' -Skip:$Skip {
@@ -170,10 +177,6 @@ Describe 'Connect to Windows Server from Linux' {
             }
         }
 
-        AfterEach {
-            Get-PSSession | Remove-PSSession
-        }
-
         It 'Verifies New-PSSession -UseSSL connects with no errors' -Skip:$Skip {
             $ContextError | Should -BeNullOrEmpty
             $session.ComputerName | Should -BeExactly $TestVariables.Hostname
@@ -207,10 +210,6 @@ Describe 'Connect to Windows Server from Linux' {
                     $ContextError = "Could not create SSH PSSession to $($TestVariables.HostName)"
                 }
             }
-        }
-
-        AfterEach {
-            Get-PSSession | Remove-PSSession
         }
 
         It 'Verifies New-PSSession over SSH connects with no errors' -Skip:$Skip {

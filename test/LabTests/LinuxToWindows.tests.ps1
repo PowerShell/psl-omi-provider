@@ -112,14 +112,7 @@ Describe 'Connect to Windows Server from Linux' {
     }
 
     AfterEach {
-        try
-        {
-            Get-PSSession | Remove-PSSession
-        }
-        catch
-        {
-            # ISSUE: ObjectDisposedException: Cannot access a closed file.
-        }
+        Get-PSSession | Remove-PSSession
     }
 
     Context 'Connect With -Authentication Negotiate (NTLM)' {

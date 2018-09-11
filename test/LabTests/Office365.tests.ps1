@@ -40,7 +40,7 @@ Describe 'Connect with office365' {
 
     It 'Verifies New-PSSession connects to Office365 with no errors' -Skip:$Skip {
         $DescribeError | Should -BeNullOrEmpty
-        $uri = [Uri]::New($TestVariables.OfficeUri)
+        $uri = [Uri]::New($TestVariables.OfficeURI)
         $session.ComputerName | Should -BeExactly $uri.Authority
         $session.ConfigurationName | Should -BeExactly $TestVariables.OfficeConfiguration
     }

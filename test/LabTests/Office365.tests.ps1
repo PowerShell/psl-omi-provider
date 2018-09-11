@@ -34,7 +34,7 @@ Describe 'Connect with office365' {
         }
         catch
         {
-            # ISSUE: ObjectDisposedException: Cannot access a closed file.
+            # ISSUE: https://github.com/PowerShell/PowerShell/issues/7740
         }
     }
 

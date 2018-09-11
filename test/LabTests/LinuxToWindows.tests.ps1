@@ -112,7 +112,14 @@ Describe 'Connect to Windows Server from Linux' {
     }
 
     AfterEach {
+        try
+        {
         Get-PSSession | Remove-PSSession
+        }
+        catch
+        {
+            # ISSUE: https://github.com/PowerShell/PowerShell/issues/7740
+        }
     }
 
     Context 'Connect With -Authentication Negotiate (NTLM)' {
@@ -126,7 +133,7 @@ Describe 'Connect to Windows Server from Linux' {
 
             if (!$Skip -and !$ContextError)
             {
-                $session = New-PSSession -ComputerName $TestVariables.Hostname -Credential $TestVariables.Credential -Authentication Negotiate
+                $session = New-PSSession -ComputerName $TestVariables.HostName -Credential $TestVariables.Credential -Authentication Negotiate
                 if ($null -eq $session)
                 {
                     $ContextError = "Could not create Negotiate PSSession to $($TestVariables.HostName)"
@@ -136,7 +143,7 @@ Describe 'Connect to Windows Server from Linux' {
 
         It 'Verifies New-PSSession -Authentication Negotiate connects with no errors' -Skip:$Skip {
             $ContextError | Should -BeNullOrEmpty
-            $session.ComputerName | Should -BeExactly $TestVariables.Hostname
+            $session.ComputerName | Should -BeExactly $TestVariables.HostName
             $session.Transport | Should -BeExactly 'WSMan'
         }
 
@@ -162,7 +169,7 @@ Describe 'Connect to Windows Server from Linux' {
 
             if (!$Skip -and !$ContextError)
             {
-                $session = New-PSSession -ComputerName $TestVariables.Hostname -Credential $TestVariables.Credential -Authentication Basic -UseSSL
+                $session = New-PSSession -ComputerName $TestVariables.HostName -Credential $TestVariables.Credential -Authentication Basic -UseSSL
                 if ($null -eq $session)
                 {
                     $ContextError = "Could not create SSL PSSession to $($TestVariables.HostName)"
@@ -172,7 +179,7 @@ Describe 'Connect to Windows Server from Linux' {
 
         It 'Verifies New-PSSession -UseSSL connects with no errors' -Skip:$Skip {
             $ContextError | Should -BeNullOrEmpty
-            $session.ComputerName | Should -BeExactly $TestVariables.Hostname
+            $session.ComputerName | Should -BeExactly $TestVariables.HostName
             $session.Transport | Should -BeExactly 'WSMan'
         }
 
@@ -197,7 +204,7 @@ Describe 'Connect to Windows Server from Linux' {
             [string] $ContextError = $DescribeError
             if (!$Skip -and !$ContextError)
             {
-                $session = New-PSSession -HostName $TestVariables.Hostname -UserName $TestVariables.UserName -KeyFilePath $TestVariables.KeyFilePath
+                $session = New-PSSession -HostName $TestVariables.HostName -UserName $TestVariables.UserName -KeyFilePath $TestVariables.KeyFilePath
                 if ($null -eq $session)
                 {
                     $ContextError = "Could not create SSH PSSession to $($TestVariables.HostName)"
@@ -207,7 +214,7 @@ Describe 'Connect to Windows Server from Linux' {
 
         It 'Verifies New-PSSession over SSH connects with no errors' -Skip:$Skip {
             $ContextError | Should -BeNullOrEmpty
-            $session.ComputerName | Should -BeExactly $TestVariables.Hostname
+            $session.ComputerName | Should -BeExactly $TestVariables.HostName
             $session.Transport | Should -BeExactly 'SSH'
         }
 

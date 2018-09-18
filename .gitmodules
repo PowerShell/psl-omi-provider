@@ -1,1 +1,4 @@
 
+[submodule "libmi"]
+	path = libmi
+	url = https://github.com/powershell/libmi

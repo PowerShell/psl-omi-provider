@@ -1,8 +1,1 @@
-[submodule "omi"]
-	path = omi
-	url = https://github.com/Microsoft/omi.git
-	branch = master
-[submodule "pal"]
-	path = pal
-	url = https://github.com/Microsoft/pal.git
-	branch = master
+
